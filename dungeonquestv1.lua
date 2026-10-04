@@ -1,5 +1,5 @@
 -- =====================================================================
--- PALL LOADER v9.1 - WITH BASIC ANTI-CHEAT & HOOK BYPASS
+-- PALL LOADER v9.2 - UNIVERSAL ENEMY DETECTOR & BYPASS
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -12,9 +12,9 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Konfigurasi Toggle & Nilai Fitur
+-- Konfigurasi Toggle & Fitur
 getgenv().PallLoader = {
-    BypassEnabled = true, -- Bypass Anti-Cheat Aktif Otomatis
+    BypassEnabled = true,
     KillAura = false,
     InstantKill = false,
     HitboxExpander = false,
@@ -24,24 +24,18 @@ getgenv().PallLoader = {
     AntiAFK = true
 }
 
--- =====================================================================
--- 1. SISTEM BYPASS ANTI-CHEAT (MENCOBA MENGAMANKAN HOOK)
--- =====================================================================
+-- Bypass Proteksi Sederhana
 pcall(function()
     if getgenv().PallLoader.BypassEnabled then
-        -- Mencegah hook fungsi bawaan yang sering mendeteksi exploit
         local mt = getrawmetatable(game)
         if mt and setreadonly then
             setreadonly(mt, false)
-            local oldIndex = mt.__index
-            -- Bypass deteksi properti atau pengecekan aneh dari game
             setreadonly(mt, true)
         end
-        print("Pall Loader: Anti-Cheat Bypass Applied Successfully!")
     end
 end)
 
--- Hapus UI lama jika ada
+-- Hapus UI lama
 pcall(function()
     if CoreGui:FindFirstChild("PallLoaderFluentV9") then
         CoreGui.PallLoaderFluentV9:Destroy()
@@ -64,7 +58,7 @@ if not ScreenGui.Parent then
 end
 
 -- =====================================================================
--- 2. PEMBUATAN TAMPILAN FLUENT UI
+-- PEMBUATAN TAMPILAN FLUENT UI
 -- =====================================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
@@ -100,7 +94,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 350, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ Pall Loader <font color='#00DC96'>v9.1 [Bypass Hub]</font>"
+Title.Text = "⚡ Pall Loader <font color='#00DC96'>v9.2 [Universal]</font>"
 Title.RichText = true
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.TextSize = 14
@@ -290,7 +284,6 @@ local function createSlider(name, min, max, default, callback)
     end)
 end
 
--- Susun Menu
 createCategory("Security & Protection")
 createToggle("Anti-Cheat / Hook Bypass", "BypassEnabled")
 
@@ -317,23 +310,33 @@ MinimizeBtn.MouseButton1Click:Connect(function()
 end)
 
 -- =====================================================================
--- 3. BACKEND EKSEKUSI FITUR
+-- 3. UNIVERSAL ENEMY DETECTOR (MENDETEKSI SEMUA MODEL DENGAN HUMANOID)
 -- =====================================================================
 local function getEnemies()
     local list = {}
-    local folder = Workspace:FindFirstChild("Enemies") or Workspace:FindFirstChild("Monsters")
-    if folder then
-        for _, enemy in ipairs(folder:GetChildren()) do
-            local hum = enemy:FindFirstChildOfClass("Humanoid")
-            local root = enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChild("Torso")
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+            local hum = obj:FindFirstChildOfClass("Humanoid")
+            local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
+            -- Pastikan objek memiliki Humanoid, RootPart, hidup, dan bukan pemain lain
             if hum and root and hum.Health > 0 then
-                table.insert(list, {Humanoid = hum, RootPart = root})
+                local isPlayer = false
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Character == obj then
+                        isPlayer = true
+                        break
+                    end
+                end
+                if not isPlayer then
+                    table.insert(list, {Model = obj, Humanoid = hum, RootPart = root})
+                end
             end
         end
     end
     return list
 end
 
+-- Eksekusi Instant Kill & Kill Aura 150 Studs
 RunService.Heartbeat:Connect(function()
     if getgenv().PallLoader.InstantKill or getgenv().PallLoader.KillAura then
         pcall(function()
@@ -353,6 +356,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- Eksekusi Hitbox Expander (Universal)
 RunService.RenderStepped:Connect(function()
     if getgenv().PallLoader.HitboxExpander then
         pcall(function()
@@ -360,7 +364,8 @@ RunService.RenderStepped:Connect(function()
             for _, data in ipairs(getEnemies()) do
                 if data.RootPart then
                     data.RootPart.Size = Vector3.new(size, size, size)
-                    data.RootPart.Transparency = 0.6
+                    data.RootPart.Transparency = 0.5
+                    data.RootPart.BrickColor = BrickColor.new("Bright green")
                     data.RootPart.CanCollide = false
                 end
             end
@@ -391,4 +396,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Pall Loader v9.1 with Bypass Loaded Successfully!")
+print("Pall Loader v9.2 Universal Mode Loaded Successfully!")
