@@ -43,12 +43,12 @@ getgenv().PallLoader = {
     HitboxExpander = false,  
     HitboxSize = 45,        
     SafeDistance = 14,      
-    MeleeAutoSwing = true, 
+    MeleeAutoSwing = false, 
     SwingInterval = 1,      
     KillAura = false,
     AntiRangedHit = true,   
     NPCFreeze = true,       
-    GodMode = true,         
+    GodMode = false,         
     AntiAFK = true
 }
 
