@@ -161,48 +161,57 @@ task.spawn(function()
         task.wait(0.08)
     end
 end)
--- ==================== AUTO SWING (SNAP SWING) ====================
+-- ==================== AUTO SWING (WALK-TO-TARGET) ====================
 local function swingLoop()
     while cfg.AutoSwing do
-        if char and hum and hum.Health>0 then
+        if char and hum and hum.Health > 0 then
             autoEquip()
-            local t=getT()
+            local t = getT()
             if t then
-                local hE=t:FindFirstChild("HumanoidRootPart")
+                local hE = t:FindFirstChild("HumanoidRootPart")
                 if hE and hrp then
-                    local npcPos=hE.Position
-                    local myPos=hrp.Position
-                    local flatDir=Vector3.new(npcPos.X-myPos.X,0,npcPos.Z-myPos.Z)
-                    local dist=flatDir.Magnitude
-                    local reach=cfg.SwingReach
-                    if dist>0.1 then flatDir=flatDir.Unit else flatDir=Vector3.new(0,0,1)end
-                    if dist>reach then
-                        local snapPos=npcPos-flatDir*reach
-                        snapPos=Vector3.new(snapPos.X,myPos.Y,snapPos.Z)
-                        pcall(function()hrp.CFrame=CFrame.new(snapPos,Vector3.new(npcPos.X,snapPos.Y,npcPos.Z))end)
+                    local npcPos = hE.Position
+                    local myPos = hrp.Position
+                    local flat = Vector3.new(npcPos.X - myPos.X, 0, npcPos.Z - myPos.Z)
+                    local dist = flat.Magnitude
+                    local reach = cfg.SwingReach
+                    if dist > 0.1 then flat = flat.Unit else flat = Vector3.new(0, 0, 1) end
+
+                    -- Hadap ke NPC tiap saat
+                    pcall(function()
+                        hrp.CFrame = CFrame.new(myPos, Vector3.new(npcPos.X, myPos.Y, npcPos.Z))
+                    end)
+
+                    if dist > reach then
+                        -- Terlalu jauh: JALAN ke posisi reach (bukan teleport)
+                        local walkTarget = npcPos - flat * (reach - 0.5)
+                        walkTarget = Vector3.new(walkTarget.X, myPos.Y, walkTarget.Z)
+                        pcall(function() hum:MoveTo(walkTarget) end)
                     else
-                        pcall(function()hrp.CFrame=CFrame.new(myPos,Vector3.new(npcPos.X,myPos.Y,npcPos.Z))end)
+                        -- Udah dalam jangkauan: berhenti & swing
+                        pcall(function() hum:MoveTo(myPos) end)
+                        for _, tool in ipairs(char:GetChildren()) do
+                            if tool:IsA("Tool") then pcall(function() tool:Activate() end) end
+                        end
+                        pcall(function()
+                            local cam = WS.CurrentCamera
+                            local cx = cam.ViewportSize.X / 2
+                            local cy = cam.ViewportSize.Y / 2
+                            VIM:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                            task.wait(0.01)
+                            VIM:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                        end)
                     end
                 end
-                local h=t:FindFirstChildOfClass("Humanoid")
-                if not h or h.Health<=0 then cur=nil end
+                local h = t:FindFirstChildOfClass("Humanoid")
+                if not h or h.Health <= 0 then cur = nil end
             end
-            for _,tool in ipairs(char:GetChildren())do
-                if tool:IsA("Tool")then pcall(function()tool:Activate()end)end
-            end
-            pcall(function()
-                local cam=WS.CurrentCamera
-                local cx=cam.ViewportSize.X/2
-                local cy=cam.ViewportSize.Y/2
-                VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)
-            end)
             task.wait(cfg.SwingDelay)
-        else task.wait(0.5)end
+        else
+            task.wait(0.5)
+        end
     end
 end
-
 -- ==================== AUTO SKILL (Q & E) ====================
 local function pressKey(keyCode)
     pcall(function()
