@@ -1,5 +1,5 @@
 -- ============================================================
--- DUNGEON QUEST AUTO FARM — FINAL v7 (Part 1/8)
+-- DUNGEON QUEST AUTO FARM — v9
 -- ============================================================
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
@@ -9,7 +9,7 @@ local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
 if okCG and CG then local o=CG:FindFirstChild("DQAF")if o then o:Destroy()end end
 local PG=LP:WaitForChild("PlayerGui")local oP=PG:FindFirstChild("DQAF")if oP then oP:Destroy()end
 
-local cfg={WalkFlow=false,ESPLines=false,GroundESP=false,AutoSwing=false,AutoCollect=false,AutoDungeon=false,NoClip=false,Hitbox=false,AutoDodge=false,AutoSkill=false,FreezeNPC=false,HitboxVisual=false,HoverFarm=false,ESPOverlay=false,WalkDelay=0.2,SwingDelay=0.08,CollectRange=250,ESPRange=800,HitboxSize=2.5,DodgeRange=10,DodgeSpeed=12,SwingReach=6,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,TargetPriority=1}
+local cfg={AutoDungeon=false,WalkFlow=false,AutoSwing=false,AutoSkill=false,HoverFarm=false,AutoDodge=false,FreezeNPC=false,NoClip=false,ESPOverlay=false,HitboxVisual=false,Hitbox=false,AutoHealSmall=false,HealAmount=50,HealInterval=8,SwingDelay=0.08,SwingReach=6,WalkDelay=0.2,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,DodgeRange=10,DodgeSpeed=12,ESPRange=800,HitboxSize=2.5,TargetPriority=1}
 
 local CONFIG_FILE="dqaf_config.txt"
 local hasFileIO=(writefile and readfile and isfile) and true or false
@@ -26,15 +26,12 @@ task.spawn(function()local last=snapshot()while true do task.wait(2)local cu=sna
 local char,hrp,hum
 local function rc()char=LP.Character or LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
 rc()LP.CharacterAdded:Connect(function()task.wait(1)rc()end)
-
-local cur=nil local espCache={} local dodgeLock=0
+local cur=nil local dodgeLock=0
 -- ==================== HELPERS ====================
 local function inD()local v=WS:FindFirstChild("dungeonStarted")return v and v:IsA("BoolValue")and v.Value end
 local function wv()local v=WS:FindFirstChild("currentWave")return v and v.Value or 0 end
 local function isE(m)if not m or not m:IsA("Model")then return false end if m==char then return false end local h=m:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then return false end if P:GetPlayerFromCharacter(m)then return false end if not m:FindFirstChild("HumanoidRootPart")then return false end return true end
 local function eList()local l={}for _,v in ipairs(WS:GetDescendants())do if isE(v)then local hE=v:FindFirstChild("HumanoidRootPart")if hE then table.insert(l,v)end end end return l end
-
--- Near: pakai Target Priority (1=Closest, 2=Lowest HP)
 local function near()
     if not hrp then return nil end
     local best=nil local bestVal=math.huge
@@ -53,7 +50,6 @@ local function near()
     end
     return best
 end
-
 local function getT()if cur and cur.Parent and isE(cur)then local hE=cur:FindFirstChild("HumanoidRootPart")if hE and hrp and(hE.Position-hrp.Position).Magnitude<200 then return cur end end cur=near()return cur end
 task.spawn(function()while true do if cur then local h=cur:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 or not cur.Parent then cur=nil end end task.wait(0.1)end end)
 
@@ -96,10 +92,7 @@ local function applyMyHitbox()
 end
 local function restoreMyHitbox()
     for tool,orig in pairs(toolHitboxOrig)do
-        if tool and tool.Parent then
-            local handle=tool:FindFirstChild("Handle")
-            if handle then pcall(function()handle.Size=orig.size end)end
-        end
+        if tool and tool.Parent then local handle=tool:FindFirstChild("Handle")if handle then pcall(function()handle.Size=orig.size end)end end
     end
     toolHitboxOrig={}
 end
@@ -109,12 +102,10 @@ local function hitboxLoop()
 end
 LP.CharacterAdded:Connect(function()task.wait(1)toolHitboxOrig={}end)
 
--- ==================== FREEZE NPC ====================
 local frozenNPCs={}
 local function freezeNPC(m)
     if not m or not m.Parent then return end
-    local h=m:FindFirstChildOfClass("Humanoid")
-    local hrpE=m:FindFirstChild("HumanoidRootPart")
+    local h=m:FindFirstChildOfClass("Humanoid")local hrpE=m:FindFirstChild("HumanoidRootPart")
     if not h then return end
     if frozenNPCs[h]then
         pcall(function()h.WalkSpeed=0 h.JumpPower=0 h.JumpHeight=0 end)
@@ -142,233 +133,66 @@ local function freezeLoop()
     for h,_ in pairs(frozenNPCs)do unfreezeNPC(h)end
     frozenNPCs={}
 end
--- ==================== HOVER FARM ====================
-local hoverOrigPlatformStand=false
-local function hoverLoop()
-    while cfg.HoverFarm do
-        if char and hum and hum.Health>0 then
-            local t=getT()
-            if t then
-                local hE=t:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then
-                    local targetPos=Vector3.new(
-                        hE.Position.X,
-                        hE.Position.Y+cfg.HoverHeight,
-                        hE.Position.Z
-                    )
-                    pcall(function()
-                        hrp.CFrame=CFrame.new(targetPos,Vector3.new(hE.Position.X,hE.Position.Y,hE.Position.Z))
-                    end)
-                    pcall(function()hum.PlatformStand=true end)
-                    local h=t:FindFirstChildOfClass("Humanoid")
-                    if not h or h.Health<=0 then cur=nil end
-                end
-            end
-        end
-        task.wait(0.05)
-    end
-    if hum then pcall(function()hum.PlatformStand=false end)end
-end
-
--- ==================== ESP OVERLAY ====================
 local espOverlayCache={}
-local DrawingSq=Drawing.new("Square")
 local SquareSupport=pcall(function()local s=Drawing.new("Square")s:Remove()end)
-
 local function createESPOverlay(model)
     if not SquareSupport then return nil end
-    local data={}
-    data.box=Drawing.new("Square")
-    data.box.Visible=false
-    data.box.Color=Color3.fromRGB(255,60,60)
-    data.box.Thickness=1
-    data.box.Transparency=1
-    data.box.Filled=false
-
-    data.hpBg=Drawing.new("Square")
-    data.hpBg.Visible=false
-    data.hpBg.Color=Color3.fromRGB(30,30,30)
-    data.hpBg.Filled=true
-    data.hpBg.Transparency=0.6
-
-    data.hpFg=Drawing.new("Square")
-    data.hpFg.Visible=false
-    data.hpFg.Color=Color3.fromRGB(0,255,100)
-    data.hpFg.Filled=true
-    data.hpFg.Transparency=1
-
-    data.nameText=Drawing.new("Text")
-    data.nameText.Visible=false
-    data.nameText.Center=true
-    data.nameText.Outline=true
-    data.nameText.Color=Color3.fromRGB(255,255,255)
-    data.nameText.Size=13
-    data.nameText.Font=2
-
-    espOverlayCache[model]=data
-    return data
+    local d={}
+    d.box=Drawing.new("Square") d.box.Visible=false d.box.Color=Color3.fromRGB(255,60,60) d.box.Thickness=1 d.box.Transparency=1 d.box.Filled=false
+    d.hpBg=Drawing.new("Square") d.hpBg.Visible=false d.hpBg.Color=Color3.fromRGB(30,30,30) d.hpBg.Filled=true d.hpBg.Transparency=0.6
+    d.hpFg=Drawing.new("Square") d.hpFg.Visible=false d.hpFg.Color=Color3.fromRGB(0,255,100) d.hpFg.Filled=true d.hpFg.Transparency=1
+    d.nameText=Drawing.new("Text") d.nameText.Visible=false d.nameText.Center=true d.nameText.Outline=true d.nameText.Color=Color3.fromRGB(255,255,255) d.nameText.Size=13 d.nameText.Font=2
+    espOverlayCache[model]=d
+    return d
 end
-
 local function removeESPOverlay(model)
-    local d=espOverlayCache[model]
-    if not d then return end
+    local d=espOverlayCache[model]if not d then return end
     for _,obj in pairs(d)do pcall(function()obj:Remove()end)end
     espOverlayCache[model]=nil
 end
-
-local function clearAllESPOverlay()
-    for m,_ in pairs(espOverlayCache)do removeESPOverlay(m)end
-    espOverlayCache={}
-end
-
 task.spawn(function()
     local cam=WS.CurrentCamera
     while true do
         if cfg.ESPOverlay and SquareSupport and hrp and cam then
-            local enemies=eList()
-            for _,e in ipairs(enemies)do
-                if not espOverlayCache[e]then createESPOverlay(e)end
-            end
-            for m,_ in pairs(espOverlayCache)do
-                if not m.Parent or not isE(m)then removeESPOverlay(m)end
-            end
+            for _,e in ipairs(eList())do if not espOverlayCache[e]then createESPOverlay(e)end end
+            for m,_ in pairs(espOverlayCache)do if not m.Parent or not isE(m)then removeESPOverlay(m)end end
             for m,d in pairs(espOverlayCache)do
-                local hE=m:FindFirstChild("HumanoidRootPart")
-                local h=m:FindFirstChildOfClass("Humanoid")
+                local hE=m:FindFirstChild("HumanoidRootPart")local h=m:FindFirstChildOfClass("Humanoid")
                 if hE and h and hrp then
                     local dist=(hE.Position-hrp.Position).Magnitude
                     if dist<=cfg.ESPRange then
                         local pos,on=cam:WorldToViewportPoint(hE.Position)
-                        if on then
-                            local headPos,headOn=cam:WorldToViewportPoint(hE.Position+Vector3.new(0,3,0))
-                            local footPos,footOn=cam:WorldToViewportPoint(hE.Position-Vector3.new(0,3,0))
-                            if headOn and footOn then
-                                local boxH=math.abs(footPos.Y-headPos.Y)
-                                local boxW=boxH*0.6
-                                local boxX=pos.X-boxW/2
-                                local boxY=headPos.Y
-
-                                d.box.Visible=true
-                                d.box.Size=Vector2.new(boxW,boxH)
-                                d.box.Position=Vector2.new(boxX,boxY)
-                                d.box.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,60,60)
-
-                                local hpRatio=math.clamp(h.Health/h.MaxHealth,0,1)
-                                local hpBarW=boxW
-                                local hpBarH=3
-                                local hpBarX=boxX
-                                local hpBarY=boxY-8
-
-                                d.hpBg.Visible=true
-                                d.hpBg.Size=Vector2.new(hpBarW,hpBarH)
-                                d.hpBg.Position=Vector2.new(hpBarX,hpBarY)
-
-                                d.hpFg.Visible=true
-                                d.hpFg.Size=Vector2.new(hpBarW*hpRatio,hpBarH)
-                                d.hpFg.Position=Vector2.new(hpBarX,hpBarY)
-                                if hpRatio>0.5 then
-                                    d.hpFg.Color=Color3.fromRGB(0,255,100)
-                                elseif hpRatio>0.25 then
-                                    d.hpFg.Color=Color3.fromRGB(255,200,0)
-                                else
-                                    d.hpFg.Color=Color3.fromRGB(255,60,60)
-                                end
-
-                                d.nameText.Visible=true
-                                d.nameText.Text=string.format("%s [%d]",m.Name,math.floor(dist))
-                                d.nameText.Position=Vector2.new(pos.X,hpBarY-16)
-                                d.nameText.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,255,255)
-                            else
-                                d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false
-                            end
-                        else
-                            d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false
-                        end
-                    else
-                        d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false
-                    end
-                else
-                    d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false
-                end
+                        local headPos,headOn=cam:WorldToViewportPoint(hE.Position+Vector3.new(0,3,0))
+                        local footPos,footOn=cam:WorldToViewportPoint(hE.Position-Vector3.new(0,3,0))
+                        if on and headOn and footOn then
+                            local boxH=math.abs(footPos.Y-headPos.Y)
+                            local boxW=boxH*0.6
+                            local boxX=pos.X-boxW/2
+                            local boxY=headPos.Y
+                            d.box.Visible=true d.box.Size=Vector2.new(boxW,boxH) d.box.Position=Vector2.new(boxX,boxY)
+                            d.box.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,60,60)
+                            local hpRatio=math.clamp(h.Health/h.MaxHealth,0,1)
+                            local hpBarY=boxY-8
+                            d.hpBg.Visible=true d.hpBg.Size=Vector2.new(boxW,3) d.hpBg.Position=Vector2.new(boxX,hpBarY)
+                            d.hpFg.Visible=true d.hpFg.Size=Vector2.new(boxW*hpRatio,3) d.hpFg.Position=Vector2.new(boxX,hpBarY)
+                            if hpRatio>0.5 then d.hpFg.Color=Color3.fromRGB(0,255,100)
+                            elseif hpRatio>0.25 then d.hpFg.Color=Color3.fromRGB(255,200,0)
+                            else d.hpFg.Color=Color3.fromRGB(255,60,60)end
+                            d.nameText.Visible=true d.nameText.Text=string.format("%s [%d]",m.Name,math.floor(dist))
+                            d.nameText.Position=Vector2.new(pos.X,hpBarY-16)
+                            d.nameText.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,255,255)
+                        else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end
+                    else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end
+                else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end
             end
         else
-            for _,d in pairs(espOverlayCache)do
-                d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false
-            end
+            for _,d in pairs(espOverlayCache)do d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end
             task.wait(0.3)
         end
         task.wait(0.03)
     end
 end)
--- ==================== ESP LINES ====================
-local ESPok=pcall(function()local d=Drawing.new("Line")d:Remove()end)
-task.spawn(function()
-    local cam=WS.CurrentCamera
-    while true do
-        if cfg.ESPLines and ESPok and hrp and cam then
-            local en=eList()
-            for _,e in ipairs(en)do if not espCache[e]then local l=Drawing.new("Line")l.Visible=false l.Color=Color3.fromRGB(255,69,58)l.Thickness=1.5 l.Transparency=1 l.From=Vector2.new(0,0)l.To=Vector2.new(0,0)espCache[e]=l end end
-            for m,l in pairs(espCache)do if not m.Parent or not isE(m)then pcall(function()l:Remove()end)espCache[m]=nil end end
-            local ss=cam.ViewportSize local bc=Vector2.new(ss.X/2,ss.Y)
-            for m,l in pairs(espCache)do
-                local hE=m:FindFirstChild("HumanoidRootPart")
-                if hE and hrp and(hE.Position-hrp.Position).Magnitude<=cfg.ESPRange then
-                    local sp,on=cam:WorldToViewportPoint(hE.Position)
-                    if on then
-                        l.From=bc l.To=Vector2.new(sp.X,sp.Y)
-                        if m==cur then l.Color=Color3.fromRGB(48,209,88)l.Thickness=3
-                        else l.Color=Color3.fromRGB(255,69,58)l.Thickness=1.5 end
-                        l.Visible=true
-                    else l.Visible=false end
-                else l.Visible=false end
-            end
-        else for _,l in pairs(espCache)do l.Visible=false end task.wait(0.3)end
-        task.wait(0.02)
-    end
-end)
 
--- ==================== GROUND PATH ESP ====================
-local groundESP={enabled=false,folder=nil,segments={},maxSegments=12,segmentLength=4,width=1.5,colorMain=Color3.fromRGB(0,200,255),colorTarget=Color3.fromRGB(255,220,0),yOffset=0.1}
-local function ensureGroundFolder()if groundESP.folder and groundESP.folder.Parent then return end groundESP.folder=Instance.new("Folder")groundESP.folder.Name="DQAF_GroundPath"groundESP.folder.Parent=workspace end
-local function createSegment(i)
-    if groundESP.segments[i]then return groundESP.segments[i]end
-    local p=Instance.new("Part")p.Name="PathSeg"..i p.Anchored=true p.CanCollide=false p.CanQuery=false p.CanTouch=false p.CastShadow=false p.Material=Enum.Material.Neon p.Size=Vector3.new(groundESP.width,0.1,groundESP.segmentLength)p.Transparency=0.15 p.Color=groundESP.colorMain p.Parent=groundESP.folder
-    groundESP.segments[i]=p return p
-end
-local function clearGroundPath()for _,p in ipairs(groundESP.segments)do if p.Parent then p:Destroy()end end groundESP.segments={}end
-local function updateGroundPath()
-    ensureGroundFolder()
-    local target=cur
-    if not(target and target.Parent and isE(target))then target=near()end
-    if not target then clearGroundPath()return end
-    local tHrp=target:FindFirstChild("HumanoidRootPart")if not tHrp or not hrp then clearGroundPath()return end
-    local from=Vector3.new(hrp.Position.X,hrp.Position.Y,hrp.Position.Z)
-    local to=Vector3.new(tHrp.Position.X,hrp.Position.Y,tHrp.Position.Z)
-    local dir=to-from local dist=dir.Magnitude
-    if dist<2 then clearGroundPath()return end
-    dir=dir.Unit
-    local count=math.min(groundESP.maxSegments,math.floor(dist/groundESP.segmentLength))
-    local isActiveTarget=(target==cur)
-    for i=count+1,#groundESP.segments do if groundESP.segments[i]then groundESP.segments[i].Transparency=1 end end
-    for i=1,count do
-        local seg=createSegment(i)
-        seg.Transparency=0.15
-        seg.Color=isActiveTarget and groundESP.colorTarget or groundESP.colorMain
-        local midPos=from+dir*((i-0.5)*groundESP.segmentLength)
-        midPos=Vector3.new(midPos.X,hrp.Position.Y+groundESP.yOffset,midPos.Z)
-        seg.CFrame=CFrame.new(midPos,midPos+dir)
-        seg.Size=Vector3.new(groundESP.width,0.1,groundESP.segmentLength)
-    end
-end
-task.spawn(function()
-    while true do
-        groundESP.enabled=cfg.GroundESP
-        if groundESP.enabled and hrp and hum and hum.Health>0 then pcall(updateGroundPath)else clearGroundPath()task.wait(0.3)end
-        task.wait(0.08)
-    end
-end)
-
--- ==================== HITBOX VISUAL ====================
 local visualBoxes={}
 local function getOrCreateVisual(part,color)
     if not visualBoxes[part]then
@@ -378,16 +202,13 @@ local function getOrCreateVisual(part,color)
     end
     return visualBoxes[part]
 end
-local function clearVisuals()
-    for part,box in pairs(visualBoxes)do pcall(function()box:Destroy()end)end
-    visualBoxes={}
-end
+local function clearVisuals()for part,box in pairs(visualBoxes)do pcall(function()box:Destroy()end)end visualBoxes={}end
 local function updateHitboxVisuals()
     if not hrp or not char then return end
     local myBox=getOrCreateVisual(hrp,Color3.fromRGB(0,150,255))
     myBox.Color3=Color3.fromRGB(0,150,255)myBox.Transparency=0.6
-    local enemies=eList()local activeParts={}
-    for _,m in ipairs(enemies)do
+    local activeParts={}
+    for _,m in ipairs(eList())do
         local hE=m:FindFirstChild("HumanoidRootPart")
         if hE then
             activeParts[hE]=true
@@ -399,18 +220,89 @@ local function updateHitboxVisuals()
         end
     end
     for part,box in pairs(visualBoxes)do
-        if part~=hrp and not activeParts[part]then
-            pcall(function()box:Destroy()end)visualBoxes[part]=nil
-        end
+        if part~=hrp and not activeParts[part]then pcall(function()box:Destroy()end)visualBoxes[part]=nil end
     end
 end
 task.spawn(function()
     while true do
-        if cfg.HitboxVisual then pcall(updateHitboxVisuals)task.wait(0.1)
-        else clearVisuals()task.wait(0.5)end
+        if cfg.HitboxVisual then pcall(updateHitboxVisuals)task.wait(0.1)else clearVisuals()task.wait(0.5)end
     end
 end)
--- ==================== AUTO SWING (WALK-TO-TARGET) ====================
+
+-- ==================== HOVER FARM (SMOOTH FLY) ====================
+local hoverState={active=false,velocity=nil,bobPhase=0}
+local HOVER_SPEED=2.5
+local HOVER_LERP=0.15
+local BOB_HEIGHT=0.4
+local BOB_SPEED=2.0
+
+local function ensureHoverPhysics()
+    if not hrp then return end
+    if hoverState.velocity and hoverState.velocity.Parent then return end
+    local bv=Instance.new("BodyVelocity")
+    bv.Name="DQAF_HoverVelocity"
+    bv.MaxForce=Vector3.new(40000,40000,40000)
+    bv.Velocity=Vector3.new(0,0,0)
+    bv.P=5000
+    bv.Parent=hrp
+    hoverState.velocity=bv
+end
+local function cleanupHoverPhysics()
+    if hoverState.velocity then
+        pcall(function()hoverState.velocity:Destroy()end)
+        hoverState.velocity=nil
+    end
+end
+local function hoverLoop()
+    while cfg.HoverFarm do
+        if char and hum and hum.Health>0 and hrp then
+            local t=getT()
+            if t then
+                local hE=t:FindFirstChild("HumanoidRootPart")
+                if hE then
+                    ensureHoverPhysics()
+                    local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight,hE.Position.Z)
+                    hoverState.bobPhase=hoverState.bobPhase+(BOB_SPEED*0.05)
+                    local bob=math.sin(hoverState.bobPhase)*BOB_HEIGHT
+                    targetPos=targetPos+Vector3.new(0,bob,0)
+                    local current=hrp.Position
+                    local diff=targetPos-current
+                    local lateralDist=Vector3.new(diff.X,0,diff.Z).Magnitude
+                    if hoverState.velocity then
+                        local moveDir=Vector3.new(diff.X,0,diff.Z)
+                        if moveDir.Magnitude>0.3 then moveDir=moveDir.Unit else moveDir=Vector3.new(0,0,0)end
+                        local yVel=diff.Y*HOVER_LERP
+                        yVel=math.clamp(yVel,-HOVER_SPEED,HOVER_SPEED)
+                        local lateralSpeed=math.min(lateralDist,HOVER_SPEED)
+                        hoverState.velocity.Velocity=Vector3.new(moveDir.X*lateralSpeed,yVel,moveDir.Z*lateralSpeed)
+                    end
+                    local lookAt=Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z)
+                    pcall(function()hrp.CFrame=CFrame.new(hrp.Position,lookAt)end)
+                    pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)
+                    local h=t:FindFirstChildOfClass("Humanoid")
+                    if not h or h.Health<=0 then cur=nil end
+                end
+            else
+                if hoverState.velocity then hoverState.velocity.Velocity=Vector3.new(0,0,0)end
+            end
+        end
+        task.wait(0.05)
+    end
+    cleanupHoverPhysics()
+    hoverState.active=false
+    if hum then pcall(function()hum.PlatformStand=false end)end
+end
+
+-- ==================== AUTO HEAL SMALL TICK ====================
+local function autoHealSmallLoop()
+    while cfg.AutoHealSmall do
+        if hum and hum.Health>0 and hum.Health<hum.MaxHealth then
+            local newHP=math.min(hum.Health+cfg.HealAmount,hum.MaxHealth)
+            pcall(function()hum.Health=newHP end)
+        end
+        task.wait(cfg.HealInterval)
+    end
+end
 local function swingLoop()
     while cfg.AutoSwing do
         if char and hum and hum.Health>0 then
@@ -457,7 +349,6 @@ local function swingLoop()
     end
 end
 
--- ==================== AUTO SKILL (Q & E) ====================
 local function pressKey(keyCode)
     pcall(function()
         VIM:SendKeyEvent(true,keyCode,false,game)
@@ -476,8 +367,6 @@ local function autoSkillLoop()
         else task.wait(0.5)end
     end
 end
-
--- ==================== WALK FLOW ====================
 local function walkLoop()
     while cfg.WalkFlow do
         if hrp and hum and hum.Health>0 then
@@ -499,26 +388,6 @@ local function walkLoop()
     end
 end
 
--- ==================== AUTO COLLECT ====================
-local function colLoop()
-    while cfg.AutoCollect do
-        if hrp and hum and hum.Health>0 and not cfg.HoverFarm then
-            for _,v in ipairs(WS:GetDescendants())do
-                if not cfg.AutoCollect then break end
-                if v:IsA("BasePart")and v.Parent then
-                    local n=string.lower(v.Name)
-                    if string.find(n,"coin")or string.find(n,"gold")or string.find(n,"drop")or string.find(n,"gem")then
-                        local d=(v.Position-hrp.Position).Magnitude
-                        if d<cfg.CollectRange and d>3 then pcall(function()hum:MoveTo(v.Position)end)task.wait(0.2)end
-                    end
-                end
-            end
-        end
-        task.wait(0.3)
-    end
-end
-
--- ==================== AUTO DUNGEON ====================
 local function dunLoop()
     task.wait(1)
     while cfg.AutoDungeon do
@@ -539,7 +408,6 @@ local function dunLoop()
     end
 end
 
--- ==================== AUTO DODGE (SMOOTH) ====================
 local origWalkSpeed=nil
 local dodgeActive=false
 local lastDodgeTarget=nil
@@ -591,15 +459,14 @@ local function dodgeLoop()
     end
     if origWalkSpeed and hum then pcall(function()hum.WalkSpeed=origWalkSpeed end)origWalkSpeed=nil end
 end
--- ==================== UI ====================
 local parentGui=PG if okCG and CG then parentGui=CG end
 local Mac={Bg=Color3.fromRGB(28,28,30),BgGlass=Color3.fromRGB(38,38,42),Card=Color3.fromRGB(48,48,52),Stroke=Color3.fromRGB(70,70,75),Text=Color3.fromRGB(245,245,247),TextDim=Color3.fromRGB(150,150,155),Accent=Color3.fromRGB(10,132,255),Green=Color3.fromRGB(48,209,88),Red=Color3.fromRGB(255,69,58),Yellow=Color3.fromRGB(255,214,10),ToggleOff=Color3.fromRGB(99,99,102),Font=Enum.Font.Gotham,FontBold=Enum.Font.GothamBold,R=UDim.new(0,12),Rs=UDim.new(0,8),Rp=UDim.new(1,0)}
 
 local gui=Instance.new("ScreenGui")gui.Name="DQAF"gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.DisplayOrder=999 gui.Parent=parentGui
 
-local shadow=Instance.new("ImageLabel")shadow.Image="rbxassetid://5028857472"shadow.ScaleType=Enum.ScaleType.Slice shadow.SliceCenter=Rect.new(24,24,276,276)shadow.SliceScale=0.5 shadow.BackgroundTransparency=1 shadow.ImageColor3=Color3.new(0,0,0)shadow.ImageTransparency=0.4 shadow.ZIndex=0 shadow.AnchorPoint=Vector2.new(0.5,0.5)shadow.Position=UDim2.new(0.5,0,0.5,0)shadow.Size=UDim2.new(0,420,0,420)shadow.Visible=false shadow.Parent=gui
+local shadow=Instance.new("ImageLabel")shadow.Image="rbxassetid://5028857472"shadow.ScaleType=Enum.ScaleType.Slice shadow.SliceCenter=Rect.new(24,24,276,276)shadow.SliceScale=0.5 shadow.BackgroundTransparency=1 shadow.ImageColor3=Color3.new(0,0,0)shadow.ImageTransparency=0.4 shadow.ZIndex=0 shadow.AnchorPoint=Vector2.new(0.5,0.5)shadow.Position=UDim2.new(0.5,0,0.5,0)shadow.Size=UDim2.new(0,400,0,440)shadow.Visible=false shadow.Parent=gui
 
-local win=Instance.new("Frame")win.AnchorPoint=Vector2.new(0.5,0.5)win.Position=UDim2.new(0.5,0,0.5,0)win.Size=UDim2.new(0,400,0,400)win.BackgroundColor3=Mac.Bg win.BackgroundTransparency=0.05 win.BorderSizePixel=0 win.Visible=false win.ZIndex=1 win.Parent=gui
+local win=Instance.new("Frame")win.AnchorPoint=Vector2.new(0.5,0.5)win.Position=UDim2.new(0.5,0,0.5,0)win.Size=UDim2.new(0,380,0,420)win.BackgroundColor3=Mac.Bg win.BackgroundTransparency=0.05 win.BorderSizePixel=0 win.Visible=false win.ZIndex=1 win.Parent=gui
 local cw=Instance.new("UICorner")cw.CornerRadius=Mac.R cw.Parent=win
 local sw=Instance.new("UIStroke")sw.Color=Mac.Stroke sw.Thickness=1 sw.Transparency=0.4 sw.Parent=win
 
@@ -644,8 +511,8 @@ local function makePage(name)
     local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,5)lay.Parent=page
     pages[name]=page return page
 end
-makeTab("Auto",1)makeTab("Combat",2)makeTab("Misc",3)
-local pageAuto=makePage("Auto")local pageCombat=makePage("Combat")local pageMisc=makePage("Misc")
+makeTab("Farm",1)makeTab("Visual",2)makeTab("Settings",3)
+local pageFarm=makePage("Farm")local pageVisual=makePage("Visual")local pageSettings=makePage("Settings")
 task.spawn(function()task.wait(0.1)for _,btn in pairs(tabs)do btn.Size=UDim2.new(0,btn.TextBounds.X+20,1,0)end end)
 local function mkT(parent,name,key,fn)
     local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,40)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
@@ -686,7 +553,6 @@ local function mkS(parent,name,key,mn,mx,stp,dv)
     plus.Activated:Connect(function()v=math.min(mx,v+stp)v=math.floor(v*1000+0.5)/1000 update()end)
 end
 
--- Target Priority Selector (dropdown ala macOS)
 local function mkPriority(parent)
     local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,40)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
     local cr=Instance.new("UICorner")cr.CornerRadius=Mac.Rs cr.Parent=row
@@ -699,44 +565,46 @@ local function mkPriority(parent)
     end)
 end
 
-mkT(pageAuto,"Auto Dungeon","AutoDungeon",dunLoop)
-mkT(pageAuto,"Walk Flow","WalkFlow",walkLoop)
-mkT(pageAuto,"Auto Swing","AutoSwing",swingLoop)
-mkT(pageAuto,"Auto Skill (Q & E)","AutoSkill",autoSkillLoop)
-mkT(pageAuto,"Auto Collect","AutoCollect",colLoop)
-mkT(pageAuto,"Hover Farm","HoverFarm",hoverLoop)
-mkT(pageCombat,"ESP Lines (screen)","ESPLines",nil)
-mkT(pageCombat,"ESP Overlay (box/hp/name)","ESPOverlay",nil)
-mkT(pageCombat,"Ground Path ESP","GroundESP",nil)
-mkT(pageCombat,"Hitbox Expand (Tool)","Hitbox",hitboxLoop)
-mkT(pageCombat,"Auto Dodge (retreat)","AutoDodge",dodgeLoop)
-mkT(pageCombat,"No Clip","NoClip",noclipLoop)
-mkT(pageCombat,"Freeze NPC","FreezeNPC",freezeLoop)
-mkT(pageCombat,"Hitbox Visual","HitboxVisual",nil)
+mkT(pageFarm,"Auto Dungeon","AutoDungeon",dunLoop)
+mkT(pageFarm,"Walk Flow","WalkFlow",walkLoop)
+mkT(pageFarm,"Auto Swing","AutoSwing",swingLoop)
+mkT(pageFarm,"Auto Skill (Q & E)","AutoSkill",autoSkillLoop)
+mkT(pageFarm,"Hover Farm (smooth)","HoverFarm",hoverLoop)
+mkT(pageFarm,"Auto Dodge","AutoDodge",dodgeLoop)
+mkT(pageFarm,"Freeze NPC","FreezeNPC",freezeLoop)
+mkT(pageFarm,"Auto Heal (+50/8s)","AutoHealSmall",autoHealSmallLoop)
+mkT(pageFarm,"No Clip","NoClip",noclipLoop)
+mkT(pageVisual,"ESP Overlay","ESPOverlay",nil)
+mkT(pageVisual,"Hitbox Visual","HitboxVisual",nil)
+mkT(pageVisual,"Hitbox Expand (Tool)","Hitbox",hitboxLoop)
 
 local function head(parent,text)local s=Instance.new("TextLabel")s.Text=text s.Font=Mac.FontBold s.TextSize=9 s.TextColor3=Mac.TextDim s.TextXAlignment=Enum.TextXAlignment.Left s.BackgroundTransparency=1 s.Size=UDim2.new(1,0,0,16)s.Position=UDim2.fromOffset(4,0)s.Parent=parent end
-head(pageMisc,"TARGETING")
-mkPriority(pageMisc)
-head(pageMisc,"TIMING")
-mkS(pageMisc,"swing_delay","SwingDelay",0.02,1,0.02,0.08)
-mkS(pageMisc,"swing_reach","SwingReach",2,15,0.5,6)
-mkS(pageMisc,"walk_delay","WalkDelay",0.1,1,0.05,0.2)
-head(pageMisc,"SKILL")
-mkS(pageMisc,"skill_q_delay","SkillQDelay",0.2,10,0.1,1.5)
-mkS(pageMisc,"skill_e_delay","SkillEDelay",0.2,10,0.1,1.5)
-head(pageMisc,"HOVER")
-mkS(pageMisc,"hover_height","HoverHeight",5,30,1,13)
-head(pageMisc,"COMBAT")
-mkS(pageMisc,"esp_range","ESPRange",50,2000,50,800)
-mkS(pageMisc,"hitbox_size","HitboxSize",1,10,0.5,2.5)
-head(pageMisc,"DODGE")
-mkS(pageMisc,"dodge_range","DodgeRange",5,40,1,10)
-mkS(pageMisc,"dodge_speed","DodgeSpeed",4,20,1,12)
+head(pageSettings,"TARGETING")
+mkPriority(pageSettings)
+head(pageSettings,"TIMING")
+mkS(pageSettings,"swing_delay","SwingDelay",0.02,1,0.02,0.08)
+mkS(pageSettings,"swing_reach","SwingReach",2,15,0.5,6)
+mkS(pageSettings,"walk_delay","WalkDelay",0.1,1,0.05,0.2)
+head(pageSettings,"SKILL")
+mkS(pageSettings,"skill_q_delay","SkillQDelay",0.2,10,0.1,1.5)
+mkS(pageSettings,"skill_e_delay","SkillEDelay",0.2,10,0.1,1.5)
+head(pageSettings,"HOVER")
+mkS(pageSettings,"hover_height","HoverHeight",5,30,1,13)
+head(pageSettings,"HEAL")
+mkS(pageSettings,"heal_amount","HealAmount",10,200,10,50)
+mkS(pageSettings,"heal_interval","HealInterval",2,30,1,8)
+head(pageSettings,"COMBAT")
+mkS(pageSettings,"esp_range","ESPRange",50,2000,50,800)
+mkS(pageSettings,"hitbox_size","HitboxSize",1,10,0.5,2.5)
+head(pageSettings,"DODGE")
+mkS(pageSettings,"dodge_range","DodgeRange",5,40,1,10)
+mkS(pageSettings,"dodge_speed","DodgeSpeed",4,20,1,12)
+
 local resetBtn=Instance.new("TextButton")
 resetBtn.Text="Reset Config"
 resetBtn.Font=Mac.FontBold resetBtn.TextSize=11 resetBtn.TextColor3=Color3.new(1,1,1)
 resetBtn.BackgroundColor3=Mac.Red resetBtn.BorderSizePixel=0
-resetBtn.Size=UDim2.new(1,-2,0,32)resetBtn.AutoButtonColor=false resetBtn.Parent=pageMisc
+resetBtn.Size=UDim2.new(1,-2,0,32)resetBtn.AutoButtonColor=false resetBtn.Parent=pageSettings
 local crb=Instance.new("UICorner")crb.CornerRadius=Mac.Rs crb.Parent=resetBtn
 resetBtn.Activated:Connect(function()resetConfig()resetBtn.Text="Reset! Restart"task.delay(2,function()resetBtn.Text="Reset Config"end)end)
 local cfgInfo=Instance.new("TextLabel")
@@ -745,36 +613,31 @@ cfgInfo.Font=Mac.Font cfgInfo.TextSize=10
 cfgInfo.TextColor3=hasFileIO and Mac.Green or Mac.Red
 cfgInfo.TextXAlignment=Enum.TextXAlignment.Left
 cfgInfo.BackgroundTransparency=1
-cfgInfo.Size=UDim2.new(1,-2,0,16)cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageMisc
+cfgInfo.Size=UDim2.new(1,-2,0,16)cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageSettings
 
-showTab("Auto")
+showTab("Farm")
 
 local isOpen=false local isAnim=false
 local function openWindow()
     if isAnim or isOpen then return end
     isAnim=true isOpen=true shadow.Visible=true win.Visible=true
-    win.Size=UDim2.new(0,320,0,320)win.BackgroundTransparency=1 shadow.Size=UDim2.new(0,340,0,340)shadow.ImageTransparency=1
-    local t1=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,400,0,400),BackgroundTransparency=0.05})
-    T:Create(shadow,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,420,0,420),ImageTransparency=0.4}):Play()
+    win.Size=UDim2.new(0,300,0,340)win.BackgroundTransparency=1 shadow.Size=UDim2.new(0,320,0,360)shadow.ImageTransparency=1
+    local t1=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,380,0,420),BackgroundTransparency=0.05})
+    T:Create(shadow,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,400,0,440),ImageTransparency=0.4}):Play()
     t1:Play()t1.Completed:Connect(function()isAnim=false end)
 end
 local function closeWindow()
     if isAnim or not isOpen then return end
     isAnim=true isOpen=false
-    local t1=T:Create(win,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,320,0,320),BackgroundTransparency=1})
-    T:Create(shadow,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,340,0,340),ImageTransparency=1}):Play()
-    t1:Play()t1.Completed:Connect(function()win.Visible=false shadow.Visible=false win.Size=UDim2.new(0,400,0,400)win.BackgroundTransparency=0.05 shadow.Size=UDim2.new(0,420,0,420)shadow.ImageTransparency=0.4 isAnim=false end)
+    local t1=T:Create(win,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,300,0,340),BackgroundTransparency=1})
+    T:Create(shadow,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,320,0,360),ImageTransparency=1}):Play()
+    t1:Play()t1.Completed:Connect(function()win.Visible=false shadow.Visible=false win.Size=UDim2.new(0,380,0,420)win.BackgroundTransparency=0.05 shadow.Size=UDim2.new(0,400,0,440)shadow.ImageTransparency=0.4 isAnim=false end)
 end
 redBtn.Activated:Connect(closeWindow)
 ylwBtn.Activated:Connect(closeWindow)
 grnBtn.Activated:Connect(function()
-    if win.Size.X.Offset>=400 then
-        T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,480,0,480)}):Play()
-        T:Create(shadow,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,500,0,500)}):Play()
-    else
-        T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,400,0,400)}):Play()
-        T:Create(shadow,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,420,0,420)}):Play()
-    end
+    if win.Size.X.Offset>=380 then T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,480,0,500)}):Play()
+    else T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,380,0,420)}):Play()end
 end)
 for _,btn in ipairs({redBtn,ylwBtn,grnBtn})do
     btn.MouseEnter:Connect(function()T:Create(btn,TweenInfo.new(0.15),{BackgroundColor3=btn.BackgroundColor3:Lerp(Color3.new(1,1,1),0.3)}):Play()end)
@@ -806,4 +669,4 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
-print("[DQAF] FINAL v7 loaded. ESP:",ESPok,"| Square:",SquareSupport,"| Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v9 loaded. Config:",hasFileIO and "auto-save" or "no-save")
