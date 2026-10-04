@@ -298,40 +298,101 @@ local function dunLoop()
     end
 end
 
--- ==================== AUTO DODGE ====================
-local origWalkSpeed=nil
+-- ==================== AUTO DODGE (SMOOTH RETREAT) ====================
+local origWalkSpeed = nil
+local dodgeActive = false
+local lastDodgeTarget = nil
+local dodgeStartTime = 0
+
 local function dodgeLoop()
     while cfg.AutoDodge do
-        if hrp and hum and hum.Health>0 then
-            local enemies=eList()
-            local nHrp,nDist=nil,math.huge
-            for _,e in ipairs(enemies)do
-                local hE=e:FindFirstChild("HumanoidRootPart")
+        if hrp and hum and hum.Health > 0 then
+            -- Cari musuh terdekat
+            local enemies = eList()
+            local nHrp, nDist = nil, math.huge
+            for _, e in ipairs(enemies) do
+                local hE = e:FindFirstChild("HumanoidRootPart")
                 if hE then
-                    local d=(hE.Position-hrp.Position).Magnitude
-                    if d<nDist then nDist=d nHrp=hE end
+                    local d = (hE.Position - hrp.Position).Magnitude
+                    if d < nDist then nDist = d nHrp = hE end
                 end
             end
-            if nHrp and nDist<cfg.DodgeRange then
-                local backDir=hrp.Position-nHrp.Position
-                backDir=Vector3.new(backDir.X,0,backDir.Z)
-                if backDir.Magnitude<0.1 then backDir=Vector3.new(0,0,1)else backDir=backDir.Unit end
-                if not origWalkSpeed then origWalkSpeed=hum.WalkSpeed end
-                hum.WalkSpeed=cfg.DodgeSpeed
-                local target=Vector3.new(
-                    hrp.Position.X+backDir.X*6,
+
+            -- Hysteresis: masuk radius DodgeRange, keluar radius DodgeRange + 5
+            local enterRange = cfg.DodgeRange
+            local exitRange = cfg.DodgeRange + 5
+            local shouldDodge = nHrp and (nDist < (dodgeActive and exitRange or enterRange))
+
+            if shouldDodge then
+                -- Mulai dodge (sekali aja)
+                if not dodgeActive then
+                    dodgeActive = true
+                    dodgeStartTime = tick()
+                    if not origWalkSpeed then
+                        origWalkSpeed = hum.WalkSpeed
+                    end
+                    hum.WalkSpeed = cfg.DodgeSpeed
+                    lastDodgeTarget = nil
+                end
+
+                -- Hitung target mundur
+                local backDir = hrp.Position - nHrp.Position
+                backDir = Vector3.new(backDir.X, 0, backDir.Z)
+                if backDir.Magnitude < 0.1 then
+                    backDir = Vector3.new(0, 0, 1)
+                else
+                    backDir = backDir.Unit
+                end
+
+                -- Target jauh ke belakang (biar gak perlu re-trigger)
+                local target = Vector3.new(
+                    hrp.Position.X + backDir.X * 25,
                     hrp.Position.Y,
-                    hrp.Position.Z+backDir.Z*6
+                    hrp.Position.Z + backDir.Z * 25
                 )
-                pcall(function()hum:MoveTo(target)end)
-                dodgeLock=tick()
+
+                -- Update MoveTo cuma kalau target bergerak jauh (>2 stud) atau baru mulai
+                local needUpdate = false
+                if not lastDodgeTarget then
+                    needUpdate = true
+                else
+                    local diff = (target - lastDodgeTarget).Magnitude
+                    if diff > 2 then needUpdate = true end
+                end
+
+                if needUpdate then
+                    lastDodgeTarget = target
+                    pcall(function() hum:MoveTo(target) end)
+                end
+
+                -- Update dodgeLock biar Walk Flow tau
+                dodgeLock = tick()
             else
-                if origWalkSpeed then hum.WalkSpeed=origWalkSpeed origWalkSpeed=nil end
+                -- Udah aman: restore
+                if dodgeActive then
+                    dodgeActive = false
+                    lastDodgeTarget = nil
+                    if origWalkSpeed then
+                        hum.WalkSpeed = origWalkSpeed
+                        origWalkSpeed = nil
+                    end
+                end
+            end
+        else
+            -- Karakter mati: reset
+            dodgeActive = false
+            lastDodgeTarget = nil
+            if origWalkSpeed and hum then
+                pcall(function() hum.WalkSpeed = origWalkSpeed end)
+                origWalkSpeed = nil
             end
         end
-        task.wait(0.1)
+        task.wait(0.15)
     end
-    if origWalkSpeed and hum then pcall(function()hum.WalkSpeed=origWalkSpeed end)origWalkSpeed=nil end
+    if origWalkSpeed and hum then
+        pcall(function() hum.WalkSpeed = origWalkSpeed end)
+        origWalkSpeed = nil
+    end
 end
 -- ==================== UI ====================
 local parentGui=PG if okCG and CG then parentGui=CG end
