@@ -1,5 +1,5 @@
 -- =====================================================================
--- PALL LOADER v5.0 (MaxHub UI & All Features Set to False)
+-- PALL LOADER v5.0 (Fixed UI Pages & All Features Set to False)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -82,7 +82,7 @@ Beam.FaceCamera = true
 Beam.Parent = VisualizerBeam
 VisualizerBeam.Parent = Workspace
 
--- Hapus UI lama
+-- Hapus UI lama agar tidak menumpuk
 pcall(function()
     for _, v in ipairs(PlayerGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
     for _, v in ipairs(CoreGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
@@ -358,13 +358,14 @@ createToggle(farmPage, "Kill Aura", "KillAura")
 createCategoryHeader(settingsPage, "UTILITIES")
 createToggle(settingsPage, "Anti-AFK Protection", "AntiAFK")
 
--- Tombol Navigasi Sidebar
+-- Tabel Penyimpan Tombol Sidebar agar gampang di-highlight
+local TabButtons = {}
+
 local function createTabButton(name, order)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, -16, 0, 32)
     btn.Position = UDim2.new(0, 8, 0, 55 + (order * 36))
     btn.BackgroundColor3 = (order == 0) and Color3.fromRGB(30, 30, 42) or Color3.fromRGB(22, 22, 30)
-    btn.Text = "  " + name
     btn.Text = "  " .. name
     btn.TextColor3 = (order == 0) and Color3.fromRGB(0, 170, 255) or Color3.fromRGB(160, 160, 180)
     btn.TextSize = 12
@@ -378,16 +379,16 @@ local function createTabButton(name, order)
 
     btn.MouseButton1Click:Connect(function()
         for _, p in pairs(Pages) do p.Visible = false end
-        for _, b in pairs(Sidebar:GetChildren()) do
-            if b:IsA("TextButton") then
-                b.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-                b.TextColor3 = Color3.fromRGB(160, 160, 180)
-            end
+        for _, b in pairs(TabButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+            b.TextColor3 = Color3.fromRGB(160, 160, 180)
         end
         Pages[name].Visible = true
         btn.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
         btn.TextColor3 = Color3.fromRGB(0, 170, 255)
     end)
+
+    table.insert(TabButtons, btn)
 end
 
 createTabButton("MAIN", 0)
@@ -395,6 +396,7 @@ createTabButton("PLAYER", 1)
 createTabButton("FARM", 2)
 createTabButton("SETTINGS", 3)
 
+-- Pastikan halaman MAIN langsung muncul saat dijalankan
 Pages["MAIN"].Visible = true
 
 -- Core Loops (Hanya berjalan jika toggle diaktifkan pengguna)
@@ -520,4 +522,4 @@ task.spawn(function()
     end
 end)
 
-print("[Pall Loader v5.0] Berhasil dimuat (Semua fitur default: OFF)")
+print("[Pall Loader v5.0] Berhasil dimuat! Menu dan halaman sudah normal (Semua fitur OFF).")
