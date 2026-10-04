@@ -1,5 +1,5 @@
 -- =====================================================================
--- BANANA HUB v7 - FLUENT UI STYLE (ULTIMATE DUNGEON QUEST)
+-- BANANA HUB v7 - FIXED UI LOADER
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -7,6 +7,7 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -27,24 +28,36 @@ getgenv().BananaHub = {
 }
 
 -- Hapus GUI lama jika ada
-if LocalPlayer.PlayerGui:FindFirstChild("BananaFluentHub") then
-    LocalPlayer.PlayerGui.BananaFluentHub:Destroy()
-end
+pcall(function()
+    if CoreGui:FindFirstChild("BananaFluentHub") then
+        CoreGui.BananaFluentHub:Destroy()
+    end
+    if LocalPlayer.PlayerGui:FindFirstChild("BananaFluentHub") then
+        LocalPlayer.PlayerGui.BananaFluentHub:Destroy()
+    end
+end)
 
 -- =====================================================================
--- 1. PEMBUATAN UI UTAMA (FLUENT STYLE)
+-- 1. PEMBUATAN UI UTAMA (DI COREGUI / PLAYERGUI)
 -- =====================================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BananaFluentHub"
-ScreenGui.Parent = LocalPlayer.PlayerGui
 ScreenGui.ResetOnSpawn = false
 
--- Main Window (Fluent Dark Theme)
+-- Amankan pemasangan GUI ke CoreGui atau PlayerGui
+pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- Main Window
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 550, 0, 380)
 MainFrame.Position = UDim2.new(0.5, -275, 0.5, -190)
-MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24) -- Dark Fluent Background
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -54,7 +67,6 @@ local UICornerMain = Instance.new("UICorner")
 UICornerMain.CornerRadius = UDim.new(0, 8)
 UICornerMain.Parent = MainFrame
 
--- Efek Border Tipis ala Fluent
 local UIStroke = Instance.new("UIStroke")
 UIStroke.Color = Color3.fromRGB(45, 45, 58)
 UIStroke.Thickness = 1
@@ -75,7 +87,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(0, 300, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🍌  Banana Hub  <font color='#00FFAA'>v7 [Fluent UI]</font>"
+TitleLabel.Text = "🍌  Banana Hub  <font color='#00FFAA'>v7 [Fixed]</font>"
 TitleLabel.RichText = true
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
 TitleLabel.TextSize = 15
@@ -94,7 +106,7 @@ SubTitleLabel.Font = Enum.Font.Gotham
 SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Right
 SubTitleLabel.Parent = TopBar
 
--- Content Container (Tempat Menu Fitur)
+-- Content Container
 local ContentContainer = Instance.new("ScrollingFrame")
 ContentContainer.Size = UDim2.new(1, -30, 1, -65)
 ContentContainer.Position = UDim2.new(0, 15, 0, 52)
@@ -109,7 +121,7 @@ UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Padding = UDim.new(0, 10)
 UIListLayout.Parent = ContentContainer
 
--- Fungsi Pembuat Seksi / Header Kategori ala Fluent
+-- Fungsi Header Kategori
 local function createSectionHeader(titleText)
     local Header = Instance.new("TextLabel")
     Header.Size = UDim2.new(1, 0, 0, 25)
@@ -122,7 +134,7 @@ local function createSectionHeader(titleText)
     Header.Parent = ContentContainer
 end
 
--- Fungsi Pembuat Tombol Toggle ala Fluent Card
+-- Fungsi Tombol Toggle
 local function createToggle(name, featureKey)
     local ToggleButton = Instance.new("TextButton")
     ToggleButton.Size = UDim2.new(1, 0, 0, 42)
@@ -151,7 +163,6 @@ local function createToggle(name, featureKey)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = ToggleButton
 
-    -- Indikator Switch Bulat ala Windows 11
     local SwitchBg = Instance.new("Frame")
     SwitchBg.Size = UDim2.new(0, 40, 0, 20)
     SwitchBg.Position = UDim2.new(1, -50, 0.5, -10)
@@ -174,7 +185,6 @@ local function createToggle(name, featureKey)
     UICornerDot.CornerRadius = UDim.new(1, 0)
     UICornerDot.Parent = SwitchDot
 
-    -- Event Klik Toggle
     ToggleButton.MouseButton1Click:Connect(function()
         getgenv().BananaHub[featureKey] = not getgenv().BananaHub[featureKey]
         local state = getgenv().BananaHub[featureKey]
@@ -190,7 +200,7 @@ local function createToggle(name, featureKey)
     end)
 end
 
--- Menyusun Menu Berdasarkan Kategori (Gaya Fluent Tabs)
+-- Susun Menu
 createSectionHeader("Combat & Kill Systems")
 createToggle("Safe True-Damage Instant Kill", "InstantKill")
 createToggle("Kill Aura (35 Studs)", "KillAura")
@@ -216,9 +226,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 -- =====================================================================
--- 2. BACKEND LOGIKA FITUR (TETap SAMA & AMAN)
+-- 2. BACKEND LOGIKA FITUR
 -- =====================================================================
-
 local function getEnemies()
     local enemiesList = {}
     local enemiesFolder = Workspace:FindFirstChild("Enemies") or Workspace:FindFirstChild("Monsters")
@@ -240,7 +249,7 @@ RunService.Heartbeat:Connect(function()
             for _, enemyData in ipairs(getEnemies()) do
                 if enemyData.Humanoid and enemyData.Humanoid.Health > 0 then
                     if getgenv().BananaHub.InstantKill then
-                        enemyData.Humanoid.Health = 0 -- True Damage Mutlak
+                        enemyData.Humanoid.Health = 0
                     elseif getgenv().BananaHub.KillAura then
                         if enemyData.RootPart and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                             local dist = (LocalPlayer.Character.HumanoidRootPart.Position - enemyData.RootPart.Position).Magnitude
@@ -344,4 +353,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Banana Hub v7 (Fluent UI Style) Loaded Successfully!")
+print("Banana Hub v7 Fixed UI Loaded Successfully!")
