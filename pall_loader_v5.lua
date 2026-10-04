@@ -176,7 +176,8 @@ task.spawn(function()
         if groundESP.enabled and hrp and hum and hum.Health>0 then pcall(updateGroundPath)else clearGroundPath()task.wait(0.3)end
         task.wait(0.08)
     end
-end)-- ==================== AUTO SWING (DUAL METHOD) ====================
+end)
+-- ==================== AUTO SWING (DUAL METHOD) ====================
 local function swingLoop()
     while cfg.AutoSwing do
         if char and hum and hum.Health>0 then
