@@ -1,9 +1,10 @@
 -- ============================================================
--- DUNGEON QUEST AUTO FARM — FINAL v2 (Part 1/6)
+-- DUNGEON QUEST AUTO FARM — FINAL v3 (Part 1/6)
 -- ============================================================
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
 local UIS=game:GetService("UserInputService")local T=game:GetService("TweenService")
+local VIM=game:GetService("VirtualInputManager")
 local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
 if okCG and CG then local o=CG:FindFirstChild("DQAF")if o then o:Destroy()end end
 local PG=LP:WaitForChild("PlayerGui")local oP=PG:FindFirstChild("DQAF")if oP then oP:Destroy()end
@@ -44,6 +45,7 @@ local function autoEquip()
     for _,t in ipairs(bp:GetChildren())do if t:IsA("Tool")then pcall(function()h:EquipTool(t)end)return end end
 end
 
+-- ==================== NO CLIP ====================
 local function noclipLoop()
     while cfg.NoClip do
         if char then for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end end end
@@ -52,36 +54,62 @@ local function noclipLoop()
     if char then for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")and p.Name~="HumanoidRootPart"then pcall(function()p.CanCollide=true end)end end end
 end
 
+-- ==================== HITBOX ====================
 local myHitboxOrig=nil
+local toolHitboxOrig={}
 local function applyMyHitbox()
     if not char then return end
-    local myHrp=char:FindFirstChild("HumanoidRootPart")if not myHrp then return end
+    local myHrp=char:FindFirstChild("HumanoidRootPart")
+    if not myHrp then return end
     if myHitboxOrig then
-        if myHitboxOrig.applied==cfg.HitboxSize then return end
-        pcall(function()myHrp.Size=myHitboxOrig.size*cfg.HitboxSize end)
-        myHitboxOrig.applied=cfg.HitboxSize return
+        if myHitboxOrig.applied~=cfg.HitboxSize then
+            pcall(function()myHrp.Size=myHitboxOrig.size*cfg.HitboxSize end)
+            myHitboxOrig.applied=cfg.HitboxSize
+        end
+    else
+        myHitboxOrig={size=myHrp.Size,applied=cfg.HitboxSize}
+        pcall(function()myHrp.Size=myHrp.Size*cfg.HitboxSize myHrp.CanQuery=true myHrp.CanTouch=true end)
     end
-    myHitboxOrig={size=myHrp.Size,applied=cfg.HitboxSize}
-    pcall(function()myHrp.Size=myHrp.Size*cfg.HitboxSize myHrp.CanQuery=true myHrp.CanTouch=true end)
+    for _,tool in ipairs(char:GetChildren())do
+        if tool:IsA("Tool")then
+            local handle=tool:FindFirstChild("Handle")
+            if handle then
+                local orig=toolHitboxOrig[tool]
+                if orig then
+                    if orig.applied~=cfg.HitboxSize then
+                        pcall(function()handle.Size=orig.size*cfg.HitboxSize end)
+                        orig.applied=cfg.HitboxSize
+                    end
+                else
+                    toolHitboxOrig[tool]={size=handle.Size,applied=cfg.HitboxSize}
+                    pcall(function()handle.Size=handle.Size*cfg.HitboxSize handle.CanQuery=true handle.CanTouch=true end)
+                end
+            end
+        end
+    end
 end
 local function restoreMyHitbox()
-    if not myHitboxOrig then return end
-    local myHrp=char and char:FindFirstChild("HumanoidRootPart")
-    if myHrp then pcall(function()myHrp.Size=myHitboxOrig.size end)end
-    myHitboxOrig=nil
+    if myHitboxOrig then
+        local myHrp=char and char:FindFirstChild("HumanoidRootPart")
+        if myHrp then pcall(function()myHrp.Size=myHitboxOrig.size end)end
+        myHitboxOrig=nil
+    end
+    for tool,orig in pairs(toolHitboxOrig)do
+        if tool and tool.Parent then
+            local handle=tool:FindFirstChild("Handle")
+            if handle then pcall(function()handle.Size=orig.size end)end
+        end
+    end
+    toolHitboxOrig={}
 end
 local function hitboxLoop()
     while cfg.Hitbox do
-        if myHitboxOrig then
-            local myHrp=char and char:FindFirstChild("HumanoidRootPart")
-            if not myHrp or myHrp.Size~=myHitboxOrig.size*myHitboxOrig.applied then myHitboxOrig=nil end
-        end
         applyMyHitbox()
         task.wait(0.3)
     end
     restoreMyHitbox()
 end
-LP.CharacterAdded:Connect(function()task.wait(1)myHitboxOrig=nil end)
+LP.CharacterAdded:Connect(function()task.wait(1)myHitboxOrig=nil toolHitboxOrig={}end)
 -- ==================== ESP LINES ====================
 local ESPok=pcall(function()local d=Drawing.new("Line")d:Remove()end)
 task.spawn(function()
@@ -148,8 +176,7 @@ task.spawn(function()
         if groundESP.enabled and hrp and hum and hum.Health>0 then pcall(updateGroundPath)else clearGroundPath()task.wait(0.3)end
         task.wait(0.08)
     end
-end)
--- ==================== AUTO SWING ====================
+end)-- ==================== AUTO SWING (DUAL METHOD) ====================
 local function swingLoop()
     while cfg.AutoSwing do
         if char and hum and hum.Health>0 then
@@ -157,31 +184,55 @@ local function swingLoop()
             local t=getT()
             if t then
                 local hE=t:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))end)end
-                local h=t:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then cur=nil end
+                if hE and hrp then
+                    pcall(function()
+                        hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))
+                    end)
+                end
+                local h=t:FindFirstChildOfClass("Humanoid")
+                if not h or h.Health<=0 then cur=nil end
             end
-            for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end
+            for _,tool in ipairs(char:GetChildren())do
+                if tool:IsA("Tool")then
+                    pcall(function()tool:Activate()end)
+                end
+            end
+            pcall(function()
+                local cam=WS.CurrentCamera
+                local cx=cam.ViewportSize.X/2
+                local cy=cam.ViewportSize.Y/2
+                VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)
+                task.wait(0.02)
+                VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)
+            end)
             task.wait(cfg.SwingDelay)
         else task.wait(0.5)end
     end
 end
 
--- ==================== WALK FLOW ====================
+-- ==================== WALK FLOW (SMOOTH) ====================
 local function walkLoop()
     while cfg.WalkFlow do
         if hrp and hum and hum.Health>0 then
-            if tick()-dodgeLock<0.35 then task.wait(0.05)
+            if cfg.AutoDodge and tick()-dodgeLock<0.4 then
+                task.wait(0.1)
             else
                 local t=getT()
                 if t then
                     local hE=t:FindFirstChild("HumanoidRootPart")
                     if hE then
                         local d=(hE.Position-hrp.Position).Magnitude
-                        if d>10 then pcall(function()hum:MoveTo(Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))end)task.wait(cfg.WalkDelay)
-                        else pcall(function()hum:MoveTo(hrp.Position)end)task.wait(0.1)end
-                    else cur=nil task.wait(0.2)end
-                else task.wait(0.5)end
+                        if d>10 then
+                            pcall(function()
+                                hum:MoveTo(Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))
+                            end)
+                        else
+                            pcall(function()hum:MoveTo(hrp.Position)end)
+                        end
+                    else cur=nil end
+                end
             end
+            task.wait(0.1)
         else task.wait(0.5)end
     end
 end
@@ -226,7 +277,7 @@ local function dunLoop()
     end
 end
 
--- ==================== AUTO DODGE (RETREAT) ====================
+-- ==================== AUTO DODGE (RETREAT GROUND) ====================
 local origWalkSpeed=nil
 local function dodgeLoop()
     while cfg.AutoDodge do
@@ -245,8 +296,12 @@ local function dodgeLoop()
                 backDir=Vector3.new(backDir.X,0,backDir.Z)
                 if backDir.Magnitude<0.1 then backDir=Vector3.new(0,0,1)else backDir=backDir.Unit end
                 if not origWalkSpeed then origWalkSpeed=hum.WalkSpeed end
-                hum.WalkSpeed=math.min(origWalkSpeed,cfg.DodgeSpeed)
-                local target=hrp.Position+backDir*20
+                hum.WalkSpeed=cfg.DodgeSpeed
+                local target=Vector3.new(
+                    hrp.Position.X+backDir.X*6,
+                    hrp.Position.Y,
+                    hrp.Position.Z+backDir.Z*6
+                )
                 pcall(function()hum:MoveTo(target)end)
                 dodgeLock=tick()
             else
@@ -447,4 +502,4 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
-print("[DQAF] FINAL v2 loaded. ESP:",ESPok,"| Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] FINAL v3 loaded. ESP:",ESPok,"| Config:",hasFileIO and "auto-save" or "no-save")
