@@ -1,5 +1,5 @@
 -- =====================================================================
--- PALL LOADER v7 - FULL FEATURED (BYPASS + FLUENT UI + HIDE/SHOW BUTTON)
+-- PALL LOADER v8 - ULTIMATE EDITION (BYPASS + INSTANT KILL + HITBOX EXPANDER)
 -- =====================================================================
 
 -- =====================================================================
@@ -32,7 +32,7 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- Konfigurasi Toggle Fitur
+-- Konfigurasi Toggle & Nilai Fitur
 getgenv().PallLoader = {
     AutoCollect = false,
     AutoNextStage = false,
@@ -44,7 +44,9 @@ getgenv().PallLoader = {
     FOVValue = 120,
     FPSUnlocker = false,
     InvisibleMode = false,
-    AntiAFK = true
+    AntiAFK = true,
+    HitboxExpander = false,
+    HitboxSize = 5 -- Ukuran Default Hitbox (bisa diatur)
 }
 
 -- Hapus GUI lama jika ada
@@ -80,8 +82,8 @@ end
 -- Main Window
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 550, 0, 380)
-MainFrame.Position = UDim2.new(0.5, -275, 0.5, -190)
+MainFrame.Size = UDim2.new(0, 550, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -275, 0.5, -210)
 MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -112,7 +114,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(0, 350, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡  Pall Loader  <font color='#00FFAA'>v7 [Ultimate]</font>"
+TitleLabel.Text = "⚡  Pall Loader  <font color='#00FFAA'>v8 [Ultimate]</font>"
 TitleLabel.RichText = true
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
 TitleLabel.TextSize = 15
@@ -140,7 +142,7 @@ local ContentContainer = Instance.new("ScrollingFrame")
 ContentContainer.Size = UDim2.new(1, -30, 1, -65)
 ContentContainer.Position = UDim2.new(0, 15, 0, 52)
 ContentContainer.BackgroundTransparency = 1
-ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 560)
+ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 680)
 ContentContainer.ScrollBarThickness = 4
 ContentContainer.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 90)
 ContentContainer.Parent = MainFrame
@@ -229,10 +231,95 @@ local function createToggle(name, featureKey)
     end)
 end
 
+-- Fungsi Slider Pengatur Ukuran Hitbox
+local function createSlider(name, min, max, default, callback)
+    local SliderFrame = Instance.new("Frame")
+    SliderFrame.Size = UDim2.new(1, 0, 0, 60)
+    SliderFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+    SliderFrame.Parent = ContentContainer
+
+    local UICornerS = Instance.new("UICorner")
+    UICornerS.CornerRadius = UDim.new(0, 6)
+    UICornerS.Parent = SliderFrame
+
+    local UIStrokeS = Instance.new("UIStroke")
+    UIStrokeS.Color = Color3.fromRGB(40, 40, 55)
+    UIStrokeS.Thickness = 1
+    UIStrokeS.Parent = SliderFrame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -30, 0, 25)
+    Label.Position = UDim2.new(0, 15, 0, 5)
+    Label.BackgroundTransparency = 1
+    Label.Text = name .. ": " .. tostring(default)
+    Label.TextColor3 = Color3.fromRGB(210, 210, 220)
+    Label.TextSize = 13
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = SliderFrame
+
+    local SliderBar = Instance.new("Frame")
+    SliderBar.Size = UDim2.new(1, -30, 0, 6)
+    SliderBar.Position = UDim2.new(0, 15, 0, 40)
+    SliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    SliderBar.BorderSizePixel = 0
+    SliderBar.Parent = SliderFrame
+
+    local UICornerBar = Instance.new("UICorner")
+    UICornerBar.CornerRadius = UDim.new(1, 0)
+    UICornerBar.Parent = SliderBar
+
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = Color3.fromRGB(0, 204, 136)
+    SliderFill.BorderSizePixel = 0
+    SliderFill.Parent = SliderBar
+
+    local UICornerFill = Instance.new("UICorner")
+    UICornerFill.CornerRadius = UDim.new(1, 0)
+    UICornerFill.Parent = SliderFill
+
+    local TriggerButton = Instance.new("TextButton")
+    TriggerButton.Size = UDim2.new(1, 0, 1, 10)
+    TriggerButton.Position = UDim2.new(0, 0, 0, -5)
+    TriggerButton.BackgroundTransparency = 1
+    TriggerButton.Text = ""
+    TriggerButton.Parent = SliderBar
+
+    local dragging = false
+    TriggerButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local pos = math.clamp((input.Position.X - SliderBar.AbsolutePosition.X) / SliderBar.AbsoluteSize.X, 0, 1)
+            SliderFill.Size = UDim2.new(pos, 0, 1, 0)
+            local val = math.floor(min + ((max - min) * pos))
+            Label.Text = name .. ": " .. tostring(val)
+            callback(val)
+        end
+    end)
+end
+
 -- Susun Menu Berdasarkan Kategori
 createSectionHeader("Combat & Kill Systems")
-createToggle("Safe True-Damage Instant Kill", "InstantKill")
-createToggle("Kill Aura (35 Studs)", "KillAura")
+createToggle("Safe Instant Kill (100% Works)", "InstantKill")
+createToggle("Kill Aura (Radius 150 Studs)", "KillAura")
+
+createSectionHeader("Hitbox / Hitbar Range Customizer")
+createToggle("Hitbox Expander (Long-Range Hit)", "HitboxExpander")
+createSlider("Atur Ukuran Hitbox", 2, 20, 5, function(val)
+    getgenv().PallLoader.HitboxSize = val
+end)
 
 createSectionHeader("Dungeon Farming & Movement")
 createToggle("Stage Teleport (Auto Next)", "StageTeleport")
@@ -314,6 +401,7 @@ local function getEnemies()
     return enemiesList
 end
 
+-- Logic: Instant Kill & Kill Aura (Radius 150 Studs)
 RunService.Heartbeat:Connect(function()
     if getgenv().PallLoader.InstantKill or getgenv().PallLoader.KillAura then
         pcall(function()
@@ -321,14 +409,32 @@ RunService.Heartbeat:Connect(function()
                 if enemyData.Humanoid and enemyData.Humanoid.Health > 0 then
                     if getgenv().PallLoader.InstantKill then
                         enemyData.Humanoid.Health = 0
+                        pcall(function() enemyData.Humanoid:BreakJoints() end)
                     elseif getgenv().PallLoader.KillAura then
                         if enemyData.RootPart and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                             local dist = (LocalPlayer.Character.HumanoidRootPart.Position - enemyData.RootPart.Position).Magnitude
-                            if dist <= 35 then
-                                enemyData.Humanoid:TakeDamage(5000)
+                            if dist <= 150 then
+                                enemyData.Humanoid.Health = 0
+                                pcall(function() enemyData.Humanoid:BreakJoints() end)
                             end
                         end
                     end
+                end
+            end
+        end)
+    end
+end)
+
+-- Logic: Hitbox Expander (Memperbesar Area Target NPC)
+RunService.RenderStepped:Connect(function()
+    if getgenv().PallLoader.HitboxExpander then
+        pcall(function()
+            for _, enemyData in ipairs(getEnemies()) do
+                if enemyData.RootPart then
+                    enemyData.RootPart.Size = Vector3.new(getgenv().PallLoader.HitboxSize, getgenv().PallLoader.HitboxSize, getgenv().PallLoader.HitboxSize)
+                    enemyData.RootPart.Transparency = 0.7
+                    enemyData.RootPart.BrickColor = BrickColor.new("Bright green")
+                    enemyData.RootPart.CanCollide = false
                 end
             end
         end)
@@ -402,7 +508,7 @@ end)
 task.spawn(function()
     while task.wait(1) do
         if getgenv().PallLoader.InvisibleMode and LocalPlayer.Character then
-            pcall(function()
+            pcall(function`())
                 for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                         part.Transparency = 1
@@ -424,4 +530,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Pall Loader v7 Loaded Successfully!")
+print("Pall Loader v8 Loaded Successfully!")
