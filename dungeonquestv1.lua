@@ -1,35 +1,15 @@
 -- =====================================================================
--- PALL LOADER v8 - ULTIMATE EDITION (BYPASS + INSTANT KILL + HITBOX EXPANDER)
+-- PALL LOADER v8.1 - FIXED UI & PLAYERGUI PATCH
 -- =====================================================================
-
--- =====================================================================
--- 0. EXPLOIT BYPASS & ANTI-DETECTION MODULE
--- =====================================================================
-pcall(function()
-    if syn and syn.protect_gui then
-        syn.protect_gui(game:GetService("CoreGui"))
-    elseif gethui then
-        local protectedGui = gethui()
-    end
-
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIndex = mt.__index
-    
-    mt.__index = newcclosure(function(self, idx)
-        return oldIndex(self, idx)
-    end)
-    setreadonly(mt, true)
-end)
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = Workspace.CurrentCamera
 
 -- Konfigurasi Toggle & Nilai Fitur
@@ -46,38 +26,26 @@ getgenv().PallLoader = {
     InvisibleMode = false,
     AntiAFK = true,
     HitboxExpander = false,
-    HitboxSize = 5 -- Ukuran Default Hitbox (bisa diatur)
+    HitboxSize = 5
 }
 
--- Hapus GUI lama jika ada
+-- Hapus GUI lama jika ada agar tidak menumpuk
 pcall(function()
-    if CoreGui:FindFirstChild("PallLoaderFluentHub") then
-        CoreGui.PallLoaderFluentHub:Destroy()
+    if PlayerGui:FindFirstChild("PallLoaderFluentHub") then
+        PlayerGui.PallLoaderFluentHub:Destroy()
     end
-    if CoreGui:FindFirstChild("PallLoaderFloatingButton") then
-        CoreGui.PallLoaderFloatingButton:Destroy()
-    end
-    if LocalPlayer.PlayerGui:FindFirstChild("PallLoaderFluentHub") then
-        LocalPlayer.PlayerGui.PallLoaderFluentHub:Destroy()
-    end
-    if LocalPlayer.PlayerGui:FindFirstChild("PallLoaderFloatingButton") then
-        LocalPlayer.PlayerGui.PallLoaderFloatingButton:Destroy()
+    if PlayerGui:FindFirstChild("PallLoaderFloatingButton") then
+        PlayerGui.PallLoaderFloatingButton:Destroy()
     end
 end)
 
 -- =====================================================================
--- 1. PEMBUATAN UI UTAMA (FLUENT STYLE)
+-- 1. PEMBUATAN UI UTAMA (PLAYERGUI TARGET - 100% MUNCUL)
 -- =====================================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "PallLoaderFluentHub"
 ScreenGui.ResetOnSpawn = false
-
-pcall(function()
-    ScreenGui.Parent = CoreGui
-end)
-if not ScreenGui.Parent then
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+ScreenGui.Parent = PlayerGui
 
 -- Main Window
 local MainFrame = Instance.new("Frame")
@@ -114,7 +82,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(0, 350, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "⚡  Pall Loader  <font color='#00FFAA'>v8 [Ultimate]</font>"
+TitleLabel.Text = "⚡  Pall Loader  <font color='#00FFAA'>v8.1 [Fixed UI]</font>"
 TitleLabel.RichText = true
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
 TitleLabel.TextSize = 15
@@ -142,7 +110,7 @@ local ContentContainer = Instance.new("ScrollingFrame")
 ContentContainer.Size = UDim2.new(1, -30, 1, -65)
 ContentContainer.Position = UDim2.new(0, 15, 0, 52)
 ContentContainer.BackgroundTransparency = 1
-ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 680)
+ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 720)
 ContentContainer.ScrollBarThickness = 4
 ContentContainer.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 90)
 ContentContainer.Parent = MainFrame
@@ -340,13 +308,7 @@ createToggle("Anti-AFK System", "AntiAFK")
 local FloatingGui = Instance.new("ScreenGui")
 FloatingGui.Name = "PallLoaderFloatingButton"
 FloatingGui.ResetOnSpawn = false
-
-pcall(function()
-    FloatingGui.Parent = CoreGui
-end)
-if not FloatingGui.Parent then
-    FloatingGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+FloatingGui.Parent = PlayerGui
 
 local OpenButton = Instance.new("TextButton")
 OpenButton.Size = UDim2.new(0, 45, 0, 45)
@@ -384,7 +346,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end)
 
 -- =====================================================================
--- 3. BACKEND LOGIKA FITUR & BYPASS EXECUTION
+-- 3. BACKEND LOGIKA FITUR & EKsekusi
 -- =====================================================================
 local function getEnemies()
     local enemiesList = {}
@@ -425,7 +387,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Logic: Hitbox Expander (Memperbesar Area Target NPC)
+-- Logic: Hitbox Expander
 RunService.RenderStepped:Connect(function()
     if getgenv().PallLoader.HitboxExpander then
         pcall(function()
@@ -508,7 +470,7 @@ end)
 task.spawn(function()
     while task.wait(1) do
         if getgenv().PallLoader.InvisibleMode and LocalPlayer.Character then
-            pcall(function`())
+            pcall(function()
                 for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                         part.Transparency = 1
@@ -530,4 +492,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Pall Loader v8 Loaded Successfully!")
+print("Pall Loader v8.1 Loaded Successfully!")
