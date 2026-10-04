@@ -1,5 +1,5 @@
 -- =====================================================================
--- PALL LOADER v16.0 - ULTIMATE COMBINED EDITION (Fly Follow NPC + Hitbox/Range)
+-- PALL LOADER v18.2 - DUNGEON QUEST OPTIMIZED EDITION
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -7,30 +7,31 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Konfigurasi Toggle Gabungan v14 & v15
+-- Konfigurasi Toggle v18.2
 getgenv().PallLoader = {
     BypassEnabled = true,
     AntiKick = true,
     NoClip = false,         
-    FlyFollow = false,      -- Terbang melayang HANYA mengikuti NPC/Bot (Speed 16)
-    HitboxExpander = true,  -- Hitbox fungsional untuk NPC (v12/v13)
-    HitboxSize = 10,        -- Ukuran hitbox NPC
-    LongRangeHit = true,    -- Serang NPC dari jarak jauh (v14)
-    AttackRange = 35,       -- Jangkauan pukul senjata
-    MeleeAutoSwing = false,
+    FlyFollow = false,      
+    HitboxExpander = false,  
+    HitboxSize = 10,        
+    LongRangeHit = true,    
+    AttackRange = 35,       
+    MeleeAutoSwing = false, -- Dioptimalkan untuk Dungeon Quest
     KillAura = false,
     AntiAFK = true
 }
 
-print("[Pall Loader v16.0] Memuat Sistem Gabungan Fly Follow NPC & Working Hitbox / Long Range...")
+local OriginalHitboxSizes = {}
 
--- Hapus UI lama
+print("[Pall Loader v18.2] Memuat Sistem Khusus Dungeon Quest...")
+
+-- Hapus UI lama agar tidak menumpuk
 pcall(function()
     for _, v in ipairs(PlayerGui:GetChildren()) do
         if v.Name:find("PallLoaderFluent") then v:Destroy() end
@@ -39,16 +40,16 @@ end)
 
 -- Buat ScreenGui Utama
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "PallLoaderFluentV16"
+ScreenGui.Name = "PallLoaderFluentV18_DQ"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = PlayerGui
 
--- MainFrame
+-- MainFrame (Compact UI)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 520, 0, 530)
-MainFrame.Position = UDim2.new(0.5, -260, 0.5, -265)
+MainFrame.Size = UDim2.new(0, 420, 0, 440)
+MainFrame.Position = UDim2.new(0.5, -210, 0.5, -220)
 MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -66,7 +67,7 @@ UIStrokeMain.Parent = MainFrame
 
 -- Topbar
 local Topbar = Instance.new("Frame")
-Topbar.Size = UDim2.new(1, 0, 0, 42)
+Topbar.Size = UDim2.new(1, 0, 0, 36)
 Topbar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 Topbar.BorderSizePixel = 0
 Topbar.Parent = MainFrame
@@ -76,88 +77,88 @@ UICornerTop.CornerRadius = UDim.new(0, 8)
 UICornerTop.Parent = Topbar
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0, 320, 1, 0)
-Title.Position = UDim2.new(0, 15, 0, 0)
+Title.Size = UDim2.new(0, 240, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ Pall Loader <font color='#00DC96'>v16.0 [Ultimate Edition]</font>"
+Title.Text = "⚡ Pall Loader <font color='#00DC96'>v18.2 [DQ Fixed]</font>"
 Title.RichText = true
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
-Title.TextSize = 14
+Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Topbar
 
 -- Tombol Reset Posisi UI
 local CenterBtn = Instance.new("TextButton")
-CenterBtn.Size = UDim2.new(0, 75, 0, 26)
-CenterBtn.Position = UDim2.new(1, -125, 0.5, -13)
+CenterBtn.Size = UDim2.new(0, 65, 0, 22)
+CenterBtn.Position = UDim2.new(1, -105, 0.5, -11)
 CenterBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 110)
 CenterBtn.Text = "Reset Pos"
 CenterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CenterBtn.TextSize = 11
+CenterBtn.TextSize = 10
 CenterBtn.Font = Enum.Font.GothamBold
 CenterBtn.Parent = Topbar
 
 local UICornerCenter = Instance.new("UICorner")
-UICornerCenter.CornerRadius = UDim.new(0, 5)
+UICornerCenter.CornerRadius = UDim.new(0, 4)
 UICornerCenter.Parent = CenterBtn
 
 CenterBtn.MouseButton1Click:Connect(function()
-    MainFrame.Position = UDim2.new(0.5, -260, 0.5, -265)
+    MainFrame.Position = UDim2.new(0.5, -210, 0.5, -220)
     MainFrame.Visible = true
 end)
 
 local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Size = UDim2.new(0, 32, 0, 32)
-MinimizeBtn.Position = UDim2.new(1, -42, 0.5, -16)
+MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
+MinimizeBtn.Position = UDim2.new(1, -34, 0.5, -13)
 MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
 MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-MinimizeBtn.TextSize = 16
+MinimizeBtn.TextSize = 14
 MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.Parent = Topbar
 
 local UICornerMin = Instance.new("UICorner")
-UICornerMin.CornerRadius = UDim.new(0, 6)
+UICornerMin.CornerRadius = UDim.new(0, 5)
 UICornerMin.Parent = MinimizeBtn
 
 -- Kontainer Menu
 local Container = Instance.new("ScrollingFrame")
-Container.Size = UDim2.new(1, -24, 1, -60)
-Container.Position = UDim2.new(0, 12, 0, 50)
+Container.Size = UDim2.new(1, -20, 1, -48)
+Container.Position = UDim2.new(0, 10, 0, 42)
 Container.BackgroundTransparency = 1
-Container.CanvasSize = UDim2.new(0, 0, 0, 1100)
+Container.CanvasSize = UDim2.new(0, 0, 0, 1050)
 Container.ScrollBarThickness = 3
 Container.ScrollBarImageColor3 = Color3.fromRGB(0, 220, 150)
 Container.Parent = MainFrame
 
 local UIList = Instance.new("UIListLayout")
 UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0, 8)
+UIList.Padding = UDim.new(0, 6)
 UIList.Parent = Container
 
 local function createCategory(text)
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 24)
+    lbl.Size = UDim2.new(1, 0, 0, 22)
     lbl.BackgroundTransparency = 1
     lbl.Text = "  " .. string.upper(text)
     lbl.TextColor3 = Color3.fromRGB(0, 220, 150)
-    lbl.TextSize = 11
+    lbl.TextSize = 10
     lbl.Font = Enum.Font.GothamBold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = Container
 end
 
-local function createToggle(name, key)
+local function createToggle(name, key, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.Size = UDim2.new(1, 0, 0, 34)
     btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.Parent = Container
 
     local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 6)
+    uic.CornerRadius = UDim.new(0, 5)
     uic.Parent = btn
 
     local uis = Instance.new("UIStroke")
@@ -166,19 +167,19 @@ local function createToggle(name, key)
     uis.Parent = btn
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.Size = UDim2.new(1, -55, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = name
     lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 13
+    lbl.TextSize = 12
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = btn
 
     local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 38, 0, 20)
-    indicator.Position = UDim2.new(1, -48, 0.5, -10)
+    indicator.Size = UDim2.new(0, 34, 0, 18)
+    indicator.Position = UDim2.new(1, -42, 0.5, -9)
     indicator.BackgroundColor3 = getgenv().PallLoader[key] and Color3.fromRGB(0, 204, 136) or Color3.fromRGB(50, 50, 65)
     indicator.BorderSizePixel = 0
     indicator.Parent = btn
@@ -188,8 +189,8 @@ local function createToggle(name, key)
     uici.Parent = indicator
 
     local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 14, 0, 14)
-    dot.Position = getgenv().PallLoader[key] and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+    dot.Size = UDim2.new(0, 12, 0, 12)
+    dot.Position = getgenv().PallLoader[key] and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
     dot.BackgroundColor3 = getgenv().PallLoader[key] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 180)
     dot.BorderSizePixel = 0
     dot.Parent = indicator
@@ -205,22 +206,26 @@ local function createToggle(name, key)
         
         if active then
             TweenService:Create(indicator, tweenInfo, {BackgroundColor3 = Color3.fromRGB(0, 204, 136)}):Play()
-            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(1, -17, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(1, -15, 0.5, -6), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
         else
             TweenService:Create(indicator, tweenInfo, {BackgroundColor3 = Color3.fromRGB(50, 50, 65)}):Play()
-            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(0, 3, 0.5, -7), BackgroundColor3 = Color3.fromRGB(160, 160, 180)}):Play()
+            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(0, 3, 0.5, -6), BackgroundColor3 = Color3.fromRGB(160, 160, 180)}):Play()
+        end
+
+        if callback then
+            pcall(function() callback(active) end)
         end
     end)
 end
 
 local function createSlider(name, min, max, default, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 55)
+    frame.Size = UDim2.new(1, 0, 0, 48)
     frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     frame.Parent = Container
 
     local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 6)
+    uic.CornerRadius = UDim.new(0, 5)
     uic.Parent = frame
 
     local uis = Instance.new("UIStroke")
@@ -229,19 +234,19 @@ local function createSlider(name, min, max, default, callback)
     uis.Parent = frame
 
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 22)
-    lbl.Position = UDim2.new(0, 14, 0, 6)
+    lbl.Size = UDim2.new(1, -20, 0, 20)
+    lbl.Position = UDim2.new(0, 10, 0, 4)
     lbl.BackgroundTransparency = 1
     lbl.Text = name .. ": " .. tostring(default) .. " Studs"
     lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 13
+    lbl.TextSize = 12
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = frame
 
     local sliderBar = Instance.new("Frame")
-    sliderBar.Size = UDim2.new(1, -28, 0, 6)
-    sliderBar.Position = UDim2.new(0, 14, 0, 36)
+    sliderBar.Size = UDim2.new(1, -20, 0, 5)
+    sliderBar.Position = UDim2.new(0, 10, 0, 32)
     sliderBar.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
     sliderBar.BorderSizePixel = 0
     sliderBar.Parent = frame
@@ -261,8 +266,8 @@ local function createSlider(name, min, max, default, callback)
     uicf.Parent = fill
 
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 10)
-    btn.Position = UDim2.new(0, 0, 0, -5)
+    btn.Size = UDim2.new(1, 0, 1, 8)
+    btn.Position = UDim2.new(0, 0, 0, -4)
     btn.BackgroundTransparency = 1
     btn.Text = ""
     btn.Parent = sliderBar
@@ -289,152 +294,186 @@ local function createSlider(name, min, max, default, callback)
     end)
 end
 
-createCategory("Security & Server Protection")
+createCategory("Security & Server")
 createToggle("Anti-Cheat Hook Bypass", "BypassEnabled")
 createToggle("Anti-Kick Protection", "AntiKick")
 
-createCategory("Movement & Fly Follow (NPC Only)")
-createToggle("No Clip (Tembus Tembok/Dinding)", "NoClip")
-createToggle("Fly Follow (Terbang Ikuti NPC Saja - Speed 16)", "FlyFollow")
-
-createCategory("Hitbox Expander Customizer")
-createToggle("Hitbox Expander (Working / Fungsional)", "HitboxExpander")
-createSlider("Ukuran Hitbox NPC", 2, 25, 10, function(val)
-    getgenv().PallLoader.HitboxSize = val
-end)
-
-createCategory("Combat & Attack Range Systems")
-createToggle("Long Range Hit (Serang NPC dari Jauh)", "LongRangeHit")
-createSlider("Jangkauan Serang (Attack Range)", 10, 100, 35, function(val)
-    getgenv().PallLoader.AttackRange = val
-end)
-createToggle("Melee Auto Swing (Auto Pedang)", "MeleeAutoSwing")
-createToggle("Kill Aura (Radius 150 Studs)", "KillAura")
-
-createCategory("Utilities & AFK Manager")
-createToggle("Anti-AFK Protection", "AntiAFK")
-
-local isVisible = true
-MinimizeBtn.MouseButton1Click:Connect(function()
-    isVisible = not isVisible
-    Container.Visible = isVisible
-    MainFrame.Size = isVisible and UDim2.new(0, 520, 0, 530) or UDim2.new(0, 520, 0, 42)
-end)
-
--- Deteksi NPC / Bot Saja (Abaikan Player)
-local function getNPCsOnly()
-    local list = {}
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
-            local hum = obj:FindFirstChildOfClass("Humanoid")
-            local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
-            if hum and root and hum.Health > 0 then
-                local isPlayer = false
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p.Character == obj then isPlayer = true break end
-                end
-                if not isPlayer then
-                    table.insert(list, {Model = obj, Humanoid = hum, RootPart = root})
-                end
-            end
-        end
-    end
-    return list
-end
-
--- Deteksi Universal (Player + NPC) untuk Combat
-local function getAllTargets()
-    local list = {}
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local hum = p.Character:FindFirstChildOfClass("Humanoid")
-            local root = p.Character:FindFirstChild("HumanoidRootPart")
-            if hum and root and hum.Health > 0 then
-                table.insert(list, {Model = p.Character, Humanoid = hum, RootPart = root})
-            end
-        end
-    end
-    for _, npcData in ipairs(getNPCsOnly()) do
-        table.insert(list, npcData)
-    end
-    return list
-end
-
--- FITUR: NO CLIP
-RunService.Stepped:Connect(function()
-    if getgenv().PallLoader.NoClip then
+createCategory("Movement & Fly Follow (NPC)")
+createToggle("No Clip (Tembus Tembok)", "NoClip")
+createToggle("Fly Follow (Terbang Ikuti NPC - Speed 16)", "FlyFollow", function(active)
+    if not active then
         pcall(function()
             local char = LocalPlayer.Character
             if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") and part.CanCollide then
-                        part.CanCollide = false
-                    end
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hum then hum.PlatformStand = false end
+                if hrp then
+                    if hrp:FindFirstChild("PallFlyVelocity") then hrp.PallFlyVelocity:Destroy() end
+                    if hrp:FindFirstChild("PallFlyGyro") then hrp.PallFlyGyro:Destroy() end
                 end
             end
         end)
     end
 end)
 
--- FITUR: FLY FOLLOW (Terbang melayang khusus NPC dengan Speed 16)
-RunService.RenderStepped:Connect(function()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-
-    local bv = hrp:FindFirstChild("PallFlyVelocity")
-    local bg = hrp:FindFirstChild("PallFlyGyro")
-
-    if getgenv().PallLoader.FlyFollow then
-        hum.PlatformStand = true 
-        
-        if not bv then
-            bv = Instance.new("BodyVelocity")
-            bv.Name = "PallFlyVelocity"
-            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            bv.Velocity = Vector3.new(0, 0, 0)
-            bv.Parent = hrp
-        end
-        if not bg then
-            bg = Instance.new("BodyGyro")
-            bg.Name = "PallFlyGyro"
-            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bg.P = 3000
-            bg.Parent = hrp
-        end
-
-        local npcs = getNPCsOnly()
-        if #npcs > 0 then
-            local closest = nil
-            local minDist = math.huge
-            for _, data in ipairs(npcs) do
-                local dist = (hrp.Position - data.RootPart.Position).Magnitude
-                if dist < minDist then minDist = dist closest = data end
-            end
-            if closest and closest.RootPart then
-                local targetPos = closest.RootPart.Position + Vector3.new(0, 4, 0)
-                local direction = (targetPos - hrp.Position)
-                
-                if direction.Magnitude > 3 then
-                    bv.Velocity = direction.Unit * 16
-                    bg.CFrame = CFrame.new(hrp.Position, targetPos)
-                else
-                    bv.Velocity = Vector3.new(0, 0, 0)
+createCategory("Hitbox Expander Customizer")
+createToggle("Hitbox Expander (Working)", "HitboxExpander", function(active)
+    if not active then
+        pcall(function()
+            for root, origSize in pairs(OriginalHitboxSizes) do
+                if root and root.Parent then
+                    root.Size = origSize
+                    root.Transparency = 1
+                    root.CanCollide = true
+                    root.Massless = false
                 end
             end
-        else
-            bv.Velocity = Vector3.new(0, 0, 0)
-        end
-    else
-        hum.PlatformStand = false
-        if bv then bv:Destroy() end
-        if bg then bg:Destroy() end
+            OriginalHitboxSizes = {}
+        end)
     end
 end)
+createSlider("Ukuran Hitbox NPC", 2, 25, 10, function(val)
+    getgenv().PallLoader.HitboxSize = val
+end)
 
--- FITUR: WORKING HITBOX EXPANDER (Khusus NPC)
+createCategory("Combat & Attack Systems (Dungeon Quest)")
+createToggle("Long Range Hit (Serang Jauh)", "LongRangeHit")
+createSlider("Jangkauan Serang (Attack Range)", 10, 100, 35, function(val)
+    getgenv().PallLoader.AttackRange = val
+end)
+createToggle("Auto Attack / Swing (Dungeon Quest Fixed)", "MeleeAutoSwing")
+createToggle("Kill Aura (Radius 150 Studs)", "KillAura")
+
+createCategory("Utilities")
+createToggle("Anti-AFK Protection", "AntiAFK")
+
+local isVisible = true
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isVisible = not isVisible
+    Container.Visible = isVisible
+    MainFrame.Size = isVisible and UDim2.new(0, 420, 0, 440) or UDim2.new(0, 420, 0, 36)
+end)
+
+-- Sistem Deteksi NPC
+local function getNPCsOnly()
+    local list = {}
+    pcall(function()
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local hum = obj:FindFirstChildOfClass("Humanoid")
+                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
+                if hum and root and hum.Health > 0 then
+                    local isPlayer = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then isPlayer = true break end
+                    end
+                    if not isPlayer then
+                        table.insert(list, {Model = obj, Humanoid = hum, RootPart = root})
+                    end
+                end
+            end
+        end
+    end)
+    return list
+end
+
+local function getAllTargets()
+    local list = {}
+    pcall(function()
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                if hum and root and hum.Health > 0 then
+                    table.insert(list, {Model = p.Character, Humanoid = hum, RootPart = root})
+                end
+            end
+        end
+        for _, npcData in ipairs(getNPCsOnly()) do
+            table.insert(list, npcData)
+        end
+    end)
+    return list
+end
+
+-- FITUR: NO CLIP
+RunService.Stepped:Connect(function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        if getgenv().PallLoader.NoClip then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end)
+
+-- FITUR: FLY FOLLOW
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum then return end
+
+        local bv = hrp:FindFirstChild("PallFlyVelocity")
+        local bg = hrp:FindFirstChild("PallFlyGyro")
+
+        if getgenv().PallLoader.FlyFollow then
+            hum.PlatformStand = true 
+            
+            if not bv then
+                bv = Instance.new("BodyVelocity")
+                bv.Name = "PallFlyVelocity"
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bv.Velocity = Vector3.new(0, 0, 0)
+                bv.Parent = hrp
+            end
+            if not bg then
+                bg = Instance.new("BodyGyro")
+                bg.Name = "PallFlyGyro"
+                bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                bg.P = 4000
+                bg.Parent = hrp
+            end
+
+            local npcs = getNPCsOnly()
+            if #npcs > 0 then
+                local closest = nil
+                local minDist = math.huge
+                for _, data in ipairs(npcs) do
+                    local dist = (hrp.Position - data.RootPart.Position).Magnitude
+                    if dist < minDist then minDist = dist closest = data end
+                end
+                
+                if closest and closest.RootPart then
+                    local targetPos = closest.RootPart.Position + Vector3.new(0, 4, 0)
+                    local direction = (targetPos - hrp.Position)
+                    
+                    if direction.Magnitude > 2.5 then
+                        bv.Velocity = direction.Unit * 16
+                        bg.CFrame = CFrame.new(hrp.Position, targetPos)
+                    else
+                        bv.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            else
+                bv.Velocity = Vector3.new(0, 0, 0)
+            end
+        else
+            if hum.PlatformStand then hum.PlatformStand = false end
+            if bv then bv:Destroy() end
+            if bg then bg:Destroy() end
+        end
+    end)
+end)
+
+-- FITUR: HITBOX EXPANDER
 RunService.RenderStepped:Connect(function()
     if getgenv().PallLoader.HitboxExpander then
         pcall(function()
@@ -442,8 +481,11 @@ RunService.RenderStepped:Connect(function()
             for _, data in ipairs(getNPCsOnly()) do
                 local root = data.RootPart
                 if root then
+                    if not OriginalHitboxSizes[root] then
+                        OriginalHitboxSizes[root] = root.Size
+                    end
                     root.Size = Vector3.new(size, size, size)
-                    root.Transparency = 0.5 
+                    root.Transparency = 0.4 
                     root.Color = Color3.fromRGB(0, 255, 120)
                     root.Material = Enum.Material.Neon
                     root.CanCollide = false 
@@ -454,34 +496,40 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Combat System (Melee Auto Swing, Long Range Hit, & Kill Aura)
+-- COMBAT SYSTEM (Dungeon Quest Fixed Auto Attack & Remote Trigger)
 task.spawn(function()
     while true do
-        task.wait(0.15)
+        task.wait(0.05) -- Dipercepat agar responsif di Dungeon Quest
         if getgenv().PallLoader.MeleeAutoSwing or getgenv().PallLoader.KillAura or getgenv().PallLoader.LongRangeHit then
             pcall(function()
-                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local char = LocalPlayer.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     local range = getgenv().PallLoader.AttackRange
+                    
+                    -- Cari target terdekat dalam range
                     for _, data in ipairs(getAllTargets()) do
                         local dist = (hrp.Position - data.RootPart.Position).Magnitude
                         
-                        if (getgenv().PallLoader.MeleeAutoSwing or getgenv().PallLoader.LongRangeHit) and dist <= range then
-                            local char = LocalPlayer.Character
-                            if char then
+                        if dist <= range then
+                            -- 1. Metode Tool Activation Standar
+                            if getgenv().PallLoader.MeleeAutoSwing or getgenv().PallLoader.LongRangeHit then
                                 local tool = char:FindFirstChildOfClass("Tool")
-                                if tool then tool:Activate() end
+                                if tool then
+                                    tool:Activate()
+                                    -- Cek apakah ada fungsi menyerang kustom di dalam tool atau handle
+                                    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
+                                        if remote:IsA("RemoteEvent") and (string.lower(remote.Name):find("attack") or string.lower(remote.Name):find("swing") or string.lower(remote.Name):find("hit") or string.lower(remote.Name):find("damage")) then
+                                            pcall(function()
+                                                remote:FireServer(data.Model)
+                                            end)
+                                        end
+                                    end
+                                end
                             end
                         end
                         
+                        -- Kill Aura instan jika diaktifkan
                         if getgenv().PallLoader.KillAura and dist <= 150 then
                             data.Humanoid.Health = 0
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
-print("[Pall Loader v16.0] Berhasil dimuat dengan fitur lengkap!")
+                    
