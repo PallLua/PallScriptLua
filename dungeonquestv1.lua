@@ -1,6 +1,26 @@
 -- =====================================================================
--- BANANA HUB v7 - FIXED UI LOADER
+-- PALL LOADER v7 - FULL FEATURED (BYPASS + FLUENT UI + HIDE/SHOW BUTTON)
 -- =====================================================================
+
+-- =====================================================================
+-- 0. EXPLOIT BYPASS & ANTI-DETECTION MODULE
+-- =====================================================================
+pcall(function()
+    if syn and syn.protect_gui then
+        syn.protect_gui(game:GetService("CoreGui"))
+    elseif gethui then
+        local protectedGui = gethui()
+    end
+
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldIndex = mt.__index
+    
+    mt.__index = newcclosure(function(self, idx)
+        return oldIndex(self, idx)
+    end)
+    setreadonly(mt, true)
+end)
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -13,11 +33,11 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
 -- Konfigurasi Toggle Fitur
-getgenv().BananaHub = {
+getgenv().PallLoader = {
     AutoCollect = false,
     AutoNextStage = false,
     KillAura = false,
-    InstantKill = false, -- True Damage Mode
+    InstantKill = false,
     StageTeleport = false,
     AutoBuyUpgrade = false,
     CustomFOV = false,
@@ -29,22 +49,27 @@ getgenv().BananaHub = {
 
 -- Hapus GUI lama jika ada
 pcall(function()
-    if CoreGui:FindFirstChild("BananaFluentHub") then
-        CoreGui.BananaFluentHub:Destroy()
+    if CoreGui:FindFirstChild("PallLoaderFluentHub") then
+        CoreGui.PallLoaderFluentHub:Destroy()
     end
-    if LocalPlayer.PlayerGui:FindFirstChild("BananaFluentHub") then
-        LocalPlayer.PlayerGui.BananaFluentHub:Destroy()
+    if CoreGui:FindFirstChild("PallLoaderFloatingButton") then
+        CoreGui.PallLoaderFloatingButton:Destroy()
+    end
+    if LocalPlayer.PlayerGui:FindFirstChild("PallLoaderFluentHub") then
+        LocalPlayer.PlayerGui.PallLoaderFluentHub:Destroy()
+    end
+    if LocalPlayer.PlayerGui:FindFirstChild("PallLoaderFloatingButton") then
+        LocalPlayer.PlayerGui.PallLoaderFloatingButton:Destroy()
     end
 end)
 
 -- =====================================================================
--- 1. PEMBUATAN UI UTAMA (DI COREGUI / PLAYERGUI)
+-- 1. PEMBUATAN UI UTAMA (FLUENT STYLE)
 -- =====================================================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BananaFluentHub"
+ScreenGui.Name = "PallLoaderFluentHub"
 ScreenGui.ResetOnSpawn = false
 
--- Amankan pemasangan GUI ke CoreGui atau PlayerGui
 pcall(function()
     ScreenGui.Parent = CoreGui
 end)
@@ -84,10 +109,10 @@ UICornerTop.CornerRadius = UDim.new(0, 8)
 UICornerTop.Parent = TopBar
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 300, 1, 0)
+TitleLabel.Size = UDim2.new(0, 350, 1, 0)
 TitleLabel.Position = UDim2.new(0, 15, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🍌  Banana Hub  <font color='#00FFAA'>v7 [Fixed]</font>"
+TitleLabel.Text = "⚡  Pall Loader  <font color='#00FFAA'>v7 [Ultimate]</font>"
 TitleLabel.RichText = true
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
 TitleLabel.TextSize = 15
@@ -95,23 +120,27 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopBar
 
-local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 200, 1, 0)
-SubTitleLabel.Position = UDim2.new(1, -215, 0, 0)
-SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "[Right Shift] to Hide"
-SubTitleLabel.TextColor3 = Color3.fromRGB(120, 120, 140)
-SubTitleLabel.TextSize = 12
-SubTitleLabel.Font = Enum.Font.Gotham
-SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Right
-SubTitleLabel.Parent = TopBar
+-- Tombol Close / Hide di Pojok Kanan Atas Header
+local HideButton = Instance.new("TextButton")
+HideButton.Size = UDim2.new(0, 30, 0, 30)
+HideButton.Position = UDim2.new(1, -38, 0.5, -15)
+HideButton.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+HideButton.Text = "-"
+HideButton.TextColor3 = Color3.fromRGB(200, 200, 210)
+HideButton.TextSize = 18
+HideButton.Font = Enum.Font.GothamBold
+HideButton.Parent = TopBar
+
+local UICornerHide = Instance.new("UICorner")
+UICornerHide.CornerRadius = UDim.new(0, 6)
+UICornerHide.Parent = HideButton
 
 -- Content Container
 local ContentContainer = Instance.new("ScrollingFrame")
 ContentContainer.Size = UDim2.new(1, -30, 1, -65)
 ContentContainer.Position = UDim2.new(0, 15, 0, 52)
 ContentContainer.BackgroundTransparency = 1
-ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 520)
+ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 560)
 ContentContainer.ScrollBarThickness = 4
 ContentContainer.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 90)
 ContentContainer.Parent = MainFrame
@@ -186,8 +215,8 @@ local function createToggle(name, featureKey)
     UICornerDot.Parent = SwitchDot
 
     ToggleButton.MouseButton1Click:Connect(function()
-        getgenv().BananaHub[featureKey] = not getgenv().BananaHub[featureKey]
-        local state = getgenv().BananaHub[featureKey]
+        getgenv().PallLoader[featureKey] = not getgenv().PallLoader[featureKey]
+        local state = getgenv().PallLoader[featureKey]
         
         local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         if state then
@@ -200,7 +229,7 @@ local function createToggle(name, featureKey)
     end)
 end
 
--- Susun Menu
+-- Susun Menu Berdasarkan Kategori
 createSectionHeader("Combat & Kill Systems")
 createToggle("Safe True-Damage Instant Kill", "InstantKill")
 createToggle("Kill Aura (35 Studs)", "KillAura")
@@ -215,18 +244,60 @@ createToggle("Custom FOV (120)", "CustomFOV")
 createToggle("FPS Unlocker (999 FPS)", "FPSUnlocker")
 createToggle("Invisible Mode (Client-side)", "InvisibleMode")
 
-createSectionHeader("Utilities")
+createSectionHeader("Utilities & Security")
 createToggle("Anti-AFK System", "AntiAFK")
 
--- Shortcut Toggle Menu (Right Shift)
+-- =====================================================================
+-- 2. TOMBOL FLOATING APUNG (UNTUK MEMUNCULKAN KEMBALI MENU)
+-- =====================================================================
+local FloatingGui = Instance.new("ScreenGui")
+FloatingGui.Name = "PallLoaderFloatingButton"
+FloatingGui.ResetOnSpawn = false
+
+pcall(function()
+    FloatingGui.Parent = CoreGui
+end)
+if not FloatingGui.Parent then
+    FloatingGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local OpenButton = Instance.new("TextButton")
+OpenButton.Size = UDim2.new(0, 45, 0, 45)
+OpenButton.Position = UDim2.new(0, 20, 0.5, -22)
+OpenButton.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+OpenButton.Text = "⚡"
+OpenButton.TextSize = 22
+OpenButton.Active = true
+OpenButton.Draggable = true
+OpenButton.Parent = FloatingGui
+
+local UICornerOpen = Instance.new("UICorner")
+UICornerOpen.CornerRadius = UDim.new(1, 0)
+UICornerOpen.Parent = OpenButton
+
+local UIStrokeOpen = Instance.new("UIStroke")
+UIStrokeOpen.Color = Color3.fromRGB(0, 204, 136)
+UIStrokeOpen.Thickness = 2
+UIStrokeOpen.Parent = OpenButton
+
+-- Fungsi Sembunyikan & Munculkan Menu
+local isVisible = true
+local function toggleMenu()
+    isVisible = not isVisible
+    MainFrame.Visible = isVisible
+end
+
+HideButton.MouseButton1Click:Connect(toggleMenu)
+OpenButton.MouseButton1Click:Connect(toggleMenu)
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.RightShift and not gameProcessed then
-        MainFrame.Visible = not MainFrame.Visible
+        toggleMenu()
     end
 end)
 
 -- =====================================================================
--- 2. BACKEND LOGIKA FITUR
+-- 3. BACKEND LOGIKA FITUR & BYPASS EXECUTION
 -- =====================================================================
 local function getEnemies()
     local enemiesList = {}
@@ -244,13 +315,13 @@ local function getEnemies()
 end
 
 RunService.Heartbeat:Connect(function()
-    if getgenv().BananaHub.InstantKill or getgenv().BananaHub.KillAura then
+    if getgenv().PallLoader.InstantKill or getgenv().PallLoader.KillAura then
         pcall(function()
             for _, enemyData in ipairs(getEnemies()) do
                 if enemyData.Humanoid and enemyData.Humanoid.Health > 0 then
-                    if getgenv().BananaHub.InstantKill then
+                    if getgenv().PallLoader.InstantKill then
                         enemyData.Humanoid.Health = 0
-                    elseif getgenv().BananaHub.KillAura then
+                    elseif getgenv().PallLoader.KillAura then
                         if enemyData.RootPart and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                             local dist = (LocalPlayer.Character.HumanoidRootPart.Position - enemyData.RootPart.Position).Magnitude
                             if dist <= 35 then
@@ -265,7 +336,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 RunService.Stepped:Connect(function()
-    if getgenv().BananaHub.StageTeleport and LocalPlayer.Character then
+    if getgenv().PallLoader.StageTeleport and LocalPlayer.Character then
         pcall(function()
             local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -283,7 +354,7 @@ RunService.Stepped:Connect(function()
 end)
 
 RunService.Stepped:Connect(function()
-    if getgenv().BananaHub.AutoCollect and LocalPlayer.Character then
+    if getgenv().PallLoader.AutoCollect and LocalPlayer.Character then
         pcall(function()
             local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -303,7 +374,7 @@ end)
 
 task.spawn(function()
     while task.wait(2) do
-        if getgenv().BananaHub.AutoBuyUpgrade then
+        if getgenv().PallLoader.AutoBuyUpgrade then
             pcall(function()
                 local shops = Workspace:FindFirstChild("Shops") or Workspace:FindFirstChild("NPCs")
                 if shops then
@@ -320,17 +391,17 @@ task.spawn(function()
 end)
 
 RunService.RenderStepped:Connect(function()
-    if getgenv().BananaHub.CustomFOV then
-        Camera.FieldOfView = getgenv().BananaHub.FOVValue
+    if getgenv().PallLoader.CustomFOV then
+        Camera.FieldOfView = getgenv().PallLoader.FOVValue
     end
-    if getgenv().BananaHub.FPSUnlocker then
+    if getgenv().PallLoader.FPSUnlocker then
         setfpscap(999)
     end
 end)
 
 task.spawn(function()
     while task.wait(1) do
-        if getgenv().BananaHub.InvisibleMode and LocalPlayer.Character then
+        if getgenv().PallLoader.InvisibleMode and LocalPlayer.Character then
             pcall(function()
                 for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                     if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -346,11 +417,11 @@ end)
 
 local vu = game:GetService("VirtualUser")
 LocalPlayer.Idled:Connect(function()
-    if getgenv().BananaHub.AntiAFK then
+    if getgenv().PallLoader.AntiAFK then
         vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
         task.wait(1)
         vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
     end
 end)
 
-print("Banana Hub v7 Fixed UI Loaded Successfully!")
+print("Pall Loader v7 Loaded Successfully!")
