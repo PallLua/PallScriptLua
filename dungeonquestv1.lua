@@ -1,14 +1,12 @@
 -- =====================================================================
--- BANANA HUB v7 - ULTIMATE DUNGEON QUEST SCRIPT
--- Features: Combat, Movement, Farming, Stage Teleport, Shop, FOV/FPS, 
---           Invisible Mode, & Safe True-Damage Instant Kill
+-- BANANA HUB v7 - FLUENT UI STYLE (ULTIMATE DUNGEON QUEST)
 -- =====================================================================
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -28,15 +26,201 @@ getgenv().BananaHub = {
     AntiAFK = true
 }
 
+-- Hapus GUI lama jika ada
+if LocalPlayer.PlayerGui:FindFirstChild("BananaFluentHub") then
+    LocalPlayer.PlayerGui.BananaFluentHub:Destroy()
+end
+
 -- =====================================================================
--- 1. SAFE TRUE-DAMAGE INSTANT KILL & KILL AURA
+-- 1. PEMBUATAN UI UTAMA (FLUENT STYLE)
 -- =====================================================================
--- Menggunakan sistem manipulasi health/remote event target musuh secara langsung 
--- tanpa menyentuh atau memantulkan damage ke LocalPlayer.
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BananaFluentHub"
+ScreenGui.Parent = LocalPlayer.PlayerGui
+ScreenGui.ResetOnSpawn = false
+
+-- Main Window (Fluent Dark Theme)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 550, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -275, 0.5, -190)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24) -- Dark Fluent Background
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICornerMain = Instance.new("UICorner")
+UICornerMain.CornerRadius = UDim.new(0, 8)
+UICornerMain.Parent = MainFrame
+
+-- Efek Border Tipis ala Fluent
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(45, 45, 58)
+UIStroke.Thickness = 1
+UIStroke.Parent = MainFrame
+
+-- Top Bar (Header)
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainFrame
+
+local UICornerTop = Instance.new("UICorner")
+UICornerTop.CornerRadius = UDim.new(0, 8)
+UICornerTop.Parent = TopBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 300, 1, 0)
+TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "🍌  Banana Hub  <font color='#00FFAA'>v7 [Fluent UI]</font>"
+TitleLabel.RichText = true
+TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+TitleLabel.TextSize = 15
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TopBar
+
+local SubTitleLabel = Instance.new("TextLabel")
+SubTitleLabel.Size = UDim2.new(0, 200, 1, 0)
+SubTitleLabel.Position = UDim2.new(1, -215, 0, 0)
+SubTitleLabel.BackgroundTransparency = 1
+SubTitleLabel.Text = "[Right Shift] to Hide"
+SubTitleLabel.TextColor3 = Color3.fromRGB(120, 120, 140)
+SubTitleLabel.TextSize = 12
+SubTitleLabel.Font = Enum.Font.Gotham
+SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Right
+SubTitleLabel.Parent = TopBar
+
+-- Content Container (Tempat Menu Fitur)
+local ContentContainer = Instance.new("ScrollingFrame")
+ContentContainer.Size = UDim2.new(1, -30, 1, -65)
+ContentContainer.Position = UDim2.new(0, 15, 0, 52)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.CanvasSize = UDim2.new(0, 0, 0, 520)
+ContentContainer.ScrollBarThickness = 4
+ContentContainer.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 90)
+ContentContainer.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 10)
+UIListLayout.Parent = ContentContainer
+
+-- Fungsi Pembuat Seksi / Header Kategori ala Fluent
+local function createSectionHeader(titleText)
+    local Header = Instance.new("TextLabel")
+    Header.Size = UDim2.new(1, 0, 0, 25)
+    Header.BackgroundTransparency = 1
+    Header.Text = "  " .. string.upper(titleText)
+    Header.TextColor3 = Color3.fromRGB(0, 220, 150)
+    Header.TextSize = 12
+    Header.Font = Enum.Font.GothamBold
+    Header.TextXAlignment = Enum.TextXAlignment.Left
+    Header.Parent = ContentContainer
+end
+
+-- Fungsi Pembuat Tombol Toggle ala Fluent Card
+local function createToggle(name, featureKey)
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Size = UDim2.new(1, 0, 0, 42)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+    ToggleButton.Text = ""
+    ToggleButton.AutoButtonColor = false
+    ToggleButton.Parent = ContentContainer
+
+    local UICornerBtn = Instance.new("UICorner")
+    UICornerBtn.CornerRadius = UDim.new(0, 6)
+    UICornerBtn.Parent = ToggleButton
+
+    local UIStrokeBtn = Instance.new("UIStroke")
+    UIStrokeBtn.Color = Color3.fromRGB(40, 40, 55)
+    UIStrokeBtn.Thickness = 1
+    UIStrokeBtn.Parent = ToggleButton
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -60, 1, 0)
+    Label.Position = UDim2.new(0, 15, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name
+    Label.TextColor3 = Color3.fromRGB(210, 210, 220)
+    Label.TextSize = 13
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = ToggleButton
+
+    -- Indikator Switch Bulat ala Windows 11
+    local SwitchBg = Instance.new("Frame")
+    SwitchBg.Size = UDim2.new(0, 40, 0, 20)
+    SwitchBg.Position = UDim2.new(1, -50, 0.5, -10)
+    SwitchBg.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    SwitchBg.BorderSizePixel = 0
+    SwitchBg.Parent = ToggleButton
+
+    local UICornerSwitch = Instance.new("UICorner")
+    UICornerSwitch.CornerRadius = UDim.new(1, 0)
+    UICornerSwitch.Parent = SwitchBg
+
+    local SwitchDot = Instance.new("Frame")
+    SwitchDot.Size = UDim2.new(0, 14, 0, 14)
+    SwitchDot.Position = UDim2.new(0, 3, 0.5, -7)
+    SwitchDot.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+    SwitchDot.BorderSizePixel = 0
+    SwitchDot.Parent = SwitchBg
+
+    local UICornerDot = Instance.new("UICorner")
+    UICornerDot.CornerRadius = UDim.new(1, 0)
+    UICornerDot.Parent = SwitchDot
+
+    -- Event Klik Toggle
+    ToggleButton.MouseButton1Click:Connect(function()
+        getgenv().BananaHub[featureKey] = not getgenv().BananaHub[featureKey]
+        local state = getgenv().BananaHub[featureKey]
+        
+        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        if state then
+            TweenService:Create(SwitchBg, tweenInfo, {BackgroundColor3 = Color3.fromRGB(0, 204, 136)}):Play()
+            TweenService:Create(SwitchDot, tweenInfo, {Position = UDim2.new(1, -17, 0.5, -7), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+        else
+            TweenService:Create(SwitchBg, tweenInfo, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}):Play()
+            TweenService:Create(SwitchDot, tweenInfo, {Position = UDim2.new(0, 3, 0.5, -7), BackgroundColor3 = Color3.fromRGB(150, 150, 170)}):Play()
+        end
+    end)
+end
+
+-- Menyusun Menu Berdasarkan Kategori (Gaya Fluent Tabs)
+createSectionHeader("Combat & Kill Systems")
+createToggle("Safe True-Damage Instant Kill", "InstantKill")
+createToggle("Kill Aura (35 Studs)", "KillAura")
+
+createSectionHeader("Dungeon Farming & Movement")
+createToggle("Stage Teleport (Auto Next)", "StageTeleport")
+createToggle("Auto Collect Drops", "AutoCollect")
+createToggle("Auto Buy & Upgrade Gear", "AutoBuyUpgrade")
+
+createSectionHeader("Visuals & Performance")
+createToggle("Custom FOV (120)", "CustomFOV")
+createToggle("FPS Unlocker (999 FPS)", "FPSUnlocker")
+createToggle("Invisible Mode (Client-side)", "InvisibleMode")
+
+createSectionHeader("Utilities")
+createToggle("Anti-AFK System", "AntiAFK")
+
+-- Shortcut Toggle Menu (Right Shift)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.RightShift and not gameProcessed then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end)
+
+-- =====================================================================
+-- 2. BACKEND LOGIKA FITUR (TETap SAMA & AMAN)
+-- =====================================================================
 
 local function getEnemies()
     local enemiesList = {}
-    -- Sesuaikan folder target musuh di game Dungeon Quest jika diperlukan
     local enemiesFolder = Workspace:FindFirstChild("Enemies") or Workspace:FindFirstChild("Monsters")
     if enemiesFolder then
         for _, enemy in ipairs(enemiesFolder:GetChildren()) do
@@ -56,11 +240,8 @@ RunService.Heartbeat:Connect(function()
             for _, enemyData in ipairs(getEnemies()) do
                 if enemyData.Humanoid and enemyData.Humanoid.Health > 0 then
                     if getgenv().BananaHub.InstantKill then
-                        -- True Damage murni langsung set health musuh ke 0 
-                        -- Memastikan darah LocalPlayer aman 100%
-                        enemyData.Humanoid.Health = 0
+                        enemyData.Humanoid.Health = 0 -- True Damage Mutlak
                     elseif getgenv().BananaHub.KillAura then
-                        -- Berikan damage berkala secara aman
                         if enemyData.RootPart and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                             local dist = (LocalPlayer.Character.HumanoidRootPart.Position - enemyData.RootPart.Position).Magnitude
                             if dist <= 35 then
@@ -74,16 +255,12 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- =====================================================================
--- 2. STAGE TELEPORT & AUTO NEXT STAGE
--- =====================================================================
 RunService.Stepped:Connect(function()
     if getgenv().BananaHub.StageTeleport and LocalPlayer.Character then
         pcall(function()
             local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if hrp then
                 for _, obj in ipairs(Workspace:GetChildren()) do
-                    -- Mendeteksi pintu/portal stage berikutnya
                     if obj.Name:lower():find("door") or obj.Name:lower():find("portal") or obj.Name:lower():find("gate") then
                         local portalPart = obj:FindFirstChild("Part") or obj:FindFirstChildOfClass("BasePart")
                         if portalPart then
@@ -96,16 +273,31 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- =====================================================================
--- 3. AUTO BUY & UPGRADE GEAR / POTIONS
--- =====================================================================
+RunService.Stepped:Connect(function()
+    if getgenv().BananaHub.AutoCollect and LocalPlayer.Character then
+        pcall(function()
+            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local dropsFolder = Workspace:FindFirstChild("Drops") or Workspace:FindFirstChild("Loot")
+                if dropsFolder then
+                    for _, drop in ipairs(dropsFolder:GetChildren()) do
+                        local part = drop:FindFirstChild("Part") or drop:FindFirstChildOfClass("BasePart")
+                        if part then
+                            part.CFrame = hrp.CFrame
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
 task.spawn(function()
     while task.wait(2) do
         if getgenv().BananaHub.AutoBuyUpgrade then
             pcall(function()
-                -- Simulasi interaksi NPC Shop di Lobby Dungeon Quest
                 local shops = Workspace:FindFirstChild("Shops") or Workspace:FindFirstChild("NPCs")
-                if shops and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                if shops then
                     for _, shop in ipairs(shops:GetChildren()) do
                         local prompt = shop:FindFirstChildOfClass("ProximityPrompt")
                         if prompt then
@@ -118,9 +310,6 @@ task.spawn(function()
     end
 end)
 
--- =====================================================================
--- 4. CUSTOM FOV & FPS UNLOCKER
--- =====================================================================
 RunService.RenderStepped:Connect(function()
     if getgenv().BananaHub.CustomFOV then
         Camera.FieldOfView = getgenv().BananaHub.FOVValue
@@ -130,9 +319,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- =====================================================================
--- 5. INVISIBLE MODE (CLIENT-SIDE)
--- =====================================================================
 task.spawn(function()
     while task.wait(1) do
         if getgenv().BananaHub.InvisibleMode and LocalPlayer.Character then
@@ -149,9 +335,6 @@ task.spawn(function()
     end
 end)
 
--- =====================================================================
--- 6. ANTI-AFK SYSTEM
--- =====================================================================
 local vu = game:GetService("VirtualUser")
 LocalPlayer.Idled:Connect(function()
     if getgenv().BananaHub.AntiAFK then
@@ -161,4 +344,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Banana Hub v7 Loaded Successfully! True Damage Instant Kill Active.")
+print("Banana Hub v7 (Fluent UI Style) Loaded Successfully!")
