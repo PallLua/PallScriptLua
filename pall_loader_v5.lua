@@ -1,6 +1,5 @@
 -- =====================================================================
--- PALL LOADER v5.0 (Auto Swing with Interval / Auto-Clicker Mode)
--- + Byfron & Hyperion Hook Bypass Core
+-- PALL LOADER v5.0 (MaxHub UI & All Features Set to False)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -15,7 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- =====================================================================
--- ADVANCED BYFRON & HYPERION HOOK BYPASS CORE
+-- BYFRON & HYPERION HOOK BYPASS CORE
 -- =====================================================================
 pcall(function()
     local mt = getrawmetatable(game)
@@ -25,52 +24,73 @@ pcall(function()
     mt.__namecall = newcclosure(function(self, ...)
         local method = string.lower(getnamecallmethod())
         if method == "kick" or method == "identifier" or method == "sendnotification" or method == "teleport" then
-            if self == LocalPlayer then
-                return nil
-            end
+            if self == LocalPlayer then return nil end
         end
         return oldNamecall(self, ...)
     end)
     setreadonly(mt, true)
 end)
 
--- Konfigurasi Toggle v5.0
+-- Semua Fitur diatur ke false secara default
 getgenv().PallLoader = {
-    BypassEnabled = true,
-    AntiKick = true,
+    BypassEnabled = false,
+    AntiKick = false,
+    GodMode = false,
+    AntiAFK = false,
     NoClip = false,         
     FlyFollow = false,      
+    SafeDistance = 14,
+    DistanceAbove = 25,     
     HitboxExpander = false,  
     HitboxSize = 45,        
-    SafeDistance = 14,      
     MeleeAutoSwing = false, 
     SwingInterval = 1,      
     KillAura = false,
-    AntiRangedHit = true,   
-    NPCFreeze = true,       
-    GodMode = false,         
-    AntiAFK = true
+    AntiRangedHit = false,   
+    NPCFreeze = false,       
+    TargetLine = false,       
+    AutoDungeon = false,
+    AutoAbilities = false,
+    AutoReplay = false,
+    AutoDodge = false,
+    SpeedToggle = false,
+    WalkSpeedVal = 16,
+    JumpToggle = false,
+    JumpPowerVal = 50,
+    AutoUpgrader = false
 }
 
 local OriginalHitboxSizes = {}
 local CurrentTargetNPC = nil
-local TargetSwitchTimer = 0
 
-print("[Pall Loader v5.0] Memuat Sistem Auto Swing + Byfron & Hyperion Bypass...")
+-- Target Line Visualizer Beam
+local VisualizerBeam = Instance.new("Part")
+VisualizerBeam.Name = "PallTargetLine"
+VisualizerBeam.Size = Vector3.new(0.1, 0.1, 0.1)
+VisualizerBeam.Anchored = true
+VisualizerBeam.CanCollide = false
+VisualizerBeam.Transparency = 1
+local Attachment0 = Instance.new("Attachment", VisualizerBeam)
+local Attachment1 = Instance.new("Attachment", VisualizerBeam)
+local Beam = Instance.new("Beam")
+Beam.Attachment0 = Attachment0
+Beam.Attachment1 = Attachment1
+Beam.Color = ColorSequence.new(Color3.fromRGB(0, 150, 255))
+Beam.Width0 = 0.15
+Beam.Width1 = 0.15
+Beam.FaceCamera = true
+Beam.Parent = VisualizerBeam
+VisualizerBeam.Parent = Workspace
 
 -- Hapus UI lama
 pcall(function()
-    for _, v in ipairs(PlayerGui:GetChildren()) do
-        if v.Name:find("PallLoaderFluent") then v:Destroy() end
-    end
-    for _, v in ipairs(CoreGui:GetChildren()) do
-        if v.Name:find("PallLoaderFluent") then v:Destroy() end
-    end
+    for _, v in ipairs(PlayerGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
+    for _, v in ipairs(CoreGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
 end)
 
 -- ScreenGui Utama
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "PallLoaderFluentV192"
+ScreenGui.Name = "MaxHubStyleUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -79,120 +99,119 @@ if not ScreenGui.Parent then ScreenGui.Parent = PlayerGui end
 
 -- MainFrame
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 420, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -210, 0.5, -240)
-MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+MainFrame.Size = UDim2.new(0, 600, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -300, 0.5, -190)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local UICornerMain = Instance.new("UICorner")
-UICornerMain.CornerRadius = UDim.new(0, 8)
+UICornerMain.CornerRadius = UDim.new(0, 6)
 UICornerMain.Parent = MainFrame
 
 local UIStrokeMain = Instance.new("UIStroke")
-UIStrokeMain.Color = Color3.fromRGB(45, 45, 60)
+UIStrokeMain.Color = Color3.fromRGB(38, 38, 50)
 UIStrokeMain.Thickness = 1
 UIStrokeMain.Parent = MainFrame
 
--- Topbar
-local Topbar = Instance.new("Frame")
-Topbar.Size = UDim2.new(1, 0, 0, 36)
-Topbar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-Topbar.BorderSizePixel = 0
-Topbar.Parent = MainFrame
+-- Sidebar Kiri
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 140, 1, 0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
 
-local UICornerTop = Instance.new("UICorner")
-UICornerTop.CornerRadius = UDim.new(0, 8)
-UICornerTop.Parent = Topbar
+local UICornerSide = Instance.new("UICorner")
+UICornerSide.CornerRadius = UDim.new(0, 6)
+UICornerSide.Parent = Sidebar
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(0, 350, 1, 0)
-Title.Position = UDim2.new(0, 12, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "⚡ Pall Loader <font color='#00DC96'>v5.0 (Byfron & Hyperion Safe)</font>"
-Title.RichText = true
-Title.TextColor3 = Color3.fromRGB(240, 240, 245)
-Title.TextSize = 11
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Topbar
+local LogoTitle = Instance.new("TextLabel")
+LogoTitle.Size = UDim2.new(1, 0, 0, 45)
+LogoTitle.Position = UDim2.new(0, 12, 0, 0)
+LogoTitle.BackgroundTransparency = 1
+LogoTitle.Text = "⚡ MaxHub"
+LogoTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+LogoTitle.TextSize = 15
+LogoTitle.Font = Enum.Font.GothamBold
+LogoTitle.TextXAlignment = Enum.TextXAlignment.Left
+LogoTitle.Parent = Sidebar
 
-local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Size = UDim2.new(0, 26, 0, 26)
-MinimizeBtn.Position = UDim2.new(1, -34, 0.5, -13)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-MinimizeBtn.Text = "-"
-MinimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-MinimizeBtn.TextSize = 14
-MinimizeBtn.Font = Enum.Font.GothamBold
-MinimizeBtn.Parent = Topbar
+local SidebarList = Instance.new("UIListLayout")
+SidebarList.SortOrder = Enum.SortOrder.LayoutOrder
+SidebarList.Padding = UDim.new(0, 2)
+SidebarList.Parent = Sidebar
 
-local UICornerMin = Instance.new("UICorner")
-UICornerMin.CornerRadius = UDim.new(0, 5)
-UICornerMin.Parent = MinimizeBtn
+-- Kontainer Halaman Kanan
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, -140, 1, 0)
+ContentArea.Position = UDim2.new(0, 140, 0, 0)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
 
--- Kontainer Menu
-local Container = Instance.new("ScrollingFrame")
-Container.Size = UDim2.new(1, -20, 1, -48)
-Container.Position = UDim2.new(0, 10, 0, 42)
-Container.BackgroundTransparency = 1
-Container.CanvasSize = UDim2.new(0, 0, 0, 1300)
-Container.ScrollBarThickness = 3
-Container.ScrollBarImageColor3 = Color3.fromRGB(0, 220, 150)
-Container.Parent = MainFrame
+local Pages = {}
 
-local UIList = Instance.new("UIListLayout")
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0, 6)
-UIList.Parent = Container
+local function createPage(name)
+    local page = Instance.new("ScrollingFrame")
+    page.Name = name .. "Page"
+    page.Size = UDim2.new(1, -16, 1, -16)
+    page.Position = UDim2.new(0, 8, 0, 8)
+    page.BackgroundTransparency = 1
+    page.CanvasSize = UDim2.new(0, 0, 0, 900)
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Color3.fromRGB(0, 180, 255)
+    page.Visible = false
+    page.Parent = ContentArea
 
-local function createCategory(text)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 22)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "  " .. string.upper(text)
-    lbl.TextColor3 = Color3.fromRGB(0, 220, 150)
-    lbl.TextSize = 10
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = Container
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 6)
+    layout.Parent = page
+
+    Pages[name] = page
+    return page
 end
 
-local function createToggle(name, key, callback)
+local function createCategoryHeader(page, text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 24)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(0, 160, 255)
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = page
+end
+
+local function createToggle(page, name, key, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 34)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    btn.Size = UDim2.new(1, 0, 0, 32)
+    btn.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
     btn.Text = ""
     btn.AutoButtonColor = false
-    btn.Parent = Container
+    btn.Parent = page
 
     local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 5)
+    uic.CornerRadius = UDim.new(0, 4)
     uic.Parent = btn
 
-    local uis = Instance.new("UIStroke")
-    uis.Color = Color3.fromRGB(45, 45, 60)
-    uis.Thickness = 1
-    uis.Parent = btn
-
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -55, 1, 0)
+    lbl.Size = UDim2.new(1, -50, 1, 0)
     lbl.Position = UDim2.new(0, 10, 0, 0)
     lbl.BackgroundTransparency = 1
     lbl.Text = name
     lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = btn
 
     local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 34, 0, 18)
-    indicator.Position = UDim2.new(1, -42, 0.5, -9)
-    indicator.BackgroundColor3 = getgenv().PallLoader[key] and Color3.fromRGB(0, 204, 136) or Color3.fromRGB(50, 50, 65)
+    indicator.Size = UDim2.new(0, 32, 0, 16)
+    indicator.Position = UDim2.new(1, -40, 0.5, -8)
+    indicator.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
     indicator.BorderSizePixel = 0
     indicator.Parent = btn
 
@@ -201,9 +220,9 @@ local function createToggle(name, key, callback)
     uici.Parent = indicator
 
     local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 12, 0, 12)
-    dot.Position = getgenv().PallLoader[key] and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
-    dot.BackgroundColor3 = getgenv().PallLoader[key] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 180)
+    dot.Size = UDim2.new(0, 10, 0, 10)
+    dot.Position = UDim2.new(0, 3, 0.5, -5)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     dot.BorderSizePixel = 0
     dot.Parent = indicator
 
@@ -214,66 +233,51 @@ local function createToggle(name, key, callback)
     btn.MouseButton1Click:Connect(function()
         getgenv().PallLoader[key] = not getgenv().PallLoader[key]
         local active = getgenv().PallLoader[key]
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
+        local ti = TweenInfo.new(0.2)
         if active then
-            TweenService:Create(indicator, tweenInfo, {BackgroundColor3 = Color3.fromRGB(0, 204, 136)}):Play()
-            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(1, -15, 0.5, -6), BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+            TweenService:Create(indicator, ti, {BackgroundColor3 = Color3.fromRGB(0, 170, 255)}):Play()
+            TweenService:Create(dot, ti, {Position = UDim2.new(1, -13, 0.5, -5)}):Play()
         else
-            TweenService:Create(indicator, tweenInfo, {BackgroundColor3 = Color3.fromRGB(50, 50, 65)}):Play()
-            TweenService:Create(dot, tweenInfo, {Position = UDim2.new(0, 3, 0.5, -6), BackgroundColor3 = Color3.fromRGB(160, 160, 180)}):Play()
+            TweenService:Create(indicator, ti, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}):Play()
+            TweenService:Create(dot, ti, {Position = UDim2.new(0, 3, 0.5, -5)}):Play()
         end
-
         if callback then pcall(function() callback(active) end) end
     end)
 end
 
-local function createSlider(name, min, max, default, unit, callback)
+local function createSlider(page, name, min, max, default, unit, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 48)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-    frame.Parent = Container
+    frame.Size = UDim2.new(1, 0, 0, 44)
+    frame.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+    frame.Parent = page
 
     local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 5)
+    uic.CornerRadius = UDim.new(0, 4)
     uic.Parent = frame
 
-    local uis = Instance.new("UIStroke")
-    uis.Color = Color3.fromRGB(45, 45, 60)
-    uis.Thickness = 1
-    uis.Parent = frame
-
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 20)
+    lbl.Size = UDim2.new(1, -20, 0, 18)
     lbl.Position = UDim2.new(0, 10, 0, 4)
     lbl.BackgroundTransparency = 1
     lbl.Text = name .. ": " .. tostring(default) .. " " .. unit
     lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 12
+    lbl.TextSize = 11
     lbl.Font = Enum.Font.GothamSemibold
     lbl.TextXAlignment = Enum.TextXAlignment.Left
     lbl.Parent = frame
 
     local sliderBar = Instance.new("Frame")
-    sliderBar.Size = UDim2.new(1, -20, 0, 5)
-    sliderBar.Position = UDim2.new(0, 10, 0, 32)
-    sliderBar.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    sliderBar.Size = UDim2.new(1, -20, 0, 4)
+    sliderBar.Position = UDim2.new(0, 10, 0, 30)
+    sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
     sliderBar.BorderSizePixel = 0
     sliderBar.Parent = frame
 
-    local uicb = Instance.new("UICorner")
-    uicb.CornerRadius = UDim.new(1, 0)
-    uicb.Parent = sliderBar
-
     local fill = Instance.new("Frame")
     fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(0, 204, 136)
+    fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
     fill.BorderSizePixel = 0
     fill.Parent = sliderBar
-
-    local uicf = Instance.new("UICorner")
-    uicf.CornerRadius = UDim.new(1, 0)
-    uicf.Parent = fill
 
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 1, 8)
@@ -284,14 +288,10 @@ local function createSlider(name, min, max, default, unit, callback)
 
     local dragging = false
     btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -304,71 +304,109 @@ local function createSlider(name, min, max, default, unit, callback)
     end)
 end
 
-createCategory("Security & Byfron/Hyperion Safe")
-createToggle("Byfron & Hyperion Hook Bypass", "BypassEnabled")
-createToggle("Anti-Kick Protection", "AntiKick")
-createToggle("GodMode (Anti Damage / Kebal)", "GodMode")
+-- Membuat Tab Menu (MAIN, PLAYER, FARM, SETTINGS)
+local mainPage = createPage("MAIN")
+local playerPage = createPage("PLAYER")
+local farmPage = createPage("FARM")
+local settingsPage = createPage("SETTINGS")
 
-createCategory("Movement & Smart Fly Follow")
-createToggle("No Clip (Tembus Tembok)", "NoClip")
-createToggle("Fly Follow NPC", "FlyFollow", function(active)
-    if not active then
-        CurrentTargetNPC = nil
-        pcall(function()
-            local char = LocalPlayer.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hum then hum.PlatformStand = false end
-                if hrp then
-                    if hrp:FindFirstChild("PallFlyVelocity") then hrp.PallFlyVelocity:Destroy() end
-                    if hrp:FindFirstChild("PallFlyGyro") then hrp.PallFlyGyro:Destroy() end
-                end
-            end
-        end)
-    end
-end)
-createSlider("Jarak Aman Berhenti dari NPC", 5, 30, 14, "Studs", function(val)
-    getgenv().PallLoader.SafeDistance = val
+-- Isi Tab MAIN
+createCategoryHeader(mainPage, "SECURITY & BYPASS")
+createToggle(mainPage, "Byfron & Hyperion Bypass", "BypassEnabled")
+createToggle(mainPage, "Anti-Kick Protection", "AntiKick")
+createToggle(mainPage, "GodMode (Anti Damage)", "GodMode")
+
+-- Isi Tab PLAYER
+createCategoryHeader(playerPage, "MOVEMENT & STATS")
+createToggle(playerPage, "Custom WalkSpeed", "SpeedToggle")
+createSlider(playerPage, "WalkSpeed Value", 16, 120, 16, "", function(v) getgenv().PallLoader.WalkSpeedVal = v end)
+createToggle(playerPage, "Custom JumpPower", "JumpToggle")
+createSlider(playerPage, "JumpPower Value", 50, 250, 50, "", function(v) getgenv().PallLoader.JumpPowerVal = v end)
+createToggle(playerPage, "No Clip (Tembus Tembok)", "NoClip")
+createToggle(playerPage, "Auto Stats Upgrader", "AutoUpgrader")
+
+-- Isi Tab FARM
+createCategoryHeader(farmPage, "DUNGEON FARM")
+createToggle(farmPage, "Auto Dungeon Entry/Start", "AutoDungeon")
+createToggle(farmPage, "Auto Use Abilities (Skill)", "AutoAbilities")
+createToggle(farmPage, "Auto Replay Dungeon", "AutoReplay")
+createToggle(farmPage, "Auto Dodge Attacks", "AutoDodge")
+createSlider(farmPage, "Distance Above NPC", 5, 50, 25, "Studs", function(v) getgenv().PallLoader.DistanceAbove = v end)
+
+createCategoryHeader(farmPage, "FARM VISUALS")
+createToggle(farmPage, "Target Line Visualizer", "TargetLine", function(active)
+    if not active then VisualizerBeam.Transparency = 1 end
 end)
 
-createCategory("Unified Hitbox Expander & Long Range")
-createToggle("Hitbox & Long Range Expander", "HitboxExpander", function(active)
+createCategoryHeader(farmPage, "COMBAT & HITBOX")
+createToggle(farmPage, "Hitbox Expander", "HitboxExpander", function(active)
     if not active then
         pcall(function()
             for root, origSize in pairs(OriginalHitboxSizes) do
-                if root and root.Parent then
-                    root.Size = origSize
-                    root.Transparency = 1
-                    root.CanCollide = true
-                    root.Massless = false
-                end
+                if root and root.Parent then root.Size = origSize root.Transparency = 1 root.CanCollide = true end
             end
             OriginalHitboxSizes = {}
         end)
     end
 end)
-createSlider("Ukuran Hitbox & Jangkauan Hit", 10, 80, 45, "Studs", function(val)
-    getgenv().PallLoader.HitboxSize = val
-end)
+createSlider(farmPage, "Ukuran Hitbox", 10, 80, 45, "Studs", function(v) getgenv().PallLoader.HitboxSize = v end)
+createToggle(farmPage, "Auto Swing (Clicker Mode)", "MeleeAutoSwing")
+createToggle(farmPage, "NPC Freeze", "NPCFreeze")
+createToggle(farmPage, "Kill Aura", "KillAura")
 
-createCategory("Combat, NPC Freeze & Tap Auto Swing")
-createToggle("Auto Swing (Tap / Clicker Mode)", "MeleeAutoSwing")
-createSlider("Jeda Swing (Per Detik / Tap)", 1, 10, 1, "Detik", function(val)
-    getgenv().PallLoader.SwingInterval = val
-end)
-createToggle("NPC Freeze / Diam Total (Tidak Bisa Serang)", "NPCFreeze")
-createToggle("Anti-Ranged Hit (Stun/Pushback NPC Jauh)", "AntiRangedHit")
-createToggle("Kill Aura (Radius 150 Studs)", "KillAura")
+-- Isi Tab SETTINGS
+createCategoryHeader(settingsPage, "UTILITIES")
+createToggle(settingsPage, "Anti-AFK Protection", "AntiAFK")
 
-createCategory("Utilities")
-createToggle("Anti-AFK Protection", "AntiAFK")
+-- Tombol Navigasi Sidebar
+local function createTabButton(name, order)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -16, 0, 32)
+    btn.Position = UDim2.new(0, 8, 0, 55 + (order * 36))
+    btn.BackgroundColor3 = (order == 0) and Color3.fromRGB(30, 30, 42) or Color3.fromRGB(22, 22, 30)
+    btn.Text = "  " + name
+    btn.Text = "  " .. name
+    btn.TextColor3 = (order == 0) and Color3.fromRGB(0, 170, 255) or Color3.fromRGB(160, 160, 180)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamBold
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = Sidebar
 
-local isVisible = true
-MinimizeBtn.MouseButton1Click:Connect(function()
-    isVisible = not isVisible
-    Container.Visible = isVisible
-    MainFrame.Size = isVisible and UDim2.new(0, 420, 0, 480) or UDim2.new(0, 420, 0, 36)
+    local uic = Instance.new("UICorner")
+    uic.CornerRadius = UDim.new(0, 4)
+    uic.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        for _, p in pairs(Pages) do p.Visible = false end
+        for _, b in pairs(Sidebar:GetChildren()) do
+            if b:IsA("TextButton") then
+                b.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+                b.TextColor3 = Color3.fromRGB(160, 160, 180)
+            end
+        end
+        Pages[name].Visible = true
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+        btn.TextColor3 = Color3.fromRGB(0, 170, 255)
+    end)
+end
+
+createTabButton("MAIN", 0)
+createTabButton("PLAYER", 1)
+createTabButton("FARM", 2)
+createTabButton("SETTINGS", 3)
+
+Pages["MAIN"].Visible = true
+
+-- Core Loops (Hanya berjalan jika toggle diaktifkan pengguna)
+RunService.Stepped:Connect(function()
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char and getgenv().PallLoader.NoClip then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
+            end
+        end
+    end)
 end)
 
 local function getNPCsOnly()
@@ -383,9 +421,7 @@ local function getNPCsOnly()
                     for _, p in ipairs(Players:GetPlayers()) do
                         if p.Character == obj then isPlayer = true break end
                     end
-                    if not isPlayer then
-                        table.insert(list, {Model = obj, Humanoid = hum, RootPart = root})
-                    end
+                    if not isPlayer then table.insert(list, {Model = obj, Humanoid = hum, RootPart = root}) end
                 end
             end
         end
@@ -393,41 +429,6 @@ local function getNPCsOnly()
     return list
 end
 
-local function getAllTargets()
-    local list = {}
-    pcall(function()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character then
-                local hum = p.Character:FindFirstChildOfClass("Humanoid")
-                local root = p.Character:FindFirstChild("HumanoidRootPart")
-                if hum and root and hum.Health > 0 then
-                    table.insert(list, {Model = p.Character, Humanoid = hum, RootPart = root})
-                end
-            end
-        end
-        for _, npcData in ipairs(getNPCsOnly()) do
-            table.insert(list, npcData)
-        end
-    end)
-    return list
-end
-
--- NoClip Loop
-RunService.Stepped:Connect(function()
-    pcall(function()
-        local char = LocalPlayer.Character
-        if not char then return end
-        if getgenv().PallLoader.NoClip then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end)
-end)
-
--- GodMode & NPC Freeze Loop
 RunService.RenderStepped:Connect(function()
     pcall(function()
         local char = LocalPlayer.Character
@@ -440,94 +441,40 @@ RunService.RenderStepped:Connect(function()
             hum.MaxHealth = math.huge
             hum.Health = math.huge
         end
+        if getgenv().PallLoader.SpeedToggle then hum.WalkSpeed = getgenv().PallLoader.WalkSpeedVal end
+        if getgenv().PallLoader.JumpToggle then hum.JumpPower = getgenv().PallLoader.JumpPowerVal end
 
-        local bv = hrp:FindFirstChild("PallFlyVelocity")
-        local bg = hrp:FindFirstChild("PallFlyGyro")
-
-        if getgenv().PallLoader.FlyFollow then
-            hum.PlatformStand = true 
-            if not bv then
-                bv = Instance.new("BodyVelocity")
-                bv.Name = "PallFlyVelocity"
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = Vector3.new(0, 0, 0)
-                bv.Parent = hrp
+        local npcs = getNPCsOnly()
+        if #npcs > 0 then
+            local closest, minDist = nil, math.huge
+            for _, data in ipairs(npcs) do
+                local dist = (hrp.Position - data.RootPart.Position).Magnitude
+                if dist < minDist then minDist = dist closest = data end
             end
-            if not bg then
-                bg = Instance.new("BodyGyro")
-                bg.Name = "PallFlyGyro"
-                bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                bg.P = 4000
-                bg.Parent = hrp
-            end
-
-            local npcs = getNPCsOnly()
-            if #npcs > 0 then
-                local targetValid = false
-                if CurrentTargetNPC and CurrentTargetNPC.Model and CurrentTargetNPC.Humanoid and CurrentTargetNPC.Humanoid.Health > 0 then
-                    targetValid = true
-                end
-
-                TargetSwitchTimer = TargetSwitchTimer + 1
-                if not targetValid or TargetSwitchTimer > 240 then
-                    TargetSwitchTimer = 0
-                    local closest = nil
-                    local minDist = math.huge
-                    for _, data in ipairs(npcs) do
-                        local dist = (hrp.Position - data.RootPart.Position).Magnitude
-                        if dist < minDist then minDist = dist closest = data end
-                    end
-                    CurrentTargetNPC = closest
-                end
-
-                if CurrentTargetNPC and CurrentTargetNPC.RootPart then
-                    local safeDist = getgenv().PallLoader.SafeDistance
-                    local targetPos = CurrentTargetNPC.RootPart.Position + Vector3.new(0, 6, 0)
-                    local direction = (targetPos - hrp.Position)
-                    local currentDist = direction.Magnitude
-
-                    if currentDist < safeDist then
-                        bv.Velocity = -direction.Unit * 14
-                    elseif currentDist > (safeDist + 4) then
-                        bv.Velocity = direction.Unit * 24
-                    else
-                        bv.Velocity = Vector3.new(0, 0, 0)
-                    end
-                    bg.CFrame = CFrame.new(hrp.Position, CurrentTargetNPC.RootPart.Position)
-                end
-            else
-                CurrentTargetNPC = nil
-                bv.Velocity = Vector3.new(0, 0, 0)
-            end
+            CurrentTargetNPC = closest
         else
-            if hum.PlatformStand then hum.PlatformStand = false end
-            if bv then bv:Destroy() end
-            if bg then bg:Destroy() end
+            CurrentTargetNPC = nil
+        end
+
+        if getgenv().PallLoader.TargetLine and CurrentTargetNPC and CurrentTargetNPC.RootPart then
+            VisualizerBeam.Transparency = 0
+            Attachment0.WorldPosition = hrp.Position
+            Attachment1.WorldPosition = CurrentTargetNPC.RootPart.Position
+        else
+            VisualizerBeam.Transparency = 1
         end
 
         if getgenv().PallLoader.NPCFreeze then
-            for _, data in ipairs(getNPCsOnly()) do
+            for _, data in ipairs(npcs) do
                 pcall(function()
-                    local npcHum = data.Humanoid
-                    local npcHrp = data.RootPart
-                    if npcHum and npcHrp then
-                        npcHum.WalkSpeed = 0
-                        npcHum.JumpPower = 0
-                        npcHum:MoveTo(npcHrp.Position)
-                        
-                        if npcHrp:FindFirstChild("BodyVelocity") then
-                            npcHrp.BodyVelocity:Destroy()
-                        end
-                        npcHrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                        npcHrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-                    end
+                    data.Humanoid.WalkSpeed = 0
+                    data.RootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                 end)
             end
         end
     end)
 end)
 
--- Unified Hitbox Expander
 RunService.RenderStepped:Connect(function()
     if getgenv().PallLoader.HitboxExpander then
         pcall(function()
@@ -535,84 +482,42 @@ RunService.RenderStepped:Connect(function()
             for _, data in ipairs(getNPCsOnly()) do
                 local root = data.RootPart
                 if root then
-                    if not OriginalHitboxSizes[root] then
-                        OriginalHitboxSizes[root] = root.Size
-                    end
+                    if not OriginalHitboxSizes[root] then OriginalHitboxSizes[root] = root.Size end
                     root.Size = Vector3.new(size, size, size)
-                    root.Transparency = 0.35
-                    root.Color = Color3.fromRGB(0, 255, 150)
-                    root.Material = Enum.Material.Neon
-                    root.CanCollide = false 
-                    root.Massless = true
+                    root.Transparency = 0.4
+                    root.Color = Color3.fromRGB(0, 150, 255)
+                    root.CanCollide = false
                 end
             end
         end)
     end
 end)
 
--- =====================================================================
--- AUTO SWING DENGAN INTERVAL WAKTU TAP PER DETIK (AUTO CLICKER STYLE)
--- =====================================================================
 task.spawn(function()
     while true do
-        local interval = getgenv().PallLoader.SwingInterval or 1
-        task.wait(interval)
-        
-        if getgenv().PallLoader.MeleeAutoSwing or getgenv().PallLoader.KillAura then
-            pcall(function()
-                local char = LocalPlayer.Character
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    local combatRange = getgenv().PallLoader.HitboxSize + 30
-                    
-                    local weaponPart = nil
-                    for _, child in ipairs(char:GetDescendants()) do
-                        if child:IsA("BasePart") and (child.Name:lower():find("weapon") or child.Name:lower():find("sword") or child.Name:lower():find("blade") or child.Name:lower():find("staff") or child.Name:lower():find("handle")) then
-                            weaponPart = child
-                            break
-                        end
-                    end
-                    
-                    for _, data in ipairs(getAllTargets()) do
-                        local dist = (hrp.Position - data.RootPart.Position).Magnitude
-                        
-                        if dist <= combatRange then
-                            if getgenv().PallLoader.MeleeAutoSwing then
-                                if weaponPart and data.RootPart then
-                                    pcall(function()
-                                        firetouchinterest(weaponPart, data.RootPart, 0)
-                                        firetouchinterest(weaponPart, data.RootPart, 1)
-                                    end)
-                                end
-                                
-                                for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-                                    if remote:IsA("RemoteEvent") then
-                                        local rName = remote.Name:lower()
-                                        if (rName:find("swing") or rName:find("hit") or rName:find("attack") or rName:find("damage") or rName:find("combat") or rName:find("slash"))
-                                           and not rName:find("room") 
-                                           and not rName:find("create") 
-                                           and not rName:find("party") 
-                                           and not rName:find("match") 
-                                           and not rName:find("lobby") 
-                                           and not rName:find("teleport") then
-                                            pcall(function()
-                                                remote:FireServer(data.Model)
-                                                remote:FireServer(data.RootPart)
-                                            end)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                        
-                        if getgenv().PallLoader.KillAura and drange <= 120 then
-                            data.Humanoid.Health = 0
-                        end
+        task.wait(1)
+        pcall(function()
+            if getgenv().PallLoader.AutoAbilities then
+                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+                    if r:IsA("RemoteEvent") and (r.Name:lower():find("ability") or r.Name:lower():find("skill")) then
+                        r:FireServer(1)
                     end
                 end
-            end)
-        end
+            end
+            if getgenv().PallLoader.AutoUpgrader then
+                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+                    if r:IsA("RemoteEvent") and (r.Name:lower():find("upgrade") or r.Name:lower():find("stat")) then
+                        r:FireServer("Spell Power")
+                    end
+                end
+            end
+            if getgenv().PallLoader.AutoReplay then
+                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
+                    if r:IsA("RemoteEvent") and r.Name:lower():find("replay") then r:FireServer() end
+                end
+            end
+        end)
     end
 end)
 
-print("[Pall Loader v5.0] Berhasil dimuat dengan Bypass Byfron & Hyperion!")
+print("[Pall Loader v5.0] Berhasil dimuat (Semua fitur default: OFF)")
