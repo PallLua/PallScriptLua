@@ -1,5 +1,5 @@
 -- ============================================================
--- DUNGEON QUEST AUTO FARM — v9
+-- DUNGEON QUEST AUTO FARM — v10
 -- ============================================================
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
@@ -9,7 +9,7 @@ local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
 if okCG and CG then local o=CG:FindFirstChild("DQAF")if o then o:Destroy()end end
 local PG=LP:WaitForChild("PlayerGui")local oP=PG:FindFirstChild("DQAF")if oP then oP:Destroy()end
 
-local cfg={AutoDungeon=false,WalkFlow=false,AutoSwing=false,AutoSkill=false,HoverFarm=false,AutoDodge=false,FreezeNPC=false,NoClip=false,ESPOverlay=false,HitboxVisual=false,Hitbox=false,AutoHealSmall=false,HealAmount=50,HealInterval=8,SwingDelay=0.08,SwingReach=6,WalkDelay=0.2,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,DodgeRange=10,DodgeSpeed=12,ESPRange=800,HitboxSize=2.5,TargetPriority=1}
+local cfg={AutoDungeon=false,WalkFlow=false,AutoSwing=false,AutoSkill=false,HoverFarm=false,AutoDodge=false,FreezeNPC=false,NoClip=false,ESPOverlay=false,HitboxVisual=false,Hitbox=false,AutoHealSmall=false,HealAmount=500,HealInterval=5,SwingDelay=0.08,SwingReach=6,WalkDelay=0.2,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,DodgeRange=10,DodgeSpeed=12,ESPRange=800,HitboxSize=2.5,TargetPriority=1}
 
 local CONFIG_FILE="dqaf_config.txt"
 local hasFileIO=(writefile and readfile and isfile) and true or false
@@ -27,7 +27,6 @@ local char,hrp,hum
 local function rc()char=LP.Character or LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
 rc()LP.CharacterAdded:Connect(function()task.wait(1)rc()end)
 local cur=nil local dodgeLock=0
--- ==================== HELPERS ====================
 local function inD()local v=WS:FindFirstChild("dungeonStarted")return v and v:IsA("BoolValue")and v.Value end
 local function wv()local v=WS:FindFirstChild("currentWave")return v and v.Value or 0 end
 local function isE(m)if not m or not m:IsA("Model")then return false end if m==char then return false end local h=m:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then return false end if P:GetPlayerFromCharacter(m)then return false end if not m:FindFirstChild("HumanoidRootPart")then return false end return true end
@@ -229,12 +228,18 @@ task.spawn(function()
     end
 end)
 
--- ==================== HOVER FARM (SMOOTH FLY) ====================
+-- ==================== HOVER FARM (DIP SWING) ====================
 local hoverState={active=false,velocity=nil,bobPhase=0}
+local dipState={phase="hover",phaseStart=0}
 local HOVER_SPEED=2.5
 local HOVER_LERP=0.15
 local BOB_HEIGHT=0.4
 local BOB_SPEED=2.0
+local DIP_DOWN_TIME=0.18
+local DIP_SWING_TIME=0.12
+local DIP_UP_TIME=0.18
+local DIP_WAIT_TIME=0.5
+local DIP_HEIGHT=4
 
 local function ensureHoverPhysics()
     if not hrp then return end
@@ -253,6 +258,22 @@ local function cleanupHoverPhysics()
         hoverState.velocity=nil
     end
 end
+local function doDipSwing()
+    if not char then return end
+    for _,tool in ipairs(char:GetChildren())do
+        if tool:IsA("Tool")then pcall(function()tool:Activate()end)end
+    end
+    pcall(function()
+        local cam=WS.CurrentCamera
+        VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,true,game,1)
+        task.wait(0.01)
+        VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,false,game,1)
+    end)
+end
+local function setDipPhase(p)
+    dipState.phase=p
+    dipState.phaseStart=tick()
+end
 local function hoverLoop()
     while cfg.HoverFarm do
         if char and hum and hum.Health>0 and hrp then
@@ -261,35 +282,61 @@ local function hoverLoop()
                 local hE=t:FindFirstChild("HumanoidRootPart")
                 if hE then
                     ensureHoverPhysics()
-                    local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight,hE.Position.Z)
+                    local npcPos=hE.Position
+                    local pt=tick()-dipState.phaseStart
+                    local targetY
+                    if cfg.AutoSwing then
+                        if dipState.phase=="hover" then
+                            targetY=npcPos.Y+cfg.HoverHeight
+                            if pt>0.3 then setDipPhase("dipDown")end
+                        elseif dipState.phase=="dipDown" then
+                            targetY=npcPos.Y+DIP_HEIGHT
+                            if pt>DIP_DOWN_TIME then setDipPhase("swing") doDipSwing()end
+                        elseif dipState.phase=="swing" then
+                            targetY=npcPos.Y+DIP_HEIGHT
+                            if pt>DIP_SWING_TIME then setDipPhase("riseUp")end
+                        elseif dipState.phase=="riseUp" then
+                            targetY=npcPos.Y+cfg.HoverHeight
+                            if pt>DIP_UP_TIME then setDipPhase("wait")end
+                        elseif dipState.phase=="wait" then
+                            targetY=npcPos.Y+cfg.HoverHeight
+                            if pt>DIP_WAIT_TIME then setDipPhase("hover")end
+                        end
+                    else
+                        targetY=npcPos.Y+cfg.HoverHeight
+                        dipState.phase="hover"
+                    end
                     hoverState.bobPhase=hoverState.bobPhase+(BOB_SPEED*0.05)
                     local bob=math.sin(hoverState.bobPhase)*BOB_HEIGHT
-                    targetPos=targetPos+Vector3.new(0,bob,0)
+                    targetY=targetY+bob
+                    local targetPos=Vector3.new(npcPos.X,targetY,npcPos.Z)
                     local current=hrp.Position
                     local diff=targetPos-current
                     local lateralDist=Vector3.new(diff.X,0,diff.Z).Magnitude
                     if hoverState.velocity then
                         local moveDir=Vector3.new(diff.X,0,diff.Z)
                         if moveDir.Magnitude>0.3 then moveDir=moveDir.Unit else moveDir=Vector3.new(0,0,0)end
-                        local yVel=diff.Y*HOVER_LERP
-                        yVel=math.clamp(yVel,-HOVER_SPEED,HOVER_SPEED)
+                        local yVel
+                        if dipState.phase=="dipDown" or dipState.phase=="riseUp" then
+                            yVel=math.clamp(diff.Y,-20,20)
+                        else
+                            yVel=math.clamp(diff.Y*HOVER_LERP,-HOVER_SPEED,HOVER_SPEED)
+                        end
                         local lateralSpeed=math.min(lateralDist,HOVER_SPEED)
                         hoverState.velocity.Velocity=Vector3.new(moveDir.X*lateralSpeed,yVel,moveDir.Z*lateralSpeed)
                     end
-                    local lookAt=Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z)
-                    pcall(function()hrp.CFrame=CFrame.new(hrp.Position,lookAt)end)
+                    pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(npcPos.X,hrp.Position.Y,npcPos.Z))end)
                     pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)
                     local h=t:FindFirstChildOfClass("Humanoid")
-                    if not h or h.Health<=0 then cur=nil end
+                    if not h or h.Health<=0 then cur=nil setDipPhase("hover")end
                 end
             else
                 if hoverState.velocity then hoverState.velocity.Velocity=Vector3.new(0,0,0)end
             end
         end
-        task.wait(0.05)
+        task.wait(0.04)
     end
     cleanupHoverPhysics()
-    hoverState.active=false
     if hum then pcall(function()hum.PlatformStand=false end)end
 end
 
@@ -303,9 +350,11 @@ local function autoHealSmallLoop()
         task.wait(cfg.HealInterval)
     end
 end
-local function swingLoop()
+    local function swingLoop()
     while cfg.AutoSwing do
-        if char and hum and hum.Health>0 then
+        if cfg.HoverFarm then
+            task.wait(0.5)
+        elseif char and hum and hum.Health>0 then
             autoEquip()
             local t=getT()
             if t then
@@ -318,26 +367,22 @@ local function swingLoop()
                     local reach=cfg.SwingReach
                     if dist>0.1 then flat=flat.Unit else flat=Vector3.new(0,0,1)end
                     pcall(function()hrp.CFrame=CFrame.new(myPos,Vector3.new(npcPos.X,myPos.Y,npcPos.Z))end)
-                    if not cfg.HoverFarm then
-                        if dist>reach then
-                            local walkTarget=npcPos-flat*(reach-0.5)
-                            walkTarget=Vector3.new(walkTarget.X,myPos.Y,walkTarget.Z)
-                            pcall(function()hum:MoveTo(walkTarget)end)
-                        else
-                            pcall(function()hum:MoveTo(myPos)end)
-                        end
+                    if dist>reach then
+                        local walkTarget=npcPos-flat*(reach-0.5)
+                        walkTarget=Vector3.new(walkTarget.X,myPos.Y,walkTarget.Z)
+                        pcall(function()hum:MoveTo(walkTarget)end)
+                    else
+                        pcall(function()hum:MoveTo(myPos)end)
                     end
-                    if dist<=reach or cfg.HoverFarm then
+                    if dist<=reach then
                         for _,tool in ipairs(char:GetChildren())do
                             if tool:IsA("Tool")then pcall(function()tool:Activate()end)end
                         end
                         pcall(function()
                             local cam=WS.CurrentCamera
-                            local cx=cam.ViewportSize.X/2
-                            local cy=cam.ViewportSize.Y/2
-                            VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)
+                            VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,true,game,1)
                             task.wait(0.01)
-                            VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)
+                            VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,false,game,1)
                         end)
                     end
                 end
@@ -366,7 +411,7 @@ local function autoSkillLoop()
             task.wait(cfg.SkillEDelay)
         else task.wait(0.5)end
     end
-end
+    end
 local function walkLoop()
     while cfg.WalkFlow do
         if hrp and hum and hum.Health>0 then
@@ -569,10 +614,10 @@ mkT(pageFarm,"Auto Dungeon","AutoDungeon",dunLoop)
 mkT(pageFarm,"Walk Flow","WalkFlow",walkLoop)
 mkT(pageFarm,"Auto Swing","AutoSwing",swingLoop)
 mkT(pageFarm,"Auto Skill (Q & E)","AutoSkill",autoSkillLoop)
-mkT(pageFarm,"Hover Farm (smooth)","HoverFarm",hoverLoop)
+mkT(pageFarm,"Hover Farm (Dip)","HoverFarm",hoverLoop)
 mkT(pageFarm,"Auto Dodge","AutoDodge",dodgeLoop)
 mkT(pageFarm,"Freeze NPC","FreezeNPC",freezeLoop)
-mkT(pageFarm,"Auto Heal (+50/8s)","AutoHealSmall",autoHealSmallLoop)
+mkT(pageFarm,"Auto Heal (+500/5s)","AutoHealSmall",autoHealSmallLoop)
 mkT(pageFarm,"No Clip","NoClip",noclipLoop)
 mkT(pageVisual,"ESP Overlay","ESPOverlay",nil)
 mkT(pageVisual,"Hitbox Visual","HitboxVisual",nil)
@@ -591,8 +636,8 @@ mkS(pageSettings,"skill_e_delay","SkillEDelay",0.2,10,0.1,1.5)
 head(pageSettings,"HOVER")
 mkS(pageSettings,"hover_height","HoverHeight",5,30,1,13)
 head(pageSettings,"HEAL")
-mkS(pageSettings,"heal_amount","HealAmount",10,200,10,50)
-mkS(pageSettings,"heal_interval","HealInterval",2,30,1,8)
+mkS(pageSettings,"heal_amount","HealAmount",50,1000,50,500)
+mkS(pageSettings,"heal_interval","HealInterval",2,30,1,5)
 head(pageSettings,"COMBAT")
 mkS(pageSettings,"esp_range","ESPRange",50,2000,50,800)
 mkS(pageSettings,"hitbox_size","HitboxSize",1,10,0.5,2.5)
@@ -669,4 +714,4 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
-print("[DQAF] v9 loaded. Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v10 loaded. Config:",hasFileIO and "auto-save" or "no-save")
