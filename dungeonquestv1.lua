@@ -1,5 +1,5 @@
 -- =====================================================================
--- PALL LOADER v9.2 - UNIVERSAL ENEMY DETECTOR & BYPASS
+-- PALL LOADER v9.5 - FLY FOLLOW & SMOOTH HOVER TO TARGET
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -8,6 +8,8 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -15,6 +17,9 @@ local Camera = Workspace.CurrentCamera
 -- Konfigurasi Toggle & Fitur
 getgenv().PallLoader = {
     BypassEnabled = true,
+    FlyFollow = false,      -- Fitur baru: Terbang mulus di atas kepala NPC
+    RemoteSniper = false,
+    AutoAttack = false,
     KillAura = false,
     InstantKill = false,
     HitboxExpander = false,
@@ -62,8 +67,8 @@ end
 -- =====================================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 520, 0, 410)
-MainFrame.Position = UDim2.new(0.5, -260, 0.5, -205)
+MainFrame.Size = UDim2.new(0, 520, 0, 510)
+MainFrame.Position = UDim2.new(0.5, -260, 0.5, -255)
 MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -94,7 +99,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(0, 350, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "⚡ Pall Loader <font color='#00DC96'>v9.2 [Universal]</font>"
+Title.Text = "⚡ Pall Loader <font color='#00DC96'>v9.5 [Fly Follow]</font>"
 Title.RichText = true
 Title.TextColor3 = Color3.fromRGB(240, 240, 245)
 Title.TextSize = 14
@@ -121,7 +126,7 @@ local Container = Instance.new("ScrollingFrame")
 Container.Size = UDim2.new(1, -24, 1, -60)
 Container.Position = UDim2.new(0, 12, 0, 50)
 Container.BackgroundTransparency = 1
-Container.CanvasSize = UDim2.new(0, 0, 0, 580)
+Container.CanvasSize = UDim2.new(0, 0, 0, 780)
 Container.ScrollBarThickness = 3
 Container.ScrollBarImageColor3 = Color3.fromRGB(0, 220, 150)
 Container.Parent = MainFrame
@@ -287,9 +292,14 @@ end
 createCategory("Security & Protection")
 createToggle("Anti-Cheat / Hook Bypass", "BypassEnabled")
 
-createCategory("Combat Systems")
-createToggle("Instant Kill", "InstantKill")
+createCategory("Movement & Fly Follow Systems")
+createToggle("Fly Follow (Terbang Mulus Di Atas Bot)", "FlyFollow")
+
+createCategory("Combat & True Server Systems")
+createToggle("Remote Sniper (True Server Hit)", "RemoteSniper")
+createToggle("Auto Attack / Swing (Auto Click)", "AutoAttack")
 createToggle("Kill Aura (Radius 150 Studs)", "KillAura")
+createToggle("Instant Kill (Client Force)", "InstantKill")
 
 createCategory("Hitbox Expander Customizer")
 createToggle("Hitbox Expander", "HitboxExpander")
@@ -306,11 +316,11 @@ local isVisible = true
 MinimizeBtn.MouseButton1Click:Connect(function()
     isVisible = not isVisible
     Container.Visible = isVisible
-    MainFrame.Size = isVisible and UDim2.new(0, 520, 0, 410) or UDim2.new(0, 520, 0, 42)
+    MainFrame.Size = isVisible and UDim2.new(0, 520, 0, 510) or UDim2.new(0, 520, 0, 42)
 end)
 
 -- =====================================================================
--- 3. UNIVERSAL ENEMY DETECTOR (MENDETEKSI SEMUA MODEL DENGAN HUMANOID)
+-- UNIVERSAL ENEMY DETECTOR
 -- =====================================================================
 local function getEnemies()
     local list = {}
@@ -318,7 +328,6 @@ local function getEnemies()
         if obj:IsA("Model") and obj ~= LocalPlayer.Character then
             local hum = obj:FindFirstChildOfClass("Humanoid")
             local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
-            -- Pastikan objek memiliki Humanoid, RootPart, hidup, dan bukan pemain lain
             if hum and root and hum.Health > 0 then
                 local isPlayer = false
                 for _, p in ipairs(Players:GetPlayers()) do
@@ -336,7 +345,106 @@ local function getEnemies()
     return list
 end
 
--- Eksekusi Instant Kill & Kill Aura 150 Studs
+-- Deteksi otomatis fungsi serangan server
+local function findDamageRemote()
+    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+        if v:IsA("RemoteEvent") then
+            local name = string.lower(v.Name)
+            if name:find("hit") or name:find("damage") or name:find("attack") or name:find("combat") or name:find("swing") or name:find("skill") then
+                return v
+            end
+        end
+    end
+    return nil
+end
+
+-- =====================================================================
+-- FITUR FLY FOLLOW / SMOOTH HOVER DI ATAS KEPALA NPC
+-- =====================================================================
+RunService.RenderStepped:Connect(function()
+    if getgenv().PallLoader.FlyFollow and LocalPlayer.Character then
+        pcall(function()
+            local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and hum then
+                local enemies = getEnemies()
+                if #enemies > 0 then
+                    -- Cari musuh terdekat
+                    local closest = nil
+                    local minDist = math.huge
+                    for _, data in ipairs(enemies) do
+                        local dist = (hrp.Position - data.RootPart.Position).Magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            closest = data
+                        end
+                    end
+                    
+                    if closest and closest.RootPart then
+                        -- Tentukan posisi melayang tepat 5 studs di atas kepala bot
+                        local targetPos = closest.RootPart.Position + Vector3.new(0, 6, 0)
+                        
+                        -- Nonaktifkan gravitasi sementara agar tidak jatuh (Fly mode)
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        
+                        -- Gerakkan secara mulus (Lerp) menuju posisi di atas kepala bot
+                        hrp.CFrame = hrp.CFrame:Lerp(CFrame.new(targetPos, closest.RootPart.Position), 0.15)
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- Remote Sniper
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if getgenv().PallLoader.RemoteSniper then
+            pcall(function()
+                local remote = findDamageRemote()
+                if remote then
+                    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        for _, data in ipairs(getEnemies()) do
+                            local dist = (hrp.Position - data.RootPart.Position).Magnitude
+                            if dist <= 100 then
+                                pcall(function() remote:FireServer(data.Model) end)
+                                pcall(function() remote:FireServer(data.Humanoid) end)
+                                pcall(function() remote:FireServer(data.RootPart) end)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Sistem Auto Attack / Swing
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if getgenv().PallLoader.AutoAttack then
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    for _, data in ipairs(getEnemies()) do
+                        local dist = (hrp.Position - data.RootPart.Position).Magnitude
+                        if dist <= 25 then
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                            task.wait(0.02)
+                            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                            break
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Instant Kill & Kill Aura
 RunService.Heartbeat:Connect(function()
     if getgenv().PallLoader.InstantKill or getgenv().PallLoader.KillAura then
         pcall(function()
@@ -356,7 +464,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Eksekusi Hitbox Expander (Universal)
+-- Hitbox Expander
 RunService.RenderStepped:Connect(function()
     if getgenv().PallLoader.HitboxExpander then
         pcall(function()
@@ -396,4 +504,4 @@ LocalPlayer.Idled:Connect(function()
     end
 end)
 
-print("Pall Loader v9.2 Universal Mode Loaded Successfully!")
+print("Pall Loader v9.5 with Fly Follow Loaded Successfully!")
