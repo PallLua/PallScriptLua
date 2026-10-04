@@ -1,525 +1,621 @@
--- =====================================================================
--- PALL LOADER v5.0 (Fixed UI Pages & All Features Set to False)
--- =====================================================================
+═══════════════════════════════════════════════════════
+DUNGEON QUEST AUTO FARM - FULL SCRIPT
+Copy SEMUA mulai dari baris pertama sampai akhir
+═══════════════════════════════════════════════════════
+
+-- ============================================================
+-- DUNGEON QUEST - AUTO FARM (WINDOW OPEN BY DEFAULT)
+-- ============================================================
+if game.CoreGui:FindFirstChild("DQAF") then game.CoreGui.DQAF:Destroy() end
+local LP0 = game:GetService("Players").LocalPlayer
+if LP0.PlayerGui:FindFirstChild("DQAF") then LP0.PlayerGui.DQAF:Destroy() end
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
+local WS = game:GetService("Workspace")
+local VIM = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local LP = Players.LocalPlayer
+local remotes = RS:WaitForChild("remotes", 10)
 
--- =====================================================================
--- BYFRON & HYPERION HOOK BYPASS CORE
--- =====================================================================
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldNamecall = mt.__namecall
-    
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = string.lower(getnamecallmethod())
-        if method == "kick" or method == "identifier" or method == "sendnotification" or method == "teleport" then
-            if self == LocalPlayer then return nil end
-        end
-        return oldNamecall(self, ...)
-    end)
-    setreadonly(mt, true)
-end)
-
--- Semua Fitur diatur ke false secara default
-getgenv().PallLoader = {
-    BypassEnabled = false,
-    AntiKick = false,
-    GodMode = false,
-    AntiAFK = false,
-    NoClip = false,         
-    FlyFollow = false,      
-    SafeDistance = 14,
-    DistanceAbove = 25,     
-    HitboxExpander = false,  
-    HitboxSize = 45,        
-    MeleeAutoSwing = false, 
-    SwingInterval = 1,      
-    KillAura = false,
-    AntiRangedHit = false,   
-    NPCFreeze = false,       
-    TargetLine = false,       
-    AutoDungeon = false,
-    AutoAbilities = false,
-    AutoReplay = false,
-    AutoDodge = false,
-    SpeedToggle = false,
-    WalkSpeedVal = 16,
-    JumpToggle = false,
-    JumpPowerVal = 50,
-    AutoUpgrader = false
+local Config = {
+    WalkFlow       = false,
+    ESPLines       = false,
+    AutoTap        = false,
+    AutoCollect    = false,
+    AutoDungeon    = false,
+    WalkDelay      = 0.3,
+    TapDelay       = 0.1,
+    CollectRange   = 250,
+    ESPColor       = Color3.fromRGB(255, 60, 60),
+    ESPThickness   = 1.5,
+    ESPRange       = 500,
 }
 
-local OriginalHitboxSizes = {}
-local CurrentTargetNPC = nil
+local currentTarget = nil
+local TARGET_DROP_DISTANCE = 200
 
--- Target Line Visualizer Beam
-local VisualizerBeam = Instance.new("Part")
-VisualizerBeam.Name = "PallTargetLine"
-VisualizerBeam.Size = Vector3.new(0.1, 0.1, 0.1)
-VisualizerBeam.Anchored = true
-VisualizerBeam.CanCollide = false
-VisualizerBeam.Transparency = 1
-local Attachment0 = Instance.new("Attachment", VisualizerBeam)
-local Attachment1 = Instance.new("Attachment", VisualizerBeam)
-local Beam = Instance.new("Beam")
-Beam.Attachment0 = Attachment0
-Beam.Attachment1 = Attachment1
-Beam.Color = ColorSequence.new(Color3.fromRGB(0, 150, 255))
-Beam.Width0 = 0.15
-Beam.Width1 = 0.15
-Beam.FaceCamera = true
-Beam.Parent = VisualizerBeam
-VisualizerBeam.Parent = Workspace
+local char, hrp, hum
+local function refreshChar()
+    char = LP.Character or LP.CharacterAdded:Wait()
+    hrp = char:WaitForChild("HumanoidRootPart", 5)
+    hum = char:WaitForChild("Humanoid", 5)
+end
+refreshChar()
+LP.CharacterAdded:Connect(function() task.wait(1) refreshChar() end)
 
--- Hapus UI lama agar tidak menumpuk
-pcall(function()
-    for _, v in ipairs(PlayerGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
-    for _, v in ipairs(CoreGui:GetChildren()) do if v.Name:find("MaxHubStyle") then v:Destroy() end end
-end)
-
--- ScreenGui Utama
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MaxHubStyleUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then ScreenGui.Parent = PlayerGui end
-
--- MainFrame
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 600, 0, 380)
-MainFrame.Position = UDim2.new(0.5, -300, 0.5, -190)
-MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
-
-local UICornerMain = Instance.new("UICorner")
-UICornerMain.CornerRadius = UDim.new(0, 6)
-UICornerMain.Parent = MainFrame
-
-local UIStrokeMain = Instance.new("UIStroke")
-UIStrokeMain.Color = Color3.fromRGB(38, 38, 50)
-UIStrokeMain.Thickness = 1
-UIStrokeMain.Parent = MainFrame
-
--- Sidebar Kiri
-local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 140, 1, 0)
-Sidebar.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-Sidebar.BorderSizePixel = 0
-Sidebar.Parent = MainFrame
-
-local UICornerSide = Instance.new("UICorner")
-UICornerSide.CornerRadius = UDim.new(0, 6)
-UICornerSide.Parent = Sidebar
-
-local LogoTitle = Instance.new("TextLabel")
-LogoTitle.Size = UDim2.new(1, 0, 0, 45)
-LogoTitle.Position = UDim2.new(0, 12, 0, 0)
-LogoTitle.BackgroundTransparency = 1
-LogoTitle.Text = "⚡ MaxHub"
-LogoTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
-LogoTitle.TextSize = 15
-LogoTitle.Font = Enum.Font.GothamBold
-LogoTitle.TextXAlignment = Enum.TextXAlignment.Left
-LogoTitle.Parent = Sidebar
-
-local SidebarList = Instance.new("UIListLayout")
-SidebarList.SortOrder = Enum.SortOrder.LayoutOrder
-SidebarList.Padding = UDim.new(0, 2)
-SidebarList.Parent = Sidebar
-
--- Kontainer Halaman Kanan
-local ContentArea = Instance.new("Frame")
-ContentArea.Size = UDim2.new(1, -140, 1, 0)
-ContentArea.Position = UDim2.new(0, 140, 0, 0)
-ContentArea.BackgroundTransparency = 1
-ContentArea.Parent = MainFrame
-
-local Pages = {}
-
-local function createPage(name)
-    local page = Instance.new("ScrollingFrame")
-    page.Name = name .. "Page"
-    page.Size = UDim2.new(1, -16, 1, -16)
-    page.Position = UDim2.new(0, 8, 0, 8)
-    page.BackgroundTransparency = 1
-    page.CanvasSize = UDim2.new(0, 0, 0, 900)
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = Color3.fromRGB(0, 180, 255)
-    page.Visible = false
-    page.Parent = ContentArea
-
-    local layout = Instance.new("UIListLayout")
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 6)
-    layout.Parent = page
-
-    Pages[name] = page
-    return page
+local function isInDungeon()
+    local v = WS:FindFirstChild("dungeonStarted")
+    return v and v:IsA("BoolValue") and v.Value
 end
 
-local function createCategoryHeader(page, text)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, 0, 0, 24)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text
-    lbl.TextColor3 = Color3.fromRGB(0, 160, 255)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = page
+local function getWave()
+    local v = WS:FindFirstChild("currentWave")
+    return v and v.Value or 0
 end
 
-local function createToggle(page, name, key, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 32)
-    btn.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.Parent = page
-
-    local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 4)
-    uic.Parent = btn
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -50, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name
-    lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = btn
-
-    local indicator = Instance.new("Frame")
-    indicator.Size = UDim2.new(0, 32, 0, 16)
-    indicator.Position = UDim2.new(1, -40, 0.5, -8)
-    indicator.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    indicator.BorderSizePixel = 0
-    indicator.Parent = btn
-
-    local uici = Instance.new("UICorner")
-    uici.CornerRadius = UDim.new(1, 0)
-    uici.Parent = indicator
-
-    local dot = Instance.new("Frame")
-    dot.Size = UDim2.new(0, 10, 0, 10)
-    dot.Position = UDim2.new(0, 3, 0.5, -5)
-    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    dot.BorderSizePixel = 0
-    dot.Parent = indicator
-
-    local uicd = Instance.new("UICorner")
-    uicd.CornerRadius = UDim.new(1, 0)
-    uicd.Parent = dot
-
-    btn.MouseButton1Click:Connect(function()
-        getgenv().PallLoader[key] = not getgenv().PallLoader[key]
-        local active = getgenv().PallLoader[key]
-        local ti = TweenInfo.new(0.2)
-        if active then
-            TweenService:Create(indicator, ti, {BackgroundColor3 = Color3.fromRGB(0, 170, 255)}):Play()
-            TweenService:Create(dot, ti, {Position = UDim2.new(1, -13, 0.5, -5)}):Play()
-        else
-            TweenService:Create(indicator, ti, {BackgroundColor3 = Color3.fromRGB(45, 45, 60)}):Play()
-            TweenService:Create(dot, ti, {Position = UDim2.new(0, 3, 0.5, -5)}):Play()
-        end
-        if callback then pcall(function() callback(active) end) end
-    end)
+local function isEnemy(model)
+    if not model or not model:IsA("Model") then return false end
+    if model == char then return false end
+    local h = model:FindFirstChildOfClass("Humanoid")
+    if not h or h.Health <= 0 then return false end
+    if Players:GetPlayerFromCharacter(model) then return false end
+    if not model:FindFirstChild("HumanoidRootPart") then return false end
+    return true
 end
 
-local function createSlider(page, name, min, max, default, unit, callback)
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 44)
-    frame.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
-    frame.Parent = page
-
-    local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 4)
-    uic.Parent = frame
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 18)
-    lbl.Position = UDim2.new(0, 10, 0, 4)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name .. ": " .. tostring(default) .. " " .. unit
-    lbl.TextColor3 = Color3.fromRGB(210, 210, 220)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.GothamSemibold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = frame
-
-    local sliderBar = Instance.new("Frame")
-    sliderBar.Size = UDim2.new(1, -20, 0, 4)
-    sliderBar.Position = UDim2.new(0, 10, 0, 30)
-    sliderBar.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    sliderBar.BorderSizePixel = 0
-    sliderBar.Parent = frame
-
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-    fill.BorderSizePixel = 0
-    fill.Parent = sliderBar
-
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 1, 8)
-    btn.Position = UDim2.new(0, 0, 0, -4)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.Parent = sliderBar
-
-    local dragging = false
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local pos = math.clamp((input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
-            fill.Size = UDim2.new(pos, 0, 1, 0)
-            local val = math.floor(min + ((max - min) * pos))
-            lbl.Text = name .. ": " .. tostring(val) .. " " .. unit
-            callback(val)
-        end
-    end)
-end
-
--- Membuat Tab Menu (MAIN, PLAYER, FARM, SETTINGS)
-local mainPage = createPage("MAIN")
-local playerPage = createPage("PLAYER")
-local farmPage = createPage("FARM")
-local settingsPage = createPage("SETTINGS")
-
--- Isi Tab MAIN
-createCategoryHeader(mainPage, "SECURITY & BYPASS")
-createToggle(mainPage, "Byfron & Hyperion Bypass", "BypassEnabled")
-createToggle(mainPage, "Anti-Kick Protection", "AntiKick")
-createToggle(mainPage, "GodMode (Anti Damage)", "GodMode")
-
--- Isi Tab PLAYER
-createCategoryHeader(playerPage, "MOVEMENT & STATS")
-createToggle(playerPage, "Custom WalkSpeed", "SpeedToggle")
-createSlider(playerPage, "WalkSpeed Value", 16, 120, 16, "", function(v) getgenv().PallLoader.WalkSpeedVal = v end)
-createToggle(playerPage, "Custom JumpPower", "JumpToggle")
-createSlider(playerPage, "JumpPower Value", 50, 250, 50, "", function(v) getgenv().PallLoader.JumpPowerVal = v end)
-createToggle(playerPage, "No Clip (Tembus Tembok)", "NoClip")
-createToggle(playerPage, "Auto Stats Upgrader", "AutoUpgrader")
-
--- Isi Tab FARM
-createCategoryHeader(farmPage, "DUNGEON FARM")
-createToggle(farmPage, "Auto Dungeon Entry/Start", "AutoDungeon")
-createToggle(farmPage, "Auto Use Abilities (Skill)", "AutoAbilities")
-createToggle(farmPage, "Auto Replay Dungeon", "AutoReplay")
-createToggle(farmPage, "Auto Dodge Attacks", "AutoDodge")
-createSlider(farmPage, "Distance Above NPC", 5, 50, 25, "Studs", function(v) getgenv().PallLoader.DistanceAbove = v end)
-
-createCategoryHeader(farmPage, "FARM VISUALS")
-createToggle(farmPage, "Target Line Visualizer", "TargetLine", function(active)
-    if not active then VisualizerBeam.Transparency = 1 end
-end)
-
-createCategoryHeader(farmPage, "COMBAT & HITBOX")
-createToggle(farmPage, "Hitbox Expander", "HitboxExpander", function(active)
-    if not active then
-        pcall(function()
-            for root, origSize in pairs(OriginalHitboxSizes) do
-                if root and root.Parent then root.Size = origSize root.Transparency = 1 root.CanCollide = true end
-            end
-            OriginalHitboxSizes = {}
-        end)
-    end
-end)
-createSlider(farmPage, "Ukuran Hitbox", 10, 80, 45, "Studs", function(v) getgenv().PallLoader.HitboxSize = v end)
-createToggle(farmPage, "Auto Swing (Clicker Mode)", "MeleeAutoSwing")
-createToggle(farmPage, "NPC Freeze", "NPCFreeze")
-createToggle(farmPage, "Kill Aura", "KillAura")
-
--- Isi Tab SETTINGS
-createCategoryHeader(settingsPage, "UTILITIES")
-createToggle(settingsPage, "Anti-AFK Protection", "AntiAFK")
-
--- Tabel Penyimpan Tombol Sidebar agar gampang di-highlight
-local TabButtons = {}
-
-local function createTabButton(name, order)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -16, 0, 32)
-    btn.Position = UDim2.new(0, 8, 0, 55 + (order * 36))
-    btn.BackgroundColor3 = (order == 0) and Color3.fromRGB(30, 30, 42) or Color3.fromRGB(22, 22, 30)
-    btn.Text = "  " .. name
-    btn.TextColor3 = (order == 0) and Color3.fromRGB(0, 170, 255) or Color3.fromRGB(160, 160, 180)
-    btn.TextSize = 12
-    btn.Font = Enum.Font.GothamBold
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = Sidebar
-
-    local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(0, 4)
-    uic.Parent = btn
-
-    btn.MouseButton1Click:Connect(function()
-        for _, p in pairs(Pages) do p.Visible = false end
-        for _, b in pairs(TabButtons) do
-            b.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-            b.TextColor3 = Color3.fromRGB(160, 160, 180)
-        end
-        Pages[name].Visible = true
-        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
-        btn.TextColor3 = Color3.fromRGB(0, 170, 255)
-    end)
-
-    table.insert(TabButtons, btn)
-end
-
-createTabButton("MAIN", 0)
-createTabButton("PLAYER", 1)
-createTabButton("FARM", 2)
-createTabButton("SETTINGS", 3)
-
--- Pastikan halaman MAIN langsung muncul saat dijalankan
-Pages["MAIN"].Visible = true
-
--- Core Loops (Hanya berjalan jika toggle diaktifkan pengguna)
-RunService.Stepped:Connect(function()
-    pcall(function()
-        local char = LocalPlayer.Character
-        if char and getgenv().PallLoader.NoClip then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
-            end
-        end
-    end)
-end)
-
-local function getNPCsOnly()
+local function getEnemiesList()
     local list = {}
-    pcall(function()
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
-                local hum = obj:FindFirstChildOfClass("Humanoid")
-                local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
-                if hum and root and hum.Health > 0 then
-                    local isPlayer = false
-                    for _, p in ipairs(Players:GetPlayers()) do
-                        if p.Character == obj then isPlayer = true break end
-                    end
-                    if not isPlayer then table.insert(list, {Model = obj, Humanoid = hum, RootPart = root}) end
-                end
-            end
+    for _, v in ipairs(WS:GetDescendants()) do
+        if isEnemy(v) then
+            local hE = v:FindFirstChild("HumanoidRootPart")
+            if hE then table.insert(list, v) end
         end
-    end)
+    end
     return list
 end
 
-RunService.RenderStepped:Connect(function()
-    pcall(function()
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hrp or not hum then return end
-
-        if getgenv().PallLoader.GodMode then
-            hum.MaxHealth = math.huge
-            hum.Health = math.huge
-        end
-        if getgenv().PallLoader.SpeedToggle then hum.WalkSpeed = getgenv().PallLoader.WalkSpeedVal end
-        if getgenv().PallLoader.JumpToggle then hum.JumpPower = getgenv().PallLoader.JumpPowerVal end
-
-        local npcs = getNPCsOnly()
-        if #npcs > 0 then
-            local closest, minDist = nil, math.huge
-            for _, data in ipairs(npcs) do
-                local dist = (hrp.Position - data.RootPart.Position).Magnitude
-                if dist < minDist then minDist = dist closest = data end
-            end
-            CurrentTargetNPC = closest
-        else
-            CurrentTargetNPC = nil
-        end
-
-        if getgenv().PallLoader.TargetLine and CurrentTargetNPC and CurrentTargetNPC.RootPart then
-            VisualizerBeam.Transparency = 0
-            Attachment0.WorldPosition = hrp.Position
-            Attachment1.WorldPosition = CurrentTargetNPC.RootPart.Position
-        else
-            VisualizerBeam.Transparency = 1
-        end
-
-        if getgenv().PallLoader.NPCFreeze then
-            for _, data in ipairs(npcs) do
-                pcall(function()
-                    data.Humanoid.WalkSpeed = 0
-                    data.RootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                end)
+local function getNearestEnemy()
+    if not hrp then return nil end
+    local nearest, dist = nil, math.huge
+    for _, e in ipairs(getEnemiesList()) do
+        local hE = e:FindFirstChild("HumanoidRootPart")
+        if hE then
+            local d = (hE.Position - hrp.Position).Magnitude
+            if d < dist then
+                dist = d
+                nearest = e
             end
         end
-    end)
-end)
-
-RunService.RenderStepped:Connect(function()
-    if getgenv().PallLoader.HitboxExpander then
-        pcall(function()
-            local size = getgenv().PallLoader.HitboxSize
-            for _, data in ipairs(getNPCsOnly()) do
-                local root = data.RootPart
-                if root then
-                    if not OriginalHitboxSizes[root] then OriginalHitboxSizes[root] = root.Size end
-                    root.Size = Vector3.new(size, size, size)
-                    root.Transparency = 0.4
-                    root.Color = Color3.fromRGB(0, 150, 255)
-                    root.CanCollide = false
-                end
-            end
-        end)
     end
-end)
+    return nearest
+end
+
+local function isValidTarget(model)
+    if not model or not model.Parent then return false end
+    if not isEnemy(model) then return false end
+    return true
+end
+
+local function getTarget()
+    if isValidTarget(currentTarget) then
+        local hE = currentTarget:FindFirstChild("HumanoidRootPart")
+        if hE and hrp then
+            local d = (hE.Position - hrp.Position).Magnitude
+            if d < TARGET_DROP_DISTANCE then
+                return currentTarget
+            end
+        end
+    end
+    local newTarget = getNearestEnemy()
+    currentTarget = newTarget
+    return currentTarget
+end
 
 task.spawn(function()
     while true do
-        task.wait(1)
-        pcall(function()
-            if getgenv().PallLoader.AutoAbilities then
-                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
-                    if r:IsA("RemoteEvent") and (r.Name:lower():find("ability") or r.Name:lower():find("skill")) then
-                        r:FireServer(1)
-                    end
-                end
+        if currentTarget then
+            local h = currentTarget:FindFirstChildOfClass("Humanoid")
+            if not h or h.Health <= 0 or not currentTarget.Parent then
+                currentTarget = nil
             end
-            if getgenv().PallLoader.AutoUpgrader then
-                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
-                    if r:IsA("RemoteEvent") and (r.Name:lower():find("upgrade") or r.Name:lower():find("stat")) then
-                        r:FireServer("Spell Power")
-                    end
-                end
-            end
-            if getgenv().PallLoader.AutoReplay then
-                for _, r in ipairs(ReplicatedStorage:GetDescendants()) do
-                    if r:IsA("RemoteEvent") and r.Name:lower():find("replay") then r:FireServer() end
-                end
-            end
-        end)
+        end
+        task.wait(0.1)
     end
 end)
 
-print("[Pall Loader v5.0] Berhasil dimuat! Menu dan halaman sudah normal (Semua fitur OFF).")
+local espCache = {}
+local ESP_OK = pcall(function()
+    local d = Drawing.new("Line")
+    d:Remove()
+end)
+
+local function createESP(model)
+    if not ESP_OK then return end
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Color = Config.ESPColor
+    line.Thickness = Config.ESPThickness
+    line.Transparency = 1
+    line.From = Vector2.new(0, 0)
+    line.To = Vector2.new(0, 0)
+    espCache[model] = line
+end
+
+local function removeESP(model)
+    local line = espCache[model]
+    if line then
+        pcall(function() line:Remove() end)
+        espCache[model] = nil
+    end
+end
+
+task.spawn(function()
+    local camera = WS.CurrentCamera
+    while true do
+        if Config.ESPLines and ESP_OK and hrp and camera then
+            local enemies = getEnemiesList()
+            for _, e in ipairs(enemies) do
+                if not espCache[e] then createESP(e) end
+            end
+            for m, line in pairs(espCache) do
+                if not m.Parent or not isEnemy(m) then removeESP(m) end
+            end
+
+            local screenSize = camera.ViewportSize
+            local bottomCenter = Vector2.new(screenSize.X / 2, screenSize.Y)
+
+            for m, line in pairs(espCache) do
+                local hE = m:FindFirstChild("HumanoidRootPart")
+                if hE and hrp then
+                    local dist = (hE.Position - hrp.Position).Magnitude
+                    if dist <= Config.ESPRange then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(hE.Position)
+                        if onScreen then
+                            line.From = bottomCenter
+                            line.To = Vector2.new(screenPos.X, screenPos.Y)
+                            if m == currentTarget then
+                                line.Color = Color3.fromRGB(255, 220, 0)
+                                line.Thickness = Config.ESPThickness + 1
+                            else
+                                line.Color = Config.ESPColor
+                                line.Thickness = Config.ESPThickness
+                            end
+                            line.Visible = true
+                        else
+                            line.Visible = false
+                        end
+                    else
+                        line.Visible = false
+                    end
+                else
+                    line.Visible = false
+                end
+            end
+        else
+            for _, line in pairs(espCache) do line.Visible = false end
+            task.wait(0.3)
+        end
+        task.wait(0.02)
+    end
+end)
+
+local function tapEnemy(model)
+    local camera = WS.CurrentCamera
+    if not camera or not model then return false end
+    local hE = model:FindFirstChild("HumanoidRootPart")
+    if not hE then return false end
+
+    local screenPos, onScreen = camera:WorldToViewportPoint(hE.Position)
+    if not onScreen then return false end
+
+    local vs = camera.ViewportSize
+    if screenPos.X < 0 or screenPos.X > vs.X then return false end
+    if screenPos.Y < 0 or screenPos.Y > vs.Y then return false end
+
+    if hrp then
+        pcall(function()
+            hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z))
+        end)
+    end
+
+    if char then
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") then
+                pcall(function() tool:Activate() end)
+            end
+        end
+    end
+
+    pcall(function()
+        VIM:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, true, game, 1)
+        task.wait(0.02)
+        VIM:SendMouseButtonEvent(screenPos.X, screenPos.Y, 0, false, game, 1)
+    end)
+
+    pcall(function()
+        VIM:SendMouseButtonEvent(vs.X/2, vs.Y/2, 0, true, game, 1)
+        task.wait(0.02)
+        VIM:SendMouseButtonEvent(vs.X/2, vs.Y/2, 0, false, game, 1)
+    end)
+
+    return true
+end
+
+local function autoTapLoop()
+    while Config.AutoTap do
+        if hrp and hum and hum.Health > 0 then
+            local target = getTarget()
+            if target then
+                tapEnemy(target)
+                local h = target:FindFirstChildOfClass("Humanoid")
+                if not h or h.Health <= 0 then currentTarget = nil end
+                task.wait(Config.TapDelay)
+            else
+                task.wait(0.15)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+local function walkFlowLoop()
+    while Config.WalkFlow do
+        if hrp and hum and hum.Health > 0 then
+            local target = getTarget()
+            if target then
+                local hE = target:FindFirstChild("HumanoidRootPart")
+                if hE then
+                    local dist = (hE.Position - hrp.Position).Magnitude
+                    if dist > 10 then
+                        pcall(function()
+                            hum:MoveTo(Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z))
+                        end)
+                        task.wait(Config.WalkDelay)
+                    else
+                        pcall(function() hum:MoveTo(hrp.Position) end)
+                        task.wait(0.1)
+                    end
+                else
+                    currentTarget = nil
+                    task.wait(0.2)
+                end
+            else
+                task.wait(0.5)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+local function collectLoop()
+    while Config.AutoCollect do
+        if hrp and hum and hum.Health > 0 then
+            for _, v in ipairs(WS:GetDescendants()) do
+                if not Config.AutoCollect then break end
+                if v:IsA("BasePart") and v.Parent then
+                    local n = string.lower(v.Name)
+                    if string.find(n, "coin") or string.find(n, "gold")
+                    or string.find(n, "drop") or string.find(n, "gem") then
+                        local d = (v.Position - hrp.Position).Magnitude
+                        if d < Config.CollectRange and d > 3 then
+                            pcall(function() hum:MoveTo(v.Position) end)
+                            task.wait(0.2)
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.3)
+    end
+end
+
+local function dungeonLoop()
+    task.wait(1)
+    while Config.AutoDungeon do
+        if not isInDungeon() then
+            local changeVal = remotes:FindFirstChild("changeStartValue")
+            if changeVal then pcall(function() changeVal:FireServer("Desert Temple") end) end
+            task.wait(0.5)
+            local startD = remotes:FindFirstChild("startDungeon")
+            if startD then pcall(function() startD:FireServer() end) end
+            task.wait(2)
+            if not isInDungeon() then
+                local replay = remotes:FindFirstChild("replayDungeon")
+                if replay then pcall(function() replay:FireServer() end) end
+                task.wait(2)
+            end
+            task.wait(5)
+        else
+            task.wait(2)
+        end
+    end
+end
+
+local Theme = {
+    Accent = Color3.fromRGB(0, 120, 212),
+    AccentHover = Color3.fromRGB(16, 137, 230),
+    Bg = Color3.fromRGB(32, 32, 32),
+    BgLayer = Color3.fromRGB(43, 43, 43),
+    BgBtn = Color3.fromRGB(58, 58, 58),
+    Stroke = Color3.fromRGB(80, 80, 80),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextSub = Color3.fromRGB(180, 180, 180),
+    Success = Color3.fromRGB(108, 203, 95),
+    Font = Enum.Font.GothamBold,
+}
+
+local function corner(o, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = r or UDim.new(0, 8)
+    c.Parent = o
+end
+local function stroke(o, c, t)
+    local s = Instance.new("UIStroke")
+    s.Color = c or Theme.Stroke
+    s.Thickness = 1
+    s.Transparency = t or 0.4
+    s.Parent = o
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "DQAF"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+
+local win = Instance.new("Frame")
+win.Name = "MainWindow"
+win.Size = UDim2.fromOffset(360, 580)
+win.Position = UDim2.new(0.5, -180, 0.5, -290)
+win.BackgroundColor3 = Theme.Bg
+win.BorderSizePixel = 0
+win.Visible = true
+win.Active = true
+win.Parent = gui
+corner(win, UDim.new(0, 12))
+stroke(win)
+
+local tb = Instance.new("Frame")
+tb.Size = UDim2.new(1, 0, 0, 40)
+tb.BackgroundColor3 = Theme.BgLayer
+tb.BorderSizePixel = 0
+tb.Parent = win
+corner(tb, UDim.new(0, 12))
+
+local tbFix = Instance.new("Frame")
+tbFix.Size = UDim2.new(1, 0, 0, 12)
+tbFix.Position = UDim2.new(0, 0, 1, -12)
+tbFix.BackgroundColor3 = Theme.BgLayer
+tbFix.BorderSizePixel = 0
+tbFix.Parent = tb
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Text = "  Dungeon Quest - Auto Farm"
+titleLbl.Font = Theme.Font
+titleLbl.TextSize = 14
+titleLbl.TextColor3 = Theme.Text
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.BackgroundTransparency = 1
+titleLbl.Size = UDim2.new(1, -50, 1, 0)
+titleLbl.Position = UDim2.fromOffset(12, 0)
+titleLbl.Parent = tb
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Text = "X"
+closeBtn.Font = Theme.Font
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = Theme.Text
+closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+closeBtn.BorderSizePixel = 0
+closeBtn.Size = UDim2.fromOffset(28, 24)
+closeBtn.Position = UDim2.new(1, -36, 0.5, -12)
+closeBtn.AutoButtonColor = false
+closeBtn.Parent = tb
+corner(closeBtn, UDim.new(0, 6))
+
+local toggleBtn
+
+local function hideWindow()
+    win.Visible = false
+    toggleBtn.Visible = true
+end
+closeBtn.Activated:Connect(hideWindow)
+
+local dragging, dragStart, startPos
+tb.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = win.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dragStart
+        win.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + d.X,
+            startPos.Y.Scale, startPos.Y.Offset + d.Y
+        )
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -20, 1, -50)
+content.Position = UDim2.fromOffset(10, 45)
+content.BackgroundTransparency = 1
+content.Parent = win
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 8)
+layout.Parent = content
+
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Text = "Status: Lobby"
+statusLbl.Font = Theme.Font
+statusLbl.TextSize = 12
+statusLbl.TextColor3 = Theme.TextSub
+statusLbl.BackgroundColor3 = Theme.BgLayer
+statusLbl.BorderSizePixel = 0
+statusLbl.Size = UDim2.new(1, 0, 0, 36)
+statusLbl.Parent = content
+corner(statusLbl, UDim.new(0, 6))
+
+local function makeToggle(text, key, onStart)
+    local btn = Instance.new("TextButton")
+    btn.Text = text .. ": OFF"
+    btn.Font = Theme.Font
+    btn.TextSize = 13
+    btn.TextColor3 = Theme.Text
+    btn.BackgroundColor3 = Theme.BgBtn
+    btn.BorderSizePixel = 0
+    btn.Size = UDim2.new(1, 0, 0, 36)
+    btn.AutoButtonColor = false
+    btn.Parent = content
+    corner(btn, UDim.new(0, 6))
+
+    btn.Activated:Connect(function()
+        Config[key] = not Config[key]
+        if Config[key] then
+            btn.Text = text .. ": ON"
+            btn.BackgroundColor3 = Theme.Accent
+            if onStart then task.spawn(onStart) end
+        else
+            btn.Text = text .. ": OFF"
+            btn.BackgroundColor3 = Theme.BgBtn
+        end
+    end)
+    return btn
+end
+
+makeToggle("Auto Dungeon", "AutoDungeon", dungeonLoop)
+makeToggle("Walk Flow (jalan ke musuh)", "WalkFlow", walkFlowLoop)
+makeToggle("ESP Lines (garis ke musuh)", "ESPLines", nil)
+makeToggle("Auto Tap (klik musuh)", "AutoTap", autoTapLoop)
+makeToggle("Auto Collect Coin", "AutoCollect", collectLoop)
+
+local function makeSlider(label, key, min, max, step, default)
+    local holder = Instance.new("Frame")
+    holder.Size = UDim2.new(1, 0, 0, 52)
+    holder.BackgroundColor3 = Theme.BgLayer
+    holder.BorderSizePixel = 0
+    holder.Parent = content
+    corner(holder, UDim.new(0, 6))
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = label .. ": " .. default
+    lbl.Font = Theme.Font
+    lbl.TextSize = 12
+    lbl.TextColor3 = Theme.TextSub
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, -16, 0, 20)
+    lbl.Position = UDim2.fromOffset(8, 4)
+    lbl.Parent = holder
+
+    local minus = Instance.new("TextButton")
+    minus.Text = "-"; minus.Font = Theme.Font; minus.TextSize = 16
+    minus.TextColor3 = Theme.Text
+    minus.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    minus.BorderSizePixel = 0
+    minus.Size = UDim2.fromOffset(36, 22)
+    minus.Position = UDim2.fromOffset(8, 26)
+    minus.AutoButtonColor = false
+    minus.Parent = holder
+    corner(minus, UDim.new(0, 4))
+
+    local plus = Instance.new("TextButton")
+    plus.Text = "+"; plus.Font = Theme.Font; plus.TextSize = 16
+    plus.TextColor3 = Theme.Text
+    plus.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    plus.BorderSizePixel = 0
+    plus.Size = UDim2.fromOffset(36, 22)
+    plus.Position = UDim2.new(1, -44, 0, 26)
+    plus.AutoButtonColor = false
+    plus.Parent = holder
+    corner(plus, UDim.new(0, 4))
+
+    local val = default
+    local function update()
+        Config[key] = val
+        lbl.Text = label .. ": " .. val
+    end
+    update()
+
+    minus.Activated:Connect(function() val = math.max(min, val - step); update() end)
+    plus.Activated:Connect(function() val = math.min(max, val + step); update() end)
+end
+
+makeSlider("Tap Delay (s)", "TapDelay", 0.02, 1, 0.02, 0.1)
+makeSlider("Walk Delay (s)", "WalkDelay", 0.1, 1, 0.05, 0.3)
+makeSlider("ESP Range", "ESPRange", 50, 2000, 50, 500)
+
+local infoLbl = Instance.new("TextLabel")
+infoLbl.Text = "ESP + Auto Tap + Walk Flow + Target Lock"
+infoLbl.Font = Theme.Font
+infoLbl.TextSize = 10
+infoLbl.TextColor3 = Color3.fromRGB(100, 100, 100)
+infoLbl.BackgroundTransparency = 1
+infoLbl.Size = UDim2.new(1, 0, 0, 14)
+infoLbl.Parent = content
+
+toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleBtn"
+toggleBtn.Text = "DQ Farm"
+toggleBtn.Font = Theme.Font
+toggleBtn.TextSize = 14
+toggleBtn.TextColor3 = Theme.Text
+toggleBtn.BackgroundColor3 = Theme.Accent
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Size = UDim2.fromOffset(130, 40)
+toggleBtn.Position = UDim2.new(0, 20, 0, 80)
+toggleBtn.AutoButtonColor = false
+toggleBtn.Visible = false
+toggleBtn.Parent = gui
+corner(toggleBtn, UDim.new(0, 8))
+stroke(toggleBtn, Color3.new(0,0,0), 0.5)
+
+toggleBtn.Activated:Connect(function()
+    win.Visible = true
+    toggleBtn.Visible = false
+end)
+
+task.spawn(function()
+    while gui.Parent do
+        if isInDungeon() then
+            local list = getEnemiesList()
+            local tName = currentTarget and currentTarget.Name or "-"
+            statusLbl.Text = string.format("Wave:%d | Musuh:%d | Lock:%s",
+                getWave(), #list, tName)
+            statusLbl.TextColor3 = Theme.Success
+        else
+            statusLbl.Text = "Status: Lobby"
+            statusLbl.TextColor3 = Theme.TextSub
+        end
+        task.wait(0.5)
+    end
+end)
+
+print("[DQ] Loaded. Window kebuka otomatis.")
+print("[DQ] GUI Parent:", gui.Parent and gui.Parent:GetFullName() or "NIL")
+print("[DQ] Drawing support:", ESP_OK)
+
+═══════════════════════════════════════════════════════
+END OF SCRIPT
+═══════════════════════════════════════════════════════
