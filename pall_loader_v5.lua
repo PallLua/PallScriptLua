@@ -1,5 +1,5 @@
 -- ============================================================
--- DUNGEON QUEST AUTO FARM — v10
+-- DUNGEON QUEST AUTO FARM — v11
 -- ============================================================
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
@@ -24,8 +24,42 @@ loadConfig()
 task.spawn(function()local last=snapshot()while true do task.wait(2)local cu=snapshot()if cfgDiff(last,cu)then last=cu saveConfig()end end end)
 
 local char,hrp,hum
-local function rc()char=LP.Character or LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
-rc()LP.CharacterAdded:Connect(function()task.wait(1)rc()end)
+local function rc()
+    char=LP.Character or LP.CharacterAdded:Wait()
+    hrp=char:WaitForChild("HumanoidRootPart",10)
+    hum=char:WaitForChild("Humanoid",10)
+end
+rc()
+
+-- Watchdog: refresh karakter tiap 1s kalau stale
+task.spawn(function()
+    while true do
+        task.wait(1)
+        local curChar = LP.Character
+        if curChar and curChar ~= char and curChar:FindFirstChildOfClass("Humanoid") then
+            char = curChar
+            hrp = curChar:WaitForChild("HumanoidRootPart",10)
+            hum = curChar:WaitForChild("Humanoid",10)
+            print("[DQAF] Character refreshed (respawn)")
+        elseif char and not char.Parent then
+            local newChar = LP.Character
+            if newChar and newChar:FindFirstChildOfClass("Humanoid") then
+                char = newChar
+                hrp = newChar:WaitForChild("HumanoidRootPart",10)
+                hum = newChar:WaitForChild("Humanoid",10)
+                print("[DQAF] Character re-acquired")
+            end
+        end
+    end
+end)
+
+LP.CharacterAdded:Connect(function(c)
+    task.wait(1)
+    char = c
+    hrp = c:WaitForChild("HumanoidRootPart",10)
+    hum = c:WaitForChild("Humanoid",10)
+end)
+
 local cur=nil local dodgeLock=0
 local function inD()local v=WS:FindFirstChild("dungeonStarted")return v and v:IsA("BoolValue")and v.Value end
 local function wv()local v=WS:FindFirstChild("currentWave")return v and v.Value or 0 end
@@ -228,11 +262,11 @@ task.spawn(function()
     end
 end)
 
--- ==================== HOVER FARM (DIP SWING) ====================
+-- ==================== HOVER FARM (DIP SWING, SPEED 16) ====================
 local hoverState={active=false,velocity=nil,bobPhase=0}
 local dipState={phase="hover",phaseStart=0}
-local HOVER_SPEED=2.5
-local HOVER_LERP=0.15
+local HOVER_SPEED=16
+local HOVER_LERP=0.35
 local BOB_HEIGHT=0.4
 local BOB_SPEED=2.0
 local DIP_DOWN_TIME=0.18
@@ -276,7 +310,7 @@ local function setDipPhase(p)
 end
 local function hoverLoop()
     while cfg.HoverFarm do
-        if char and hum and hum.Health>0 and hrp then
+        if char and hum and hum.Health>0 and hrp and hrp.Parent then
             local t=getT()
             if t then
                 local hE=t:FindFirstChild("HumanoidRootPart")
@@ -313,12 +347,12 @@ local function hoverLoop()
                     local current=hrp.Position
                     local diff=targetPos-current
                     local lateralDist=Vector3.new(diff.X,0,diff.Z).Magnitude
-                    if hoverState.velocity then
+                    if hoverState.velocity and hoverState.velocity.Parent then
                         local moveDir=Vector3.new(diff.X,0,diff.Z)
                         if moveDir.Magnitude>0.3 then moveDir=moveDir.Unit else moveDir=Vector3.new(0,0,0)end
                         local yVel
                         if dipState.phase=="dipDown" or dipState.phase=="riseUp" then
-                            yVel=math.clamp(diff.Y,-20,20)
+                            yVel=math.clamp(diff.Y,-25,25)
                         else
                             yVel=math.clamp(diff.Y*HOVER_LERP,-HOVER_SPEED,HOVER_SPEED)
                         end
@@ -331,7 +365,7 @@ local function hoverLoop()
                     if not h or h.Health<=0 then cur=nil setDipPhase("hover")end
                 end
             else
-                if hoverState.velocity then hoverState.velocity.Velocity=Vector3.new(0,0,0)end
+                if hoverState.velocity and hoverState.velocity.Parent then hoverState.velocity.Velocity=Vector3.new(0,0,0)end
             end
         end
         task.wait(0.04)
@@ -340,17 +374,30 @@ local function hoverLoop()
     if hum then pcall(function()hum.PlatformStand=false end)end
 end
 
--- ==================== AUTO HEAL SMALL TICK ====================
+-- ==================== AUTO HEAL (RESPAWN SAFE) ====================
 local function autoHealSmallLoop()
+    local lastHeal = 0
+    local lastChar = nil
     while cfg.AutoHealSmall do
-        if hum and hum.Health>0 and hum.Health<hum.MaxHealth then
-            local newHP=math.min(hum.Health+cfg.HealAmount,hum.MaxHealth)
-            pcall(function()hum.Health=newHP end)
+        if char ~= lastChar then
+            lastChar = char
+            lastHeal = tick()
         end
-        task.wait(cfg.HealInterval)
+        if hum and hum.Parent and hum.Health > 0 then
+            if tick() - lastHeal >= cfg.HealInterval then
+                if hum.Health < hum.MaxHealth then
+                    local newHP = math.min(hum.Health + cfg.HealAmount, hum.MaxHealth)
+                    pcall(function() hum.Health = newHP end)
+                end
+                lastHeal = tick()
+            end
+            task.wait(0.3)
+        else
+            task.wait(0.5)
+        end
     end
 end
-    local function swingLoop()
+local function swingLoop()
     while cfg.AutoSwing do
         if cfg.HoverFarm then
             task.wait(0.5)
@@ -359,7 +406,7 @@ end
             local t=getT()
             if t then
                 local hE=t:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then
+                if hE and hrp and hrp.Parent then
                     local npcPos=hE.Position
                     local myPos=hrp.Position
                     local flat=Vector3.new(npcPos.X-myPos.X,0,npcPos.Z-myPos.Z)
@@ -411,7 +458,7 @@ local function autoSkillLoop()
             task.wait(cfg.SkillEDelay)
         else task.wait(0.5)end
     end
-    end
+end
 local function walkLoop()
     while cfg.WalkFlow do
         if hrp and hum and hum.Health>0 then
@@ -714,4 +761,4 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
-print("[DQAF] v10 loaded. Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v11 loaded. Config:",hasFileIO and "auto-save" or "no-save")
