@@ -1,5 +1,5 @@
 -- ============================================================
--- DUNGEON QUEST AUTO FARM — v11
+-- DUNGEON QUEST AUTO FARM — v14
 -- ============================================================
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
@@ -9,7 +9,9 @@ local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
 if okCG and CG then local o=CG:FindFirstChild("DQAF")if o then o:Destroy()end end
 local PG=LP:WaitForChild("PlayerGui")local oP=PG:FindFirstChild("DQAF")if oP then oP:Destroy()end
 
-local cfg={AutoDungeon=false,WalkFlow=false,AutoSwing=false,AutoSkill=false,HoverFarm=false,AutoDodge=false,FreezeNPC=false,NoClip=false,ESPOverlay=false,HitboxVisual=false,Hitbox=false,AutoHealSmall=false,HealAmount=500,HealInterval=5,SwingDelay=0.08,SwingReach=6,WalkDelay=0.2,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,DodgeRange=10,DodgeSpeed=12,ESPRange=800,HitboxSize=2.5,TargetPriority=1}
+local DEFAULT_CFG={AutoDungeon=false,WalkFlow=false,AutoSwing=false,AutoSkill=false,HoverFarm=false,AutoDodge=false,FreezeNPC=false,NoClip=false,ESPOverlay=false,HitboxVisual=false,Hitbox=false,AutoHealSmall=false,HealAmount=500,HealInterval=5,SwingDelay=0.08,SwingReach=6,WalkDelay=0.2,SkillQDelay=1.5,SkillEDelay=1.5,HoverHeight=13,DodgeRange=10,DodgeSpeed=12,ESPRange=800,HitboxSize=2.5,TargetPriority=1}
+local cfg={}
+for k,v in pairs(DEFAULT_CFG) do cfg[k]=v end
 
 local CONFIG_FILE="dqaf_config.txt"
 local hasFileIO=(writefile and readfile and isfile) and true or false
@@ -17,7 +19,6 @@ local function serializeConfig()local p={}for k,v in pairs(cfg)do local t=type(v
 local function parseConfig(str)local r={}for line in string.gmatch(str,"[^\n]+")do local k,v=string.match(line,"^(%w+)=(.+)$")if k and v then if v=="true"then r[k]=true elseif v=="false"then r[k]=false elseif tonumber(v)then r[k]=tonumber(v)end end end return r end
 local function loadConfig()if not hasFileIO then print("[DQAF] writefile gak support")return end if not isfile(CONFIG_FILE)then print("[DQAF] Config default")return end local ok,data=pcall(readfile,CONFIG_FILE)if not ok or not data then return end local parsed=parseConfig(data)local c=0 for k,v in pairs(parsed)do if cfg[k]~=nil then cfg[k]=v c=c+1 end end print("[DQAF] Config loaded:",c,"values")end
 local function saveConfig()if not hasFileIO then return end pcall(writefile,CONFIG_FILE,serializeConfig())end
-local function resetConfig()if hasFileIO and isfile(CONFIG_FILE)then pcall(delfile,CONFIG_FILE)end print("[DQAF] Config dihapus")end
 local function snapshot()local t={}for k,v in pairs(cfg)do local ty=type(v)if ty=="boolean"or ty=="number"then t[k]=v end end return t end
 local function cfgDiff(a,b)if not a or not b then return true end for k,v in pairs(a)do if b[k]~=v then return true end end return false end
 loadConfig()
@@ -31,22 +32,21 @@ local function rc()
 end
 rc()
 
--- Watchdog: refresh karakter tiap 1s kalau stale
 task.spawn(function()
     while true do
         task.wait(1)
-        local curChar = LP.Character
-        if curChar and curChar ~= char and curChar:FindFirstChildOfClass("Humanoid") then
-            char = curChar
-            hrp = curChar:WaitForChild("HumanoidRootPart",10)
-            hum = curChar:WaitForChild("Humanoid",10)
+        local curChar=LP.Character
+        if curChar and curChar~=char and curChar:FindFirstChildOfClass("Humanoid")then
+            char=curChar
+            hrp=curChar:WaitForChild("HumanoidRootPart",10)
+            hum=curChar:WaitForChild("Humanoid",10)
             print("[DQAF] Character refreshed (respawn)")
         elseif char and not char.Parent then
-            local newChar = LP.Character
-            if newChar and newChar:FindFirstChildOfClass("Humanoid") then
-                char = newChar
-                hrp = newChar:WaitForChild("HumanoidRootPart",10)
-                hum = newChar:WaitForChild("Humanoid",10)
+            local newChar=LP.Character
+            if newChar and newChar:FindFirstChildOfClass("Humanoid")then
+                char=newChar
+                hrp=newChar:WaitForChild("HumanoidRootPart",10)
+                hum=newChar:WaitForChild("Humanoid",10)
                 print("[DQAF] Character re-acquired")
             end
         end
@@ -55,9 +55,9 @@ end)
 
 LP.CharacterAdded:Connect(function(c)
     task.wait(1)
-    char = c
-    hrp = c:WaitForChild("HumanoidRootPart",10)
-    hum = c:WaitForChild("Humanoid",10)
+    char=c
+    hrp=c:WaitForChild("HumanoidRootPart",10)
+    hum=c:WaitForChild("Humanoid",10)
 end)
 
 local cur=nil local dodgeLock=0
@@ -262,18 +262,18 @@ task.spawn(function()
     end
 end)
 
--- ==================== HOVER FARM (DIP SWING, SPEED 16) ====================
+-- ==================== HOVER FARM (DIP SWING) ====================
 local hoverState={active=false,velocity=nil,bobPhase=0}
-local dipState={phase="hover",phaseStart=0}
+local dipState={phase="hover",phaseStart=0,swingCount=0}
 local HOVER_SPEED=16
 local HOVER_LERP=0.35
 local BOB_HEIGHT=0.4
 local BOB_SPEED=2.0
 local DIP_DOWN_TIME=0.18
-local DIP_SWING_TIME=0.12
+local DIP_SWING_TIME=0.2
 local DIP_UP_TIME=0.18
 local DIP_WAIT_TIME=0.5
-local DIP_HEIGHT=4
+local DIP_HEIGHT=2.5
 
 local function ensureHoverPhysics()
     if not hrp then return end
@@ -285,6 +285,7 @@ local function ensureHoverPhysics()
     bv.P=5000
     bv.Parent=hrp
     hoverState.velocity=bv
+    pcall(function()if hum then hum.AutoRotate=false end end)
 end
 local function cleanupHoverPhysics()
     if hoverState.velocity then
@@ -307,6 +308,7 @@ end
 local function setDipPhase(p)
     dipState.phase=p
     dipState.phaseStart=tick()
+    dipState.swingCount=0
 end
 local function hoverLoop()
     while cfg.HoverFarm do
@@ -325,9 +327,15 @@ local function hoverLoop()
                             if pt>0.3 then setDipPhase("dipDown")end
                         elseif dipState.phase=="dipDown" then
                             targetY=npcPos.Y+DIP_HEIGHT
-                            if pt>DIP_DOWN_TIME then setDipPhase("swing") doDipSwing()end
+                            local distToTarget=math.abs(hrp.Position.Y-(npcPos.Y+DIP_HEIGHT))
+                            if distToTarget<1.2 or pt>(DIP_DOWN_TIME*2)then setDipPhase("swing")end
                         elseif dipState.phase=="swing" then
                             targetY=npcPos.Y+DIP_HEIGHT
+                            if dipState.swingCount<4 then
+                                doDipSwing()
+                                dipState.swingCount=dipState.swingCount+1
+                                task.wait(0.04)
+                            end
                             if pt>DIP_SWING_TIME then setDipPhase("riseUp")end
                         elseif dipState.phase=="riseUp" then
                             targetY=npcPos.Y+cfg.HoverHeight
@@ -359,7 +367,10 @@ local function hoverLoop()
                         local lateralSpeed=math.min(lateralDist,HOVER_SPEED)
                         hoverState.velocity.Velocity=Vector3.new(moveDir.X*lateralSpeed,yVel,moveDir.Z*lateralSpeed)
                     end
-                    pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(npcPos.X,hrp.Position.Y,npcPos.Z))end)
+                    pcall(function()
+                        local lookTarget=Vector3.new(npcPos.X,npcPos.Y+2,npcPos.Z)
+                        hrp.CFrame=CFrame.lookAt(hrp.Position,lookTarget)
+                    end)
                     pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)
                     local h=t:FindFirstChildOfClass("Humanoid")
                     if not h or h.Health<=0 then cur=nil setDipPhase("hover")end
@@ -371,27 +382,40 @@ local function hoverLoop()
         task.wait(0.04)
     end
     cleanupHoverPhysics()
-    if hum then pcall(function()hum.PlatformStand=false end)end
+    if hum then
+        pcall(function()
+            hum.PlatformStand=false
+            hum.AutoRotate=true
+        end)
+    end
 end
 
--- ==================== AUTO HEAL (RESPAWN SAFE) ====================
+-- ==================== AUTO HEAL (SMART) ====================
 local function autoHealSmallLoop()
-    local lastHeal = 0
-    local lastChar = nil
+    local lastHeal=0
+    local lastChar=nil
+    local lastHP=0
+    local lastDamageTime=0
     while cfg.AutoHealSmall do
-        if char ~= lastChar then
-            lastChar = char
-            lastHeal = tick()
+        if char~=lastChar then
+            lastChar=char
+            lastHeal=tick()
+            lastHP=0
         end
-        if hum and hum.Parent and hum.Health > 0 then
-            if tick() - lastHeal >= cfg.HealInterval then
-                if hum.Health < hum.MaxHealth then
-                    local newHP = math.min(hum.Health + cfg.HealAmount, hum.MaxHealth)
-                    pcall(function() hum.Health = newHP end)
+        if hum and hum.Parent and hum.Health>0 then
+            local currentHP=hum.Health
+            if currentHP<lastHP-5 then lastDamageTime=tick()end
+            lastHP=currentHP
+            local timeSinceDamage=tick()-lastDamageTime
+            local timeSinceHeal=tick()-lastHeal
+            if timeSinceHeal>=cfg.HealInterval and timeSinceDamage>=2 then
+                if currentHP<hum.MaxHealth then
+                    local newHP=math.min(currentHP+cfg.HealAmount,hum.MaxHealth)
+                    pcall(function()hum.Health=newHP end)
                 end
-                lastHeal = tick()
+                lastHeal=tick()
             end
-            task.wait(0.3)
+            task.wait(0.2)
         else
             task.wait(0.5)
         end
@@ -556,31 +580,31 @@ local Mac={Bg=Color3.fromRGB(28,28,30),BgGlass=Color3.fromRGB(38,38,42),Card=Col
 
 local gui=Instance.new("ScreenGui")gui.Name="DQAF"gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.DisplayOrder=999 gui.Parent=parentGui
 
-local shadow=Instance.new("ImageLabel")shadow.Image="rbxassetid://5028857472"shadow.ScaleType=Enum.ScaleType.Slice shadow.SliceCenter=Rect.new(24,24,276,276)shadow.SliceScale=0.5 shadow.BackgroundTransparency=1 shadow.ImageColor3=Color3.new(0,0,0)shadow.ImageTransparency=0.4 shadow.ZIndex=0 shadow.AnchorPoint=Vector2.new(0.5,0.5)shadow.Position=UDim2.new(0.5,0,0.5,0)shadow.Size=UDim2.new(0,400,0,440)shadow.Visible=false shadow.Parent=gui
+local shadow=Instance.new("ImageLabel")shadow.Image="rbxassetid://5028857472"shadow.ScaleType=Enum.ScaleType.Slice shadow.SliceCenter=Rect.new(24,24,276,276)shadow.SliceScale=0.5 shadow.BackgroundTransparency=1 shadow.ImageColor3=Color3.new(0,0,0)shadow.ImageTransparency=0.4 shadow.ZIndex=0 shadow.AnchorPoint=Vector2.new(0.5,0.5)shadow.Position=UDim2.new(0.5,0,0.5,0)shadow.Size=UDim2.new(0,340,0,400)shadow.Visible=false shadow.Parent=gui
 
-local win=Instance.new("Frame")win.AnchorPoint=Vector2.new(0.5,0.5)win.Position=UDim2.new(0.5,0,0.5,0)win.Size=UDim2.new(0,380,0,420)win.BackgroundColor3=Mac.Bg win.BackgroundTransparency=0.05 win.BorderSizePixel=0 win.Visible=false win.ZIndex=1 win.Parent=gui
+local win=Instance.new("Frame")win.AnchorPoint=Vector2.new(0.5,0.5)win.Position=UDim2.new(0.5,0,0.5,0)win.Size=UDim2.new(0,320,0,380)win.BackgroundColor3=Mac.Bg win.BackgroundTransparency=0.05 win.BorderSizePixel=0 win.Visible=false win.ZIndex=1 win.Parent=gui
 local cw=Instance.new("UICorner")cw.CornerRadius=Mac.R cw.Parent=win
 local sw=Instance.new("UIStroke")sw.Color=Mac.Stroke sw.Thickness=1 sw.Transparency=0.4 sw.Parent=win
 
-local tb=Instance.new("Frame")tb.Size=UDim2.new(1,0,0,36)tb.BackgroundColor3=Mac.BgGlass tb.BackgroundTransparency=0.3 tb.BorderSizePixel=0 tb.ZIndex=2 tb.Parent=win
+local tb=Instance.new("Frame")tb.Size=UDim2.new(1,0,0,34)tb.BackgroundColor3=Mac.BgGlass tb.BackgroundTransparency=0.3 tb.BorderSizePixel=0 tb.ZIndex=2 tb.Parent=win
 local ctb=Instance.new("UICorner")ctb.CornerRadius=Mac.R ctb.Parent=tb
 local tbf=Instance.new("Frame")tbf.Size=UDim2.new(1,0,0,12)tbf.Position=UDim2.new(0,0,1,-12)tbf.BackgroundColor3=Mac.BgGlass tbf.BackgroundTransparency=0.3 tbf.BorderSizePixel=0 tbf.ZIndex=2 tbf.Parent=tb
 
-local function dot(x,color)local d=Instance.new("TextButton")d.Text=""d.Size=UDim2.fromOffset(12,12)d.Position=UDim2.fromOffset(x,12)d.BackgroundColor3=color d.BorderSizePixel=0 d.AutoButtonColor=false d.ZIndex=3 d.Parent=tb local c=Instance.new("UICorner")c.CornerRadius=Mac.Rp c.Parent=d return d end
-local redBtn=dot(14,Mac.Red)local ylwBtn=dot(32,Mac.Yellow)local grnBtn=dot(50,Mac.Green)
+local function dot(x,color)local d=Instance.new("TextButton")d.Text=""d.Size=UDim2.fromOffset(10,10)d.Position=UDim2.fromOffset(x,11)d.BackgroundColor3=color d.BorderSizePixel=0 d.AutoButtonColor=false d.ZIndex=3 d.Parent=tb local c=Instance.new("UICorner")c.CornerRadius=Mac.Rp c.Parent=d return d end
+local redBtn=dot(12,Mac.Red)local ylwBtn=dot(28,Mac.Yellow)local grnBtn=dot(44,Mac.Green)
 
-local titleLbl=Instance.new("TextLabel")titleLbl.Text="Dungeon Quest"titleLbl.Font=Mac.FontBold titleLbl.TextSize=12 titleLbl.TextColor3=Mac.Text titleLbl.BackgroundTransparency=1 titleLbl.Size=UDim2.new(1,-80,1,0)titleLbl.Position=UDim2.fromOffset(70,0)titleLbl.ZIndex=3 titleLbl.Parent=tb
+local titleLbl=Instance.new("TextLabel")titleLbl.Text="DQ"titleLbl.Font=Mac.FontBold titleLbl.TextSize=12 titleLbl.TextColor3=Mac.Text titleLbl.BackgroundTransparency=1 titleLbl.Size=UDim2.new(1,-60,1,0)titleLbl.Position=UDim2.fromOffset(60,0)titleLbl.ZIndex=3 titleLbl.Parent=tb
 
-local st=Instance.new("TextLabel")st.Text="Idle"st.Font=Mac.FontBold st.TextSize=10 st.TextColor3=Mac.TextDim st.TextXAlignment=Enum.TextXAlignment.Left st.BackgroundColor3=Mac.Card st.BorderSizePixel=0 st.Size=UDim2.new(1,-16,0,24)st.Position=UDim2.fromOffset(8,40)st.ZIndex=2 st.Parent=win
+local st=Instance.new("TextLabel")st.Text="Idle"st.Font=Mac.FontBold st.TextSize=9 st.TextColor3=Mac.TextDim st.TextXAlignment=Enum.TextXAlignment.Left st.BackgroundColor3=Mac.Card st.BorderSizePixel=0 st.Size=UDim2.new(1,-16,0,22)st.Position=UDim2.fromOffset(8,38)st.ZIndex=2 st.Parent=win
 local c4=Instance.new("UICorner")c4.CornerRadius=UDim.new(0,6)c4.Parent=st
 local sp4=Instance.new("UIPadding")sp4.PaddingLeft=UDim.new(0,10)sp4.Parent=st
 
-local tabBar=Instance.new("Frame")tabBar.Size=UDim2.new(1,-16,0,32)tabBar.Position=UDim2.fromOffset(8,68)tabBar.BackgroundColor3=Mac.Card tabBar.BackgroundTransparency=0.4 tabBar.BorderSizePixel=0 tabBar.ZIndex=2 tabBar.Parent=win
+local tabBar=Instance.new("Frame")tabBar.Size=UDim2.new(1,-16,0,30)tabBar.Position=UDim2.fromOffset(8,64)tabBar.BackgroundColor3=Mac.Card tabBar.BackgroundTransparency=0.4 tabBar.BorderSizePixel=0 tabBar.ZIndex=2 tabBar.Parent=win
 local ctb2=Instance.new("UICorner")ctb2.CornerRadius=UDim.new(0,6)ctb2.Parent=tabBar
-local tlay=Instance.new("UIListLayout")tlay.FillDirection=Enum.FillDirection.Horizontal tlay.SortOrder=Enum.SortOrder.LayoutOrder tlay.Padding=UDim.new(0,4)tlay.Parent=tabBar
-local tpad=Instance.new("UIPadding")tpad.PaddingLeft=UDim.new(0,4)tpad.PaddingRight=UDim.new(0,4)tpad.PaddingTop=UDim.new(0,4)tpad.PaddingBottom=UDim.new(0,4)tpad.Parent=tabBar
+local tlay=Instance.new("UIListLayout")tlay.FillDirection=Enum.FillDirection.Horizontal tlay.SortOrder=Enum.SortOrder.LayoutOrder tlay.Padding=UDim.new(0,3)tlay.Parent=tabBar
+local tpad=Instance.new("UIPadding")tpad.PaddingLeft=UDim.new(0,3)tpad.PaddingRight=UDim.new(0,3)tpad.PaddingTop=UDim.new(0,3)tpad.PaddingBottom=UDim.new(0,3)tpad.Parent=tabBar
 
-local pagesHolder=Instance.new("Frame")pagesHolder.Size=UDim2.new(1,-16,1,-114)pagesHolder.Position=UDim2.fromOffset(8,104)pagesHolder.BackgroundTransparency=1 pagesHolder.ZIndex=2 pagesHolder.Parent=win
+local pagesHolder=Instance.new("Frame")pagesHolder.Size=UDim2.new(1,-16,1,-106)pagesHolder.Position=UDim2.fromOffset(8,98)pagesHolder.BackgroundTransparency=1 pagesHolder.ZIndex=2 pagesHolder.Parent=win
 
 local pages={}local tabs={}local currentTab=nil
 local function showTab(name)
@@ -593,31 +617,32 @@ local function showTab(name)
     end
 end
 local function makeTab(name,order)
-    local btn=Instance.new("TextButton")btn.Text=name btn.Font=Mac.FontBold btn.TextSize=11 btn.TextColor3=Mac.TextDim btn.BackgroundColor3=Mac.Card btn.BorderSizePixel=0 btn.AutoButtonColor=false btn.LayoutOrder=order btn.Size=UDim2.new(0,0,1,0)btn.ZIndex=3 btn.Parent=tabBar
+    local btn=Instance.new("TextButton")btn.Text=name btn.Font=Mac.FontBold btn.TextSize=10 btn.TextColor3=Mac.TextDim btn.BackgroundColor3=Mac.Card btn.BorderSizePixel=0 btn.AutoButtonColor=false btn.LayoutOrder=order btn.Size=UDim2.new(0,0,1,0)btn.ZIndex=3 btn.Parent=tabBar
     local c=Instance.new("UICorner")c.CornerRadius=UDim.new(0,4)c.Parent=btn
     btn.Activated:Connect(function()showTab(name)end)
     tabs[name]=btn
 end
 local function makePage(name)
-    local page=Instance.new("ScrollingFrame")page.Size=UDim2.fromScale(1,1)page.BackgroundTransparency=1 page.BorderSizePixel=0 page.ScrollBarThickness=3 page.ScrollBarImageColor3=Mac.TextDim page.CanvasSize=UDim2.new(0,0,0,0)page.AutomaticCanvasSize=Enum.AutomaticSize.Y page.Visible=false page.ZIndex=2 page.Parent=pagesHolder
-    local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,5)lay.Parent=page
+    local page=Instance.new("ScrollingFrame")page.Size=UDim2.fromScale(1,1)page.BackgroundTransparency=1 page.BorderSizePixel=0 page.ScrollBarThickness=8 page.ScrollBarImageColor3=Mac.TextDim page.CanvasSize=UDim2.new(0,0,0,0)page.AutomaticCanvasSize=Enum.AutomaticSize.Y page.Visible=false page.ZIndex=2 page.Parent=pagesHolder
+    local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,4)lay.Parent=page
     pages[name]=page return page
 end
 makeTab("Farm",1)makeTab("Visual",2)makeTab("Settings",3)
 local pageFarm=makePage("Farm")local pageVisual=makePage("Visual")local pageSettings=makePage("Settings")
-task.spawn(function()task.wait(0.1)for _,btn in pairs(tabs)do btn.Size=UDim2.new(0,btn.TextBounds.X+20,1,0)end end)
+task.spawn(function()task.wait(0.1)for _,btn in pairs(tabs)do btn.Size=UDim2.new(0,btn.TextBounds.X+18,1,0)end end)
+-- ==================== TOGGLE ====================
 local function mkT(parent,name,key,fn)
-    local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,40)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
+    local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,36)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
     local cr=Instance.new("UICorner")cr.CornerRadius=Mac.Rs cr.Parent=row
-    local lbl=Instance.new("TextLabel")lbl.Text=name lbl.Font=Mac.Font lbl.TextSize=12 lbl.TextColor3=Mac.Text lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(1,-70,1,0)lbl.Position=UDim2.fromOffset(12,0)lbl.ZIndex=3 lbl.Parent=row
-    local track=Instance.new("TextButton")track.Text=""track.Size=UDim2.fromOffset(42,22)track.Position=UDim2.new(1,-54,0.5,-11)track.BackgroundColor3=Mac.ToggleOff track.BorderSizePixel=0 track.AutoButtonColor=false track.ZIndex=3 track.Parent=row
+    local lbl=Instance.new("TextLabel")lbl.Text=name lbl.Font=Mac.Font lbl.TextSize=11 lbl.TextColor3=Mac.Text lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(1,-60,1,0)lbl.Position=UDim2.fromOffset(10,0)lbl.ZIndex=3 lbl.Parent=row
+    local track=Instance.new("TextButton")track.Text=""track.Size=UDim2.fromOffset(38,20)track.Position=UDim2.new(1,-48,0.5,-10)track.BackgroundColor3=Mac.ToggleOff track.BorderSizePixel=0 track.AutoButtonColor=false track.ZIndex=3 track.Parent=row
     local ctr=Instance.new("UICorner")ctr.CornerRadius=Mac.Rp ctr.Parent=track
-    local knob=Instance.new("Frame")knob.Size=UDim2.fromOffset(18,18)knob.Position=UDim2.fromOffset(2,2)knob.BackgroundColor3=Color3.new(1,1,1)knob.BorderSizePixel=0 knob.ZIndex=4 knob.Parent=track
+    local knob=Instance.new("Frame")knob.Size=UDim2.fromOffset(16,16)knob.Position=UDim2.fromOffset(2,2)knob.BackgroundColor3=Color3.new(1,1,1)knob.BorderSizePixel=0 knob.ZIndex=4 knob.Parent=track
     local ck=Instance.new("UICorner")ck.CornerRadius=Mac.Rp ck.Parent=knob
     local function setState(on,anim)
         if on then
-            if anim then T:Create(track,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=Mac.Green}):Play()T:Create(knob,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(22,2)}):Play()
-            else track.BackgroundColor3=Mac.Green knob.Position=UDim2.fromOffset(22,2)end
+            if anim then T:Create(track,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=Mac.Green}):Play()T:Create(knob,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(20,2)}):Play()
+            else track.BackgroundColor3=Mac.Green knob.Position=UDim2.fromOffset(20,2)end
         else
             if anim then T:Create(track,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=Mac.ToggleOff}):Play()T:Create(knob,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=UDim2.fromOffset(2,2)}):Play()
             else track.BackgroundColor3=Mac.ToggleOff knob.Position=UDim2.fromOffset(2,2)end
@@ -627,29 +652,114 @@ local function mkT(parent,name,key,fn)
     track.Activated:Connect(function()cfg[key]=not cfg[key]setState(cfg[key],true)if cfg[key]and fn then task.spawn(fn)end end)
 end
 
+-- ==================== DRAG SLIDER ====================
 local function mkS(parent,name,key,mn,mx,stp,dv)
-    local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,44)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
-    local cr=Instance.new("UICorner")cr.CornerRadius=Mac.Rs cr.Parent=row
-    local lbl=Instance.new("TextLabel")lbl.Text=name.."  ·  "..dv lbl.Font=Mac.Font lbl.TextSize=11 lbl.TextColor3=Mac.Text lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(1,-20,0,16)lbl.Position=UDim2.fromOffset(12,6)lbl.ZIndex=3 lbl.Parent=row
-    local barBg=Instance.new("Frame")barBg.Size=UDim2.new(1,-70,0,4)barBg.Position=UDim2.fromOffset(12,30)barBg.BackgroundColor3=Color3.fromRGB(80,80,85)barBg.BorderSizePixel=0 barBg.ZIndex=3 barBg.Parent=row
-    local cb=Instance.new("UICorner")cb.CornerRadius=Mac.Rp cb.Parent=barBg
-    local barFill=Instance.new("Frame")barFill.Size=UDim2.new((dv-mn)/(mx-mn),0,1,0)barFill.BackgroundColor3=Mac.Accent barFill.BorderSizePixel=0 barFill.ZIndex=4 barFill.Parent=barBg
-    local cf=Instance.new("UICorner")cf.CornerRadius=Mac.Rp cf.Parent=barFill
+    local row=Instance.new("Frame")
+    row.Size=UDim2.new(1,-2,0,48)
+    row.BackgroundColor3=Mac.Card
+    row.BorderSizePixel=0
+    row.ZIndex=2
+    row.Parent=parent
+    local cr=Instance.new("UICorner")
+    cr.CornerRadius=Mac.Rs
+    cr.Parent=row
+
+    local lbl=Instance.new("TextLabel")
+    lbl.Text=name.."  ·  "..dv
+    lbl.Font=Mac.Font
+    lbl.TextSize=10
+    lbl.TextColor3=Mac.Text
+    lbl.TextXAlignment=Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency=1
+    lbl.Size=UDim2.new(1,-16,0,16)
+    lbl.Position=UDim2.fromOffset(10,4)
+    lbl.ZIndex=3
+    lbl.Parent=row
+
+    local track=Instance.new("TextButton")
+    track.Text=""
+    track.BackgroundColor3=Color3.fromRGB(40,40,44)
+    track.BorderSizePixel=0
+    track.Size=UDim2.new(1,-20,0,8)
+    track.Position=UDim2.new(0,10,1,-14)
+    track.AutoButtonColor=false
+    track.ZIndex=3
+    track.Parent=row
+    local ctr=Instance.new("UICorner")
+    ctr.CornerRadius=UDim.new(1,0)
+    ctr.Parent=track
+
+    local fill=Instance.new("Frame")
+    fill.BackgroundColor3=Color3.fromRGB(255,255,255)
+    fill.BorderSizePixel=0
+    local startRatio=(dv-mn)/(mx-mn)
+    fill.Size=UDim2.new(startRatio,0,1,0)
+    fill.ZIndex=4
+    fill.Parent=track
+    local cf=Instance.new("UICorner")
+    cf.CornerRadius=UDim.new(1,0)
+    cf.Parent=fill
+
+    local knob=Instance.new("Frame")
+    knob.Size=UDim2.fromOffset(18,18)
+    knob.AnchorPoint=Vector2.new(0.5,0.5)
+    knob.Position=UDim2.new(startRatio,0,0.5,0)
+    knob.BackgroundColor3=Color3.fromRGB(255,255,255)
+    knob.BorderSizePixel=0
+    knob.ZIndex=5
+    knob.Parent=track
+    local ck=Instance.new("UICorner")
+    ck.CornerRadius=UDim.new(1,0)
+    ck.Parent=knob
+
     local v=dv
-    local function update()cfg[key]=v lbl.Text=name.."  ·  "..v local ratio=(v-mn)/(mx-mn)T:Create(barFill,TweenInfo.new(0.15,Enum.EasingStyle.Quart),{Size=UDim2.new(ratio,0,1,0)}):Play()end
-    local minus=Instance.new("TextButton")minus.Text="−"minus.Font=Mac.FontBold minus.TextSize=15 minus.TextColor3=Mac.Text minus.BackgroundColor3=Color3.fromRGB(60,60,64)minus.BorderSizePixel=0 minus.Size=UDim2.fromOffset(22,22)minus.Position=UDim2.new(1,-58,0.5,-11)minus.AutoButtonColor=false minus.ZIndex=4 minus.Parent=row
-    local cm=Instance.new("UICorner")cm.CornerRadius=Mac.Rp cm.Parent=minus
-    local plus=Instance.new("TextButton")plus.Text="+"plus.Font=Mac.FontBold plus.TextSize=13 plus.TextColor3=Mac.Text plus.BackgroundColor3=Color3.fromRGB(60,60,64)plus.BorderSizePixel=0 plus.Size=UDim2.fromOffset(22,22)plus.Position=UDim2.new(1,-30,0.5,-11)plus.AutoButtonColor=false plus.ZIndex=4 plus.Parent=row
-    local cp=Instance.new("UICorner")cp.CornerRadius=Mac.Rp cp.Parent=plus
-    minus.Activated:Connect(function()v=math.max(mn,v-stp)v=math.floor(v*1000+0.5)/1000 update()end)
-    plus.Activated:Connect(function()v=math.min(mx,v+stp)v=math.floor(v*1000+0.5)/1000 update()end)
+    local dragging=false
+
+    local function updateFromX(absX)
+        local trackAbsX=track.AbsolutePosition.X
+        local trackAbsW=track.AbsoluteSize.X
+        if trackAbsW<=0 then return end
+        local ratio=math.clamp((absX-trackAbsX)/trackAbsW,0,1)
+        local raw=mn+ratio*(mx-mn)
+        local stepped=math.floor((raw/stp)+0.5)*stp
+        stepped=math.clamp(stepped,mn,mx)
+        stepped=math.floor(stepped*1000+0.5)/1000
+        v=stepped
+        cfg[key]=v
+        lbl.Text=name.."  ·  "..v
+        local newRatio=(v-mn)/(mx-mn)
+        fill.Size=UDim2.new(newRatio,0,1,0)
+        knob.Position=UDim2.new(newRatio,0,0.5,0)
+    end
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            dragging=true
+            local ml=UIS:GetMouseLocation()
+            updateFromX(ml.X)
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch)then
+            local ml=UIS:GetMouseLocation()
+            updateFromX(ml.X)
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            dragging=false
+        end
+    end)
 end
 
+-- ==================== PRIORITY ====================
 local function mkPriority(parent)
-    local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,40)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
+    local row=Instance.new("Frame")row.Size=UDim2.new(1,-2,0,36)row.BackgroundColor3=Mac.Card row.BorderSizePixel=0 row.ZIndex=2 row.Parent=parent
     local cr=Instance.new("UICorner")cr.CornerRadius=Mac.Rs cr.Parent=row
-    local lbl=Instance.new("TextLabel")lbl.Text="Target Priority"lbl.Font=Mac.Font lbl.TextSize=12 lbl.TextColor3=Mac.Text lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(0.5,0,1,0)lbl.Position=UDim2.fromOffset(12,0)lbl.ZIndex=3 lbl.Parent=row
-    local btn=Instance.new("TextButton")btn.Text=(cfg.TargetPriority==2)and "Lowest HP"or "Closest"btn.Font=Mac.FontBold btn.TextSize=11 btn.TextColor3=Mac.Text btn.BackgroundColor3=Mac.Accent btn.BorderSizePixel=0 btn.Size=UDim2.fromOffset(100,26)btn.Position=UDim2.new(1,-112,0.5,-13)btn.AutoButtonColor=false btn.ZIndex=3 btn.Parent=row
+    local lbl=Instance.new("TextLabel")lbl.Text="Target Priority"lbl.Font=Mac.Font lbl.TextSize=11 lbl.TextColor3=Mac.Text lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(0.5,0,1,0)lbl.Position=UDim2.fromOffset(10,0)lbl.ZIndex=3 lbl.Parent=row
+    local btn=Instance.new("TextButton")btn.Text=(cfg.TargetPriority==2)and "Lowest HP"or "Closest"btn.Font=Mac.FontBold btn.TextSize=10 btn.TextColor3=Mac.Text btn.BackgroundColor3=Mac.Accent btn.BorderSizePixel=0 btn.Size=UDim2.fromOffset(90,24)btn.Position=UDim2.new(1,-98,0.5,-12)btn.AutoButtonColor=false btn.ZIndex=3 btn.Parent=row
     local cb=Instance.new("UICorner")cb.CornerRadius=UDim.new(0,5)cb.Parent=btn
     btn.Activated:Connect(function()
         cfg.TargetPriority=(cfg.TargetPriority==2)and 1 or 2
@@ -657,79 +767,145 @@ local function mkPriority(parent)
     end)
 end
 
+-- ==================== HEAD ====================
+local function head(parent,text)local s=Instance.new("TextLabel")s.Text=text s.Font=Mac.FontBold s.TextSize=8 s.TextColor3=Mac.TextDim s.TextXAlignment=Enum.TextXAlignment.Left s.BackgroundTransparency=1 s.Size=UDim2.new(1,0,0,14)s.Position=UDim2.fromOffset(4,0)s.Parent=parent end
+
+-- ============ TAB FARM ============
+head(pageFarm,"AUTO DUNGEON")
 mkT(pageFarm,"Auto Dungeon","AutoDungeon",dunLoop)
+head(pageFarm,"WALK")
 mkT(pageFarm,"Walk Flow","WalkFlow",walkLoop)
+mkS(pageFarm,"walk_delay","WalkDelay",0.1,1,0.05,0.2)
+head(pageFarm,"AUTO SWING")
 mkT(pageFarm,"Auto Swing","AutoSwing",swingLoop)
+mkS(pageFarm,"swing_delay","SwingDelay",0.02,1,0.02,0.08)
+mkS(pageFarm,"swing_reach","SwingReach",2,15,0.5,6)
+head(pageFarm,"AUTO SKILL")
 mkT(pageFarm,"Auto Skill (Q & E)","AutoSkill",autoSkillLoop)
+mkS(pageFarm,"skill_q_delay","SkillQDelay",0.2,10,0.1,1.5)
+mkS(pageFarm,"skill_e_delay","SkillEDelay",0.2,10,0.1,1.5)
+head(pageFarm,"HOVER FARM")
 mkT(pageFarm,"Hover Farm (Dip)","HoverFarm",hoverLoop)
+mkS(pageFarm,"hover_height","HoverHeight",5,30,1,13)
+head(pageFarm,"AUTO DODGE")
 mkT(pageFarm,"Auto Dodge","AutoDodge",dodgeLoop)
+mkS(pageFarm,"dodge_range","DodgeRange",5,40,1,10)
+mkS(pageFarm,"dodge_speed","DodgeSpeed",4,20,1,12)
+head(pageFarm,"FREEZE")
 mkT(pageFarm,"Freeze NPC","FreezeNPC",freezeLoop)
+head(pageFarm,"AUTO HEAL")
 mkT(pageFarm,"Auto Heal (+500/5s)","AutoHealSmall",autoHealSmallLoop)
+mkS(pageFarm,"heal_amount","HealAmount",50,1000,50,500)
+mkS(pageFarm,"heal_interval","HealInterval",2,30,1,5)
+head(pageFarm,"UTILITY")
 mkT(pageFarm,"No Clip","NoClip",noclipLoop)
+
+-- ============ TAB VISUAL ============
+head(pageVisual,"ESP")
 mkT(pageVisual,"ESP Overlay","ESPOverlay",nil)
+mkS(pageVisual,"esp_range","ESPRange",50,2000,50,800)
+head(pageVisual,"HITBOX")
 mkT(pageVisual,"Hitbox Visual","HitboxVisual",nil)
 mkT(pageVisual,"Hitbox Expand (Tool)","Hitbox",hitboxLoop)
+mkS(pageVisual,"hitbox_size","HitboxSize",1,10,0.5,2.5)
 
-local function head(parent,text)local s=Instance.new("TextLabel")s.Text=text s.Font=Mac.FontBold s.TextSize=9 s.TextColor3=Mac.TextDim s.TextXAlignment=Enum.TextXAlignment.Left s.BackgroundTransparency=1 s.Size=UDim2.new(1,0,0,16)s.Position=UDim2.fromOffset(4,0)s.Parent=parent end
+-- ============ TAB SETTINGS ============
 head(pageSettings,"TARGETING")
 mkPriority(pageSettings)
-head(pageSettings,"TIMING")
-mkS(pageSettings,"swing_delay","SwingDelay",0.02,1,0.02,0.08)
-mkS(pageSettings,"swing_reach","SwingReach",2,15,0.5,6)
-mkS(pageSettings,"walk_delay","WalkDelay",0.1,1,0.05,0.2)
-head(pageSettings,"SKILL")
-mkS(pageSettings,"skill_q_delay","SkillQDelay",0.2,10,0.1,1.5)
-mkS(pageSettings,"skill_e_delay","SkillEDelay",0.2,10,0.1,1.5)
-head(pageSettings,"HOVER")
-mkS(pageSettings,"hover_height","HoverHeight",5,30,1,13)
-head(pageSettings,"HEAL")
-mkS(pageSettings,"heal_amount","HealAmount",50,1000,50,500)
-mkS(pageSettings,"heal_interval","HealInterval",2,30,1,5)
-head(pageSettings,"COMBAT")
-mkS(pageSettings,"esp_range","ESPRange",50,2000,50,800)
-mkS(pageSettings,"hitbox_size","HitboxSize",1,10,0.5,2.5)
-head(pageSettings,"DODGE")
-mkS(pageSettings,"dodge_range","DodgeRange",5,40,1,10)
-mkS(pageSettings,"dodge_speed","DodgeSpeed",4,20,1,12)
 
+-- ============ RESET CONFIG (IMPROVED) ============
 local resetBtn=Instance.new("TextButton")
 resetBtn.Text="Reset Config"
-resetBtn.Font=Mac.FontBold resetBtn.TextSize=11 resetBtn.TextColor3=Color3.new(1,1,1)
+resetBtn.Font=Mac.FontBold resetBtn.TextSize=10 resetBtn.TextColor3=Color3.new(1,1,1)
 resetBtn.BackgroundColor3=Mac.Red resetBtn.BorderSizePixel=0
-resetBtn.Size=UDim2.new(1,-2,0,32)resetBtn.AutoButtonColor=false resetBtn.Parent=pageSettings
+resetBtn.Size=UDim2.new(1,-2,0,28)resetBtn.AutoButtonColor=false resetBtn.Parent=pageSettings
 local crb=Instance.new("UICorner")crb.CornerRadius=Mac.Rs crb.Parent=resetBtn
-resetBtn.Activated:Connect(function()resetConfig()resetBtn.Text="Reset! Restart"task.delay(2,function()resetBtn.Text="Reset Config"end)end)
+
+local resetFeedback=Instance.new("TextLabel")
+resetFeedback.Text=""
+resetFeedback.Font=Mac.Font resetFeedback.TextSize=9
+resetFeedback.TextColor3=Mac.Green
+resetFeedback.BackgroundTransparency=1
+resetFeedback.Size=UDim2.new(1,-2,0,16)
+resetFeedback.Position=UDim2.fromOffset(4,0)
+resetFeedback.Parent=pageSettings
+
+local resetPending=false
+local resetTime=0
+
+local function doFullReset()
+    local paths={"dqaf_config.txt","Delta/dqaf_config.txt","/storage/emulated/0/Delta/dqaf_config.txt","/sdcard/dqaf_config.txt"}
+    local deleted=0
+    if hasFileIO then for _,p in ipairs(paths)do if pcall(delfile,p)then deleted=deleted+1 end end end
+    for k,v in pairs(DEFAULT_CFG)do cfg[k]=v end
+    resetFeedback.Text="✔ Direset! ("..deleted.." file)"
+    if hasFileIO then pcall(saveConfig)end
+    print("[DQAF] Config reset. Deleted:",deleted,"files.")
+end
+
+local function handleResetClick()
+    local now=tick()
+    if not resetPending or now-resetTime>3 then
+        resetPending=true
+        resetTime=now
+        resetBtn.Text="Klik lagi..."
+        resetFeedback.Text="Konfirmasi dalam 3 detik"
+        resetFeedback.TextColor3=Mac.Yellow
+        task.delay(3,function()
+            if resetPending and (tick()-resetTime)>=3 then
+                resetPending=false
+                resetBtn.Text="Reset Config"
+                resetFeedback.Text=""
+            end
+        end)
+    else
+        resetPending=false
+        resetBtn.Text="✓ Reset!"
+        resetBtn.BackgroundColor3=Mac.Green
+        doFullReset()
+        task.delay(1.5,function()
+            resetBtn.Text="Reset Config"
+            resetBtn.BackgroundColor3=Mac.Red
+            resetFeedback.TextColor3=Mac.Green
+        end)
+    end
+end
+
+resetBtn.MouseButton1Down:Connect(handleResetClick)
+resetBtn.Activated:Connect(function() if not resetPending then handleResetClick() end end)
+
 local cfgInfo=Instance.new("TextLabel")
 cfgInfo.Text=hasFileIO and "✔ Auto-save aktif" or "✘ writefile gak support"
-cfgInfo.Font=Mac.Font cfgInfo.TextSize=10
+cfgInfo.Font=Mac.Font cfgInfo.TextSize=9
 cfgInfo.TextColor3=hasFileIO and Mac.Green or Mac.Red
 cfgInfo.TextXAlignment=Enum.TextXAlignment.Left
 cfgInfo.BackgroundTransparency=1
-cfgInfo.Size=UDim2.new(1,-2,0,16)cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageSettings
+cfgInfo.Size=UDim2.new(1,-2,0,14)cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageSettings
 
 showTab("Farm")
 
+-- ==================== ANIMATION ====================
 local isOpen=false local isAnim=false
 local function openWindow()
     if isAnim or isOpen then return end
     isAnim=true isOpen=true shadow.Visible=true win.Visible=true
-    win.Size=UDim2.new(0,300,0,340)win.BackgroundTransparency=1 shadow.Size=UDim2.new(0,320,0,360)shadow.ImageTransparency=1
-    local t1=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,380,0,420),BackgroundTransparency=0.05})
-    T:Create(shadow,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,400,0,440),ImageTransparency=0.4}):Play()
+    win.Size=UDim2.new(0,260,0,310)win.BackgroundTransparency=1 shadow.Size=UDim2.new(0,280,0,330)shadow.ImageTransparency=1
+    local t1=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,320,0,380),BackgroundTransparency=0.05})
+    T:Create(shadow,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,340,0,400),ImageTransparency=0.4}):Play()
     t1:Play()t1.Completed:Connect(function()isAnim=false end)
 end
 local function closeWindow()
     if isAnim or not isOpen then return end
     isAnim=true isOpen=false
-    local t1=T:Create(win,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,300,0,340),BackgroundTransparency=1})
-    T:Create(shadow,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,320,0,360),ImageTransparency=1}):Play()
-    t1:Play()t1.Completed:Connect(function()win.Visible=false shadow.Visible=false win.Size=UDim2.new(0,380,0,420)win.BackgroundTransparency=0.05 shadow.Size=UDim2.new(0,400,0,440)shadow.ImageTransparency=0.4 isAnim=false end)
+    local t1=T:Create(win,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,260,0,310),BackgroundTransparency=1})
+    T:Create(shadow,TweenInfo.new(0.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=UDim2.new(0,280,0,330),ImageTransparency=1}):Play()
+    t1:Play()t1.Completed:Connect(function()win.Visible=false shadow.Visible=false win.Size=UDim2.new(0,320,0,380)win.BackgroundTransparency=0.05 shadow.Size=UDim2.new(0,340,0,400)shadow.ImageTransparency=0.4 isAnim=false end)
 end
 redBtn.Activated:Connect(closeWindow)
 ylwBtn.Activated:Connect(closeWindow)
 grnBtn.Activated:Connect(function()
-    if win.Size.X.Offset>=380 then T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,480,0,500)}):Play()
-    else T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,380,0,420)}):Play()end
+    if win.Size.X.Offset>=320 then T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,400,0,450)}):Play()
+    else T:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Size=UDim2.new(0,320,0,380)}):Play()end
 end)
 for _,btn in ipairs({redBtn,ylwBtn,grnBtn})do
     btn.MouseEnter:Connect(function()T:Create(btn,TweenInfo.new(0.15),{BackgroundColor3=btn.BackgroundColor3:Lerp(Color3.new(1,1,1),0.3)}):Play()end)
@@ -741,7 +917,7 @@ tb.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.
 UIS.InputChanged:Connect(function(input)if dragging and(input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch)then local d=input.Position-dragStart win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)shadow.Position=win.Position end end)
 UIS.InputEnded:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
 
-local tg=Instance.new("TextButton")tg.Text="DQ"tg.Font=Mac.FontBold tg.TextSize=12 tg.TextColor3=Mac.Text tg.BackgroundColor3=Mac.Accent tg.BorderSizePixel=0 tg.Size=UDim2.fromOffset(44,34)tg.Position=UDim2.new(0,20,0,80)tg.AutoButtonColor=false tg.ZIndex=5 tg.Parent=gui
+local tg=Instance.new("TextButton")tg.Text="DQ"tg.Font=Mac.FontBold tg.TextSize=11 tg.TextColor3=Mac.Text tg.BackgroundColor3=Mac.Accent tg.BorderSizePixel=0 tg.Size=UDim2.fromOffset(40,32)tg.Position=UDim2.new(0,20,0,80)tg.AutoButtonColor=false tg.ZIndex=5 tg.Parent=gui
 local ctg=Instance.new("UICorner")ctg.CornerRadius=Mac.Rp ctg.Parent=tg
 local stg=Instance.new("UIStroke")stg.Color=Color3.new(0,0,0)stg.Thickness=1 stg.Transparency=0.6 stg.Parent=tg
 tg.Activated:Connect(function()if isOpen then closeWindow()else openWindow()end end)
@@ -752,13 +928,13 @@ task.spawn(function()
     while gui.Parent do
         if inD()then
             local l=eList()local tn=cur and cur.Name or "none"
-            st.Text=string.format("Wave %d  ·  %d musuh  ·  %s",wv(),#l,tn)
+            st.Text=string.format("W%d · %d mob · %s",wv(),#l,tn)
             st.TextColor3=Mac.Text
         else
-            st.Text="Idle  ·  Lobby"
+            st.Text="Idle · Lobby"
             st.TextColor3=Mac.TextDim
         end
         task.wait(0.5)
     end
 end)
-print("[DQAF] v11 loaded. Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v14 loaded. Config:",hasFileIO and "auto-save" or "no-save")
