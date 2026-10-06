@@ -1,4 +1,4 @@
--- DUNGEON QUEST AUTO FARM — v16
+-- DUNGEON QUEST AUTO FARM — v17
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
 local UIS=game:GetService("UserInputService")local T=game:GetService("TweenService")
@@ -54,7 +54,7 @@ local function clearVisuals()for part,box in pairs(visualBoxes)do pcall(function
 local function updateHitboxVisuals()if not hrp or not char then return end local myBox=getOrCreateVisual(hrp,Color3.fromRGB(0,150,255))myBox.Color3=Color3.fromRGB(0,150,255)myBox.Transparency=0.6 local activeParts={}for _,m in ipairs(eList())do local hE=m:FindFirstChild("HumanoidRootPart")if hE then activeParts[hE]=true local dist=(hE.Position-hrp.Position).Magnitude local inRange=dist<=cfg.SwingReach local color=inRange and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,60,60)local box=getOrCreateVisual(hE,color)box.Color3=color box.Transparency=inRange and 0.4 or 0.6 end end for part,box in pairs(visualBoxes)do if part~=hrp and not activeParts[part]then pcall(function()box:Destroy()end)visualBoxes[part]=nil end end end
 task.spawn(function()while true do if cfg.HitboxVisual then pcall(updateHitboxVisuals)task.wait(0.1)else clearVisuals()task.wait(0.5)end end end)
 
--- ==================== HOVER FARM (CCTV MODE) ====================
+-- ==================== HOVER FARM (CCTV v3 + SENDAT FIX) ====================
 local hoverPhys={alignPos=nil,alignOri=nil,attach=nil}
 local bobPhase=0
 local HOVER_RESPONSIVENESS=20
@@ -62,11 +62,52 @@ local ORI_RESPONSIVENESS=12
 local HOVER_MAX_SPEED=16
 local BOB_HEIGHT=0.15
 local BOB_SPEED=1.2
-local CCTV_ANGLE=60
+local CCTV_ANGLE=45
 local function cleanupHoverPhysics()for _,obj in ipairs({hoverPhys.alignPos,hoverPhys.alignOri,hoverPhys.attach})do if obj then pcall(function()obj:Destroy()end)end end if hrp then local oldBV=hrp:FindFirstChild("DQAF_HoverVelocity")if oldBV then pcall(function()oldBV:Destroy()end)end end hoverPhys={alignPos=nil,alignOri=nil,attach=nil}end
 local function ensureHoverPhysics()if not hrp then return end if hoverPhys.alignPos and hoverPhys.alignPos.Parent then return end cleanupHoverPhysics()local att=Instance.new("Attachment")att.Name="DQAF_HoverAttach"att.Parent=hrp local ap=Instance.new("AlignPosition")ap.Name="DQAF_AlignPos"ap.Attachment0=att ap.Mode=Enum.PositionAlignmentMode.OneAttachment ap.Position=hrp.Position ap.MaxForce=150000 ap.Responsiveness=HOVER_RESPONSIVENESS ap.MaxVelocity=HOVER_MAX_SPEED ap.ApplyAtCenterOfMass=true ap.Parent=hrp local ao=Instance.new("AlignOrientation")ao.Name="DQAF_AlignOri"ao.Attachment0=att ao.Mode=Enum.OrientationAlignmentMode.OneAttachment ao.MaxTorque=150000 ao.Responsiveness=ORI_RESPONSIVENESS ao.Parent=hrp hoverPhys.alignPos=ap hoverPhys.alignOri=ao hoverPhys.attach=att pcall(function()if hum then hum.AutoRotate=false end end)end
 local function doDipSwing()if not char then return end for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end pcall(function()local cam=WS.CurrentCamera VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,false,game,1)end)end
-local function hoverLoop()while cfg.HoverFarm do if char and hum and hum.Health>0 and hrp and hrp.Parent then local t=getT()if t then local hE=t:FindFirstChild("HumanoidRootPart")if hE then ensureHoverPhysics()bobPhase=bobPhase+(BOB_SPEED*0.05)local bob=math.sin(bobPhase)*BOB_HEIGHT local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight+bob,hE.Position.Z)if hoverPhys.alignPos then hoverPhys.alignPos.Position=targetPos end if hoverPhys.alignOri then local dirToNPC=(hE.Position-hrp.Position)if dirToNPC.Magnitude>0.1 then dirToNPC=dirToNPC.Unit else dirToNPC=Vector3.new(0,-1,0)end local baseCF=CFrame.lookAt(hrp.Position,hE.Position)local tiltCF=baseCF*CFrame.Angles(math.rad(CCTV_ANGLE),0,0)hoverPhys.alignOri.CFrame=tiltCF end pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)if cfg.AutoSwing then doDipSwing()end local h=t:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then cur=nil end end else if hoverPhys.alignPos then hoverPhys.alignPos.Position=hrp.Position end end end task.wait(0.05)end cleanupHoverPhysics()if hum then pcall(function()hum.PlatformStand=false hum.AutoRotate=true end)end end
+local function hoverLoop()
+    while cfg.HoverFarm do
+        if char and hum and hum.Health>0 and hrp and hrp.Parent then
+            local t=getT()
+            if t then
+                local hE=t:FindFirstChild("HumanoidRootPart")
+                if hE then
+                    ensureHoverPhysics()
+                    bobPhase=bobPhase+(BOB_SPEED*0.05)
+                    local bob=math.sin(bobPhase)*BOB_HEIGHT
+                    local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight+bob,hE.Position.Z)
+                    if hoverPhys.alignPos then
+                        local dist=(targetPos-hrp.Position).Magnitude
+                        local speed=math.min(HOVER_MAX_SPEED*(1+dist/30),40)
+                        hoverPhys.alignPos.MaxVelocity=speed
+                        hoverPhys.alignPos.Position=targetPos
+                    end
+                    if hoverPhys.alignOri then
+                        local myPos=hrp.Position
+                        local npcPos=hE.Position
+                        local toNPC=Vector3.new(npcPos.X-myPos.X,0,npcPos.Z-myPos.Z)
+                        if toNPC.Magnitude<0.5 then toNPC=Vector3.new(0,0,-1)else toNPC=toNPC.Unit end
+                        local baseCF=CFrame.lookAt(myPos,myPos+toNPC)
+                        local tiltCF=baseCF*CFrame.Angles(math.rad(CCTV_ANGLE),0,0)
+                        hoverPhys.alignOri.CFrame=tiltCF
+                    end
+                    pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)
+                    if cfg.AutoSwing then doDipSwing()end
+                    local h=t:FindFirstChildOfClass("Humanoid")
+                    if not h or h.Health<=0 then
+                        cur=near()
+                    end
+                end
+            else
+                if hoverPhys.alignPos then hoverPhys.alignPos.Position=hrp.Position end
+            end
+        end
+        task.wait(0.05)
+    end
+    cleanupHoverPhysics()
+    if hum then pcall(function()hum.PlatformStand=false hum.AutoRotate=true end)end
+end
 
 local function autoHealSmallLoop()local lastHeal=0 local lastChar=nil local lastHP=0 local lastDamageTime=0 while cfg.AutoHealSmall do if char~=lastChar then lastChar=char lastHeal=tick()lastHP=0 end if hum and hum.Parent and hum.Health>0 then local currentHP=hum.Health if currentHP<lastHP-5 then lastDamageTime=tick()end lastHP=currentHP local timeSinceDamage=tick()-lastDamageTime local timeSinceHeal=tick()-lastHeal if timeSinceHeal>=cfg.HealInterval and timeSinceDamage>=2 then if currentHP<hum.MaxHealth then local newHP=math.min(currentHP+cfg.HealAmount,hum.MaxHealth)pcall(function()hum.Health=newHP end)end lastHeal=tick()end task.wait(0.2)else task.wait(0.5)end end end
 local function swingLoop()while cfg.AutoSwing do if char and hum and hum.Health>0 then autoEquip()if not cfg.HoverFarm then local t=getT()if t then local hE=t:FindFirstChild("HumanoidRootPart")if hE and hrp and hrp.Parent then pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))end)end end end for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end pcall(function()local cam=WS.CurrentCamera if not cam then return end local cx=cam.ViewportSize.X/2 local cy=cam.ViewportSize.Y/2 VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)end)task.wait(cfg.SwingDelay)else task.wait(0.5)end end end
@@ -102,7 +143,7 @@ local pagesHolder=Instance.new("Frame")pagesHolder.Size=UDim2.new(1,-16,1,-106)p
 local pages={}local tabs={}local currentTab=nil
 local function showTab(name)if currentTab==name then return end currentTab=name for n,page in pairs(pages)do page.Visible=(n==name)end for n,btn in pairs(tabs)do if n==name then T:Create(btn,TweenInfo.new(0.2),{BackgroundColor3=Mac.Accent,TextColor3=Mac.Text}):Play()else T:Create(btn,TweenInfo.new(0.2),{BackgroundColor3=Mac.Card,TextColor3=Mac.TextDim}):Play()end end end
 local function makeTab(name,order)local btn=Instance.new("TextButton")btn.Text=name btn.Font=Mac.FontBold btn.TextSize=10 btn.TextColor3=Mac.TextDim btn.BackgroundColor3=Mac.Card btn.BorderSizePixel=0 btn.AutoButtonColor=false btn.LayoutOrder=order btn.Size=UDim2.new(0,0,1,0)btn.ZIndex=3 btn.Parent=tabBar local c=Instance.new("UICorner")c.CornerRadius=UDim.new(0,4)c.Parent=btn btn.Activated:Connect(function()showTab(name)end)tabs[name]=btn end
-local function makePage(name)local page=Instance.new("ScrollingFrame")page.Size=UDim2.fromScale(1,1)page.BackgroundTransparency=1 page.BorderSizePixel=0 page.ScrollBarThickness=8 page.ScrollBarImageColor3=Mac.TextDim page.CanvasSize=UDim2.new(0,0,0,0)page.AutomaticCanvasSize=Enum.AutomaticSize.Y page.Visible=false page.ZIndex=2 page.Parent=pagesHolder local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,4)lay.Parent=page pages[name]=page return page end
+local function makePage(name)local page=Instance.new("ScrollingFrame")page.Size=UDim2.fromScale(1,1)page.BackgroundTransparency=1 page.BorderSizePixel=0 page.ScrollBarThickness=8 page.ScrollBarImageColor3=Mac.TextDim page.CanvasSize=UDim2.new(0,0,0,0)page.AutomaticCanvasSize=Enum.AutomaticSize.Y page.Visible=false page.ZIndex=2 page.Parent=pagesHolder local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,4)lay.SortOrder=Enum.SortOrder.LayoutOrder lay.Parent=page pages[name]=page return page end
 makeTab("Farm",1)makeTab("Visual",2)makeTab("Settings",3)
 local pageFarm=makePage("Farm")local pageVisual=makePage("Visual")local pageSettings=makePage("Settings")
 task.spawn(function()task.wait(0.1)for _,btn in pairs(tabs)do btn.Size=UDim2.new(0,btn.TextBounds.X+18,1,0)end end)
@@ -127,12 +168,12 @@ head(pageVisual,"ESP")mkT(pageVisual,"ESP Overlay","ESPOverlay",nil)mkS(pageVisu
 head(pageVisual,"HITBOX")mkT(pageVisual,"Hitbox Visual","HitboxVisual",nil)mkT(pageVisual,"Hitbox Expand (Tool)","Hitbox",hitboxLoop)mkS(pageVisual,"hitbox_size","HitboxSize",1,10,0.5,2.5)
 head(pageSettings,"TARGETING")mkPriority(pageSettings)
 local function refreshAllUI()for key,ref in pairs(uiToggles)do local on=cfg[key]and true or false ref.track.BackgroundColor3=on and Mac.Green or Mac.ToggleOff ref.knob.Position=on and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)end for key,ref in pairs(uiSliders)do local v=cfg[key]if type(v)=="number"then local ratio=math.clamp((v-ref.mn)/(ref.mx-ref.mn),0,1)ref.fill.Size=UDim2.new(ratio,0,1,0)ref.knob.Position=UDim2.new(ratio,0,0.5,0)ref.lbl.Text=ref.name.."  ·  "..v end end end
-local resetBtn=Instance.new("TextButton")resetBtn.Text="Reset Config"resetBtn.Font=Mac.FontBold resetBtn.TextSize=10 resetBtn.TextColor3=Color3.new(1,1,1)resetBtn.BackgroundColor3=Mac.Red resetBtn.BorderSizePixel=0 resetBtn.Size=UDim2.new(1,-2,0,28)resetBtn.AutoButtonColor=false resetBtn.Parent=pageSettings local crb=Instance.new("UICorner")crb.CornerRadius=Mac.Rs crb.Parent=resetBtn
-local resetFeedback=Instance.new("TextLabel")resetFeedback.Text=""resetFeedback.Font=Mac.Font resetFeedback.TextSize=9 resetFeedback.TextColor3=Mac.Green resetFeedback.BackgroundTransparency=1 resetFeedback.Size=UDim2.new(1,-2,0,16)resetFeedback.Position=UDim2.fromOffset(4,0)resetFeedback.Parent=pageSettings
+local resetBtn=Instance.new("TextButton")resetBtn.Text="Reset Config"resetBtn.Font=Mac.FontBold resetBtn.TextSize=10 resetBtn.TextColor3=Color3.new(1,1,1)resetBtn.BackgroundColor3=Mac.Red resetBtn.BorderSizePixel=0 resetBtn.Size=UDim2.new(1,-2,0,28)resetBtn.AutoButtonColor=false resetBtn.LayoutOrder=nextOrder()resetBtn.Parent=pageSettings local crb=Instance.new("UICorner")crb.CornerRadius=Mac.Rs crb.Parent=resetBtn
+local resetFeedback=Instance.new("TextLabel")resetFeedback.Text=""resetFeedback.Font=Mac.Font resetFeedback.TextSize=9 resetFeedback.TextColor3=Mac.Green resetFeedback.BackgroundTransparency=1 resetFeedback.Size=UDim2.new(1,-2,0,16)resetFeedback.LayoutOrder=nextOrder()resetFeedback.Position=UDim2.fromOffset(4,0)resetFeedback.Parent=pageSettings
 local function doFullReset()local paths={"dqaf_config.txt","Delta/dqaf_config.txt","/storage/emulated/0/Delta/dqaf_config.txt","/sdcard/dqaf_config.txt"}local deleted=0 if hasFileIO then for _,p in ipairs(paths)do if pcall(delfile,p)then deleted=deleted+1 end end end for k,v in pairs(DEFAULT_CFG)do cfg[k]=v end task.wait(0.1)refreshAllUI()if hasFileIO then pcall(saveConfig)end resetFeedback.Text="✔ Semua fitur OFF ("..deleted.." file)"resetFeedback.TextColor3=Mac.Green print("[DQAF] Reset. Deleted:",deleted,"files.")end
 resetBtn.MouseButton1Down:Connect(function()resetBtn.Text="Resetting..."resetBtn.BackgroundColor3=Mac.Yellow doFullReset()task.delay(1.5,function()resetBtn.Text="Reset Config"resetBtn.BackgroundColor3=Mac.Red end)end)
 resetBtn.Activated:Connect(function()end)
-local cfgInfo=Instance.new("TextLabel")cfgInfo.Text=hasFileIO and "✔ Auto-save aktif"or "✘ writefile gak support"cfgInfo.Font=Mac.Font cfgInfo.TextSize=9 cfgInfo.TextColor3=hasFileIO and Mac.Green or Mac.Red cfgInfo.TextXAlignment=Enum.TextXAlignment.Left cfgInfo.BackgroundTransparency=1 cfgInfo.Size=UDim2.new(1,-2,0,14)cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageSettings
+local cfgInfo=Instance.new("TextLabel")cfgInfo.Text=hasFileIO and "✔ Auto-save aktif"or "✘ writefile gak support"cfgInfo.Font=Mac.Font cfgInfo.TextSize=9 cfgInfo.TextColor3=hasFileIO and Mac.Green or Mac.Red cfgInfo.TextXAlignment=Enum.TextXAlignment.Left cfgInfo.BackgroundTransparency=1 cfgInfo.Size=UDim2.new(1,-2,0,14)cfgInfo.LayoutOrder=nextOrder()cfgInfo.Position=UDim2.fromOffset(4,0)cfgInfo.Parent=pageSettings
 showTab("Farm")
 local isOpen=false local isAnim=false
 local function openWindow()if isAnim or isOpen then return end isAnim=true isOpen=true shadow.Visible=true win.Visible=true win.Size=UDim2.new(0,260,0,310)win.BackgroundTransparency=1 shadow.Size=UDim2.new(0,280,0,330)shadow.ImageTransparency=1 local t1=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,320,0,380),BackgroundTransparency=0.05})T:Create(shadow,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,340,0,400),ImageTransparency=0.4}):Play()t1:Play()t1.Completed:Connect(function()isAnim=false end)end
@@ -151,4 +192,4 @@ local stg=Instance.new("UIStroke")stg.Color=Color3.new(0,0,0)stg.Thickness=1 stg
 tg.Activated:Connect(function()if isOpen then closeWindow()else openWindow()end end)
 task.wait(0.1)openWindow()
 task.spawn(function()while gui.Parent do if inD()then local l=eList()local tn=cur and cur.Name or "none"st.Text=string.format("W%d · %d mob · %s",wv(),#l,tn)st.TextColor3=Mac.Text else st.Text="Idle · Lobby"st.TextColor3=Mac.TextDim end task.wait(0.5)end end)
-print("[DQAF] v16 loaded. Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v17 loaded. Config:",hasFileIO and "auto-save" or "no-save")
