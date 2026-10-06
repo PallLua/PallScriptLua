@@ -1,583 +1,1257 @@
 -- ============================================================
--- DQR PROJECT v1.0 — UI FRAMEWORK (Part 1/7)
+-- DQR FINAL | PART 1 of 4 — Core, State, Helpers
+-- paste ini PERTAMA
 -- ============================================================
-local P = game:GetService("Players")
-local LP = P.LocalPlayer
-local UIS = game:GetService("UserInputService")
-local T = game:GetService("TweenService")
-local WS = game:GetService("Workspace")
-local CG local okCG = pcall(function() CG = game:GetService("CoreGui") end)
-local PG = LP:WaitForChild("PlayerGui")
+local Players   = game:GetService("Players")
+local RS        = game:GetService("ReplicatedStorage")
+local WS        = game:GetService("Workspace")
+local RUN       = game:GetService("RunService")
+local UIS       = game:GetService("UserInputService")
+local TW        = game:GetService("TweenService")
+local TS        = game:GetService("TweenService")
 
-if okCG and CG and CG:FindFirstChild("DQR") then CG.DQR:Destroy() end
-if PG:FindFirstChild("DQR") then PG.DQR:Destroy() end
+local LP  = Players.LocalPlayer
+local PG  = LP:WaitForChild("PlayerGui")
 
-local Theme = {
-    bgWindow   = Color3.fromRGB(30,30,32),
-    bgSidebar  = Color3.fromRGB(24,24,26),
-    bgTitle    = Color3.fromRGB(38,38,40),
-    bgCard     = Color3.fromRGB(44,44,46),
-    bgTrack    = Color3.fromRGB(28,28,30),
-    textPri    = Color3.fromRGB(245,245,247),
-    textSec    = Color3.fromRGB(150,150,155),
-    textHead   = Color3.fromRGB(120,120,125),
-    accent     = Color3.fromRGB(10,132,255),
-    accentHov  = Color3.fromRGB(16,137,230),
-    green      = Color3.fromRGB(48,209,88),
-    red        = Color3.fromRGB(255,69,58),
-    yellow     = Color3.fromRGB(255,214,10),
-    toggleOff  = Color3.fromRGB(72,72,74),
-    knob       = Color3.fromRGB(255,255,255),
-    font       = Enum.Font.Gotham,
-    fontBold   = Enum.Font.GothamBold,
-    R          = UDim.new(0,10),
-    Rs         = UDim.new(0,8),
-    Rp         = UDim.new(1,0),
+-- bersihkan instance lama
+local old = PG:FindFirstChild("DQR_FINAL")
+if old then old:Destroy() end
+if _G.DQR_CONN then
+    for _,c in ipairs(_G.DQR_CONN) do pcall(function() c:Disconnect() end) end
+end
+_G.DQR_CONN = {}
+
+-- ============================================================
+-- GLOBAL STATE
+-- ============================================================
+_G.DQR = {
+    autoSwing  = false,
+    autoDodge  = false,
+    autoSkill  = false,
+    noClip     = false,
+    hitbox     = false,
+    autoSell   = false,
+    autoUpgrade= false,
+    autoDungeon= false,
+    hitboxScale= 4,
+    swingDelay = 0.12,
+    dodgeRange = 10,
+    skillDelay = 0.4,
+}
+local S = _G.DQR
+
+-- ============================================================
+-- CHAR REF
+-- ============================================================
+local char, hrp, hum
+local function refreshChar()
+    char = LP.Character or LP.CharacterAdded:Wait()
+    hrp  = char:WaitForChild("HumanoidRootPart", 5)
+    hum  = char:WaitForChild("Humanoid", 5)
+    _G.DQR.char = char
+    _G.DQR.hrp  = hrp
+    _G.DQR.hum  = hum
+end
+refreshChar()
+LP.CharacterAdded:Connect(function()
+    task.wait(0.8)
+    refreshChar()
+end)
+
+-- ============================================================
+-- DUNGEON HELPERS
+-- ============================================================
+local function getDungeon()
+    local d = WS:FindFirstChild("dungeon")
+    if d then return d end
+    for _, v in ipairs(WS:GetChildren()) do
+        if v:IsA("Folder") and v:FindFirstChild("dungeonStarted") then
+            return v
+        end
+    end
+    return nil
+end
+
+local function isActive()
+    local d = getDungeon()
+    if not d then return false end
+    local f = d:FindFirstChild("dungeonStarted")
+    return f and f.Value == true
+end
+
+local function isBossPhase()
+    local d = getDungeon()
+    if not d then return false end
+    local br = d:FindFirstChild("bossRoom")
+    if not br then return false end
+    local fb = br:FindFirstChild("fightingBoss")
+    return fb and fb.Value == true
+end
+
+local function getCurrentWave()
+    local d = getDungeon()
+    if not d then return 0 end
+    local w = d:FindFirstChild("currentWave")
+    return w and w.Value or 0
+end
+
+-- ============================================================
+-- ENEMY HELPERS — multi-room path dari scan PDF
+-- rooms: room1~room6 + bossRoom
+-- ============================================================
+local ROOM_NAMES = {"room1","room2","room3","room4","room5","room6","bossRoom"}
+
+local function getEnemies()
+    local list = {}
+    local d = getDungeon()
+    if not d then return list end
+
+    for _, rname in ipairs(ROOM_NAMES) do
+        local room = d:FindFirstChild(rname)
+        if room then
+            local ef = room:FindFirstChild("enemyFolder")
+            if ef then
+                for _, m in ipairs(ef:GetChildren()) do
+                    if m:IsA("Model") then
+                        local h    = m:FindFirstChildOfClass("Humanoid")
+                        local root = m:FindFirstChild("HumanoidRootPart")
+                        if h and root and h.Health > 0
+                        and not Players:GetPlayerFromCharacter(m) then
+                            table.insert(list, m)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return list
+end
+
+local function nearestEnemy()
+    local h = _G.DQR.hrp
+    if not h then return nil end
+    local best, bestDist = nil, math.huge
+    for _, m in ipairs(getEnemies()) do
+        local root = m:FindFirstChild("HumanoidRootPart")
+        if root then
+            local d = (root.Position - h.Position).Magnitude
+            if d < bestDist then bestDist = d best = m end
+        end
+    end
+    return best
+end
+
+-- ============================================================
+-- SKILL REMOTES — dari Backpack langsung (terkonfirmasi scan)
+-- pattern: Players.LP.Backpack.[toolName].abilityEvent / spellEvent
+-- ============================================================
+local skillCD = {}
+
+local function getSkillRemotes()
+    local remotes = {}
+    local bp = LP:FindFirstChild("Backpack")
+    if not bp then return remotes end
+    for _, tool in ipairs(bp:GetChildren()) do
+        if tool:IsA("Tool") then
+            local ab = tool:FindFirstChild("abilityEvent")
+                    or tool:FindFirstChild("spellEvent")
+            if ab and ab:IsA("RemoteEvent") then
+                table.insert(remotes, ab)
+            end
+        end
+    end
+    -- juga cek tool equipped di char
+    local c = _G.DQR.char
+    if c then
+        for _, tool in ipairs(c:GetChildren()) do
+            if tool:IsA("Tool") then
+                local ab = tool:FindFirstChild("abilityEvent")
+                        or tool:FindFirstChild("spellEvent")
+                if ab and ab:IsA("RemoteEvent") then
+                    table.insert(remotes, ab)
+                end
+            end
+        end
+    end
+    return remotes
+end
+
+local function fireSkills()
+    local now = tick()
+    for _, remote in ipairs(getSkillRemotes()) do
+        local last = skillCD[remote] or 0
+        if now - last >= S.skillDelay then
+            skillCD[remote] = now
+            pcall(function() remote:FireServer() end)
+        end
+    end
+end
+
+-- ============================================================
+-- TOOL HELPERS
+-- ============================================================
+local function equippedTool()
+    local c = _G.DQR.char
+    if not c then return nil end
+    return c:FindFirstChildOfClass("Tool")
+end
+
+local function equipFirst()
+    local c = _G.DQR.char
+    local h = _G.DQR.hum
+    if not c or not h then return end
+    if equippedTool() then return end
+    local bp = LP:FindFirstChild("Backpack")
+    if not bp then return end
+    local t = bp:FindFirstChildOfClass("Tool")
+    if t then pcall(function() h:EquipTool(t) end) end
+end
+
+-- ============================================================
+-- REMOTES — auto sell, upgrade, dungeon
+-- ============================================================
+local remotes = RS:FindFirstChild("remotes")
+
+local function fireRemote(name, ...)
+    if not remotes then return end
+    local r = remotes:FindFirstChild(name)
+    if r then pcall(function() r:FireServer(...) end) end
+end
+
+-- ============================================================
+-- NOCLIP
+-- ============================================================
+local noclipActive = false
+local noclipConn
+
+local function setNoclip(state)
+    noclipActive = state
+    if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+    if not state then
+        local c = _G.DQR.char
+        if c then
+            for _, p in ipairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    pcall(function() p.CanCollide = true end)
+                end
+            end
+        end
+        return
+    end
+    noclipConn = RUN.Heartbeat:Connect(function()
+        if not noclipActive then return end
+        local c = _G.DQR.char
+        if not c then return end
+        for _, p in ipairs(c:GetDescendants()) do
+            if p:IsA("BasePart") then
+                pcall(function() p.CanCollide = false end)
+            end
+        end
+    end)
+    if noclipConn then table.insert(_G.DQR_CONN, noclipConn) end
+end
+
+-- ============================================================
+-- HITBOX EXPAND — visible SelectionBox
+-- ============================================================
+local origHandleSize = {}
+local selBoxes = {}
+
+local function applyHitbox()
+    local c = _G.DQR.char
+    if not c then return end
+    for _, obj in ipairs(c:GetChildren()) do
+        if obj:IsA("Tool") then
+            local handle = obj:FindFirstChild("Handle")
+            if handle then
+                if not origHandleSize[obj] then
+                    origHandleSize[obj] = handle.Size
+                end
+                local newSize = origHandleSize[obj] * S.hitboxScale
+                pcall(function()
+                    handle.Size     = newSize
+                    handle.CanQuery = true
+                    handle.CanTouch = true
+                end)
+                -- SelectionBox visible
+                if not selBoxes[obj] then
+                    local sel = Instance.new("SelectionBox")
+                    sel.Adornee             = handle
+                    sel.Color3              = Color3.fromRGB(255, 100, 50)
+                    sel.LineThickness       = 0.05
+                    sel.SurfaceColor3       = Color3.fromRGB(255, 100, 50)
+                    sel.SurfaceTransparency = 0.55
+                    sel.Parent              = WS
+                    selBoxes[obj]           = sel
+                end
+            end
+        end
+    end
+end
+
+local function restoreHitbox()
+    for obj, origSize in pairs(origHandleSize) do
+        if obj and obj.Parent then
+            local handle = obj:FindFirstChild("Handle")
+            if handle then pcall(function() handle.Size = origSize end) end
+        end
+        if selBoxes[obj] then selBoxes[obj]:Destroy() selBoxes[obj] = nil end
+    end
+    origHandleSize = {}
+end
+
+LP.CharacterAdded:Connect(function()
+    origHandleSize = {}
+    selBoxes = {}
+end)
+
+-- ============================================================
+-- TWEEN WALK TO — speed 16, pakai MoveTo
+-- ============================================================
+local ARRIVE_DIST = 4.5
+
+local function walkToward(targetPos)
+    local h = _G.DQR.hrp
+    local hm = _G.DQR.hum
+    if not h or not hm then return true end
+    local dist = (targetPos - h.Position).Magnitude
+    if dist <= ARRIVE_DIST then return true end
+    pcall(function()
+        hm.WalkSpeed = 16
+        hm:MoveTo(targetPos)
+    end)
+    return false
+end
+
+-- expose ke global
+_G.DQR.getDungeon    = getDungeon
+_G.DQR.isActive      = isActive
+_G.DQR.isBossPhase   = isBossPhase
+_G.DQR.getCurrentWave= getCurrentWave
+_G.DQR.getEnemies    = getEnemies
+_G.DQR.nearestEnemy  = nearestEnemy
+_G.DQR.fireSkills    = fireSkills
+_G.DQR.equippedTool  = equippedTool
+_G.DQR.equipFirst    = equipFirst
+_G.DQR.fireRemote    = fireRemote
+_G.DQR.setNoclip     = setNoclip
+_G.DQR.applyHitbox   = applyHitbox
+_G.DQR.restoreHitbox = restoreHitbox
+_G.DQR.walkToward    = walkToward
+_G.DQR.refreshChar   = refreshChar
+-- ============================================================
+-- DQR FINAL | PART 2 of 4 — Feature Loops
+-- paste SETELAH part1
+-- ============================================================
+local Players = game:GetService("Players")
+local RS      = game:GetService("ReplicatedStorage")
+local RUN     = game:GetService("RunService")
+local TW      = game:GetService("TweenService")
+
+local LP = Players.LocalPlayer
+local S  = _G.DQR
+
+-- ============================================================
+-- AUTO SWING — tween walk speed 16, lalu swing
+-- ============================================================
+local lastSwing = 0
+
+local function doAutoSwing()
+    if not S.autoSwing then return end
+    local c   = S.char
+    local h   = S.hrp
+    local hm  = S.hum
+    if not c or not h or not hm then return end
+    if hm.Health <= 0 then return end
+
+    local target = S.nearestEnemy()
+    if not target then return end
+
+    local root = target:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local dist = (root.Position - h.Position).Magnitude
+
+    if dist > 5 then
+        -- noclip aktif biar bisa lewat terrain
+        if S.noClip then
+            S.setNoclip(true)
+        end
+        S.walkToward(root.Position)
+    else
+        S.equipFirst()
+        local tool = S.equippedTool()
+        local now  = tick()
+        if tool and now - lastSwing >= S.swingDelay then
+            lastSwing = now
+            pcall(function() tool:Activate() end)
+            -- fire weaponUsed remote (terkonfirmasi scan)
+            local remotes = RS:FindFirstChild("remotes")
+            if remotes then
+                local wu = remotes:FindFirstChild("weaponUsed")
+                if wu then pcall(function() wu:FireServer() end) end
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- AUTO DODGE — tween mundur, cover boss fight juga
+-- ============================================================
+local lastDodge    = 0
+local DODGE_CD     = 0.5
+local BOSS_DODGE_R = 15  -- range lebih jauh saat boss
+
+local function doAutoDodge()
+    if not S.autoDodge then return end
+    local h  = S.hrp
+    local hm = S.hum
+    if not h or not hm then return end
+    if hm.Health <= 0 then return end
+
+    local now = tick()
+    if now - lastDodge < DODGE_CD then return end
+
+    local range = S.isBossPhase() and BOSS_DODGE_R or S.dodgeRange
+
+    for _, m in ipairs(S.getEnemies()) do
+        local root = m:FindFirstChild("HumanoidRootPart")
+        if root then
+            local dist = (root.Position - h.Position).Magnitude
+            if dist < range then
+                -- tween mundur
+                local away = (h.Position - root.Position)
+                if away.Magnitude < 0.01 then away = Vector3.new(1,0,0) else away = away.Unit end
+                local targetPos = h.Position + away * 14
+                local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local tween = TW:Create(h, tweenInfo, {CFrame = CFrame.new(targetPos, targetPos + away)})
+                pcall(function() tween:Play() end)
+                lastDodge = now
+                return
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- AUTO SKILL — Q + E via VIM + remote dari Backpack
+-- ============================================================
+local lastQ = 0
+local lastE = 0
+local VIM   = game:GetService("VirtualInputManager")
+
+local function doAutoSkill()
+    if not S.autoSkill then return end
+    local c  = S.char
+    local hm = S.hum
+    if not c or not hm then return end
+    if hm.Health <= 0 then return end
+
+    local now = tick()
+
+    if now - lastQ >= S.skillDelay then
+        lastQ = now
+        pcall(function()
+            VIM:SendKeyEvent(true,  Enum.KeyCode.Q, false, game)
+            task.wait(0.05)
+            VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+        end)
+        task.wait(0.05)
+        S.fireSkills()
+    end
+
+    if now - lastE >= S.skillDelay + 0.1 then
+        lastE = now
+        pcall(function()
+            VIM:SendKeyEvent(true,  Enum.KeyCode.E, false, game)
+            task.wait(0.05)
+            VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        end)
+    end
+end
+
+-- ============================================================
+-- AUTO SELL
+-- ============================================================
+local lastSell = 0
+
+local function doAutoSell()
+    if not S.autoSell then return end
+    local now = tick()
+    if now - lastSell < 3 then return end
+    lastSell = now
+    S.fireRemote("openSellShop")
+    task.wait(0.3)
+    S.fireRemote("sellItemEvent")
+end
+
+-- ============================================================
+-- AUTO UPGRADE
+-- ============================================================
+local lastUpgrade = 0
+
+local function doAutoUpgrade()
+    if not S.autoUpgrade then return end
+    local now = tick()
+    if now - lastUpgrade < 4 then return end
+    lastUpgrade = now
+    S.fireRemote("upgradeItem")
+end
+
+-- ============================================================
+-- AUTO DUNGEON — start + replay semua map
+-- ============================================================
+local lastDungeon = 0
+
+local function doAutoDungeon()
+    if not S.autoDungeon then return end
+    local now = tick()
+    if now - lastDungeon < 2 then return end
+    lastDungeon = now
+
+    if not S.isActive() then
+        S.fireRemote("startDungeon")
+        task.wait(0.5)
+        S.fireRemote("replayDungeon")
+    end
+end
+
+-- ============================================================
+-- HITBOX LOOP
+-- ============================================================
+local lastHitbox = 0
+
+local function doHitbox()
+    if not S.hitbox then return end
+    local now = tick()
+    if now - lastHitbox < 0.15 then return end
+    lastHitbox = now
+    S.applyHitbox()
+end
+
+-- ============================================================
+-- MAIN HEARTBEAT LOOP
+-- ============================================================
+local mainConn = RUN.Heartbeat:Connect(function()
+    doAutoSwing()
+    doAutoDodge()
+    doHitbox()
+
+    if not S.hitbox and next(rawget(_G.DQR, "origHandleSize") or {}) then
+        S.restoreHitbox()
+    end
+end)
+table.insert(_G.DQR_CONN, mainConn)
+
+-- skill di loop terpisah agar tidak throttle heartbeat
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        doAutoSkill()
+        doAutoSell()
+        doAutoUpgrade()
+        doAutoDungeon()
+    end
+end)
+
+print("[DQR] Part 2 loaded — feature loops running")
+-- ============================================================
+-- DQR FINAL | PART 3 of 4 — UI macOS Style + Slider
+-- paste SETELAH part1 & part2
+-- ============================================================
+local Players = game:GetService("Players")
+local TW      = game:GetService("TweenService")
+local UIS     = game:GetService("UserInputService")
+
+local LP  = Players.LocalPlayer
+local PG  = LP:WaitForChild("PlayerGui")
+local S   = _G.DQR
+
+-- ============================================================
+-- PALETTE
+-- ============================================================
+local C = {
+    bg      = Color3.fromRGB(20, 20, 24),
+    surface = Color3.fromRGB(30, 29, 38),
+    card    = Color3.fromRGB(38, 37, 48),
+    accent  = Color3.fromRGB(110, 80, 230),
+    accentL = Color3.fromRGB(140, 110, 255),
+    on      = Color3.fromRGB(80, 210, 120),
+    off     = Color3.fromRGB(65, 62, 82),
+    text    = Color3.fromRGB(235, 232, 250),
+    dim     = Color3.fromRGB(140, 135, 165),
+    red     = Color3.fromRGB(220, 60, 60),
+    yellow  = Color3.fromRGB(230, 185, 50),
+    green   = Color3.fromRGB(60, 200, 90),
+    slider  = Color3.fromRGB(90, 65, 200),
 }
 
-local function corner(o,r) local c=Instance.new("UICorner") c.CornerRadius=r or Theme.R c.Parent=o return c end
-local function stroke(o,col,t) local s=Instance.new("UIStroke") s.Color=col or Color3.fromRGB(70,70,75) s.Thickness=t or 1 s.Transparency=0.5 s.Parent=o return s end
+local function corner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 10)
+    c.Parent = p
+    return c
+end
 
+local function stroke(p, col, thick)
+    local s = Instance.new("UIStroke")
+    s.Color     = col or C.accent
+    s.Thickness = thick or 1.2
+    s.Parent    = p
+    return s
+end
+
+-- ============================================================
+-- ROOT GUI
+-- ============================================================
 local gui = Instance.new("ScreenGui")
-gui.Name = "DQR"
-gui.ResetOnSpawn = false
+gui.Name           = "DQR_FINAL"
+gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
-gui.DisplayOrder = 999
-gui.Parent = (okCG and CG) or PG
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent         = PG
 
-local vpSize = WS.CurrentCamera.ViewportSize
-local WIN_W = 400
-local WIN_H = math.clamp(math.floor(vpSize.Y * 0.85), 420, 620)
+-- ============================================================
+-- WINDOW
+-- ============================================================
+local WIN_W, WIN_H = 340, 520
 
 local win = Instance.new("Frame")
-win.Size = UDim2.fromOffset(WIN_W, WIN_H)
-win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
-win.BackgroundColor3 = Theme.bgWindow
-win.BorderSizePixel = 0
-win.Active = true
-win.Parent = gui
-corner(win, Theme.R)
-stroke(win, Color3.fromRGB(60,60,65), 1, 0.3)
--- ==================== TITLE BAR ====================
-local tb = Instance.new("Frame")
-tb.Size = UDim2.new(1,0,0,32)
-tb.BackgroundColor3 = Theme.bgTitle
-tb.BorderSizePixel = 0
-tb.Parent = win
-corner(tb, Theme.R)
-local tbFix = Instance.new("Frame")
-tbFix.Size = UDim2.new(1,0,0,12)
-tbFix.Position = UDim2.new(0,0,1,-12)
-tbFix.BackgroundColor3 = Theme.bgTitle
-tbFix.BorderSizePixel = 0
-tbFix.Parent = tb
+win.Name             = "Window"
+win.Size             = UDim2.fromOffset(WIN_W, WIN_H)
+win.Position         = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = C.bg
+win.BorderSizePixel  = 0
+win.ClipsDescendants = true
+win.Parent           = gui
+corner(win, 14)
+stroke(win, C.accent, 1.2)
 
-local function dot(x,col)
-    local d = Instance.new("TextButton")
-    d.Text = "" d.Size = UDim2.fromOffset(10,10)
-    d.Position = UDim2.fromOffset(x,11)
-    d.BackgroundColor3 = col d.BorderSizePixel = 0
-    d.AutoButtonColor = false d.Parent = tb
-    corner(d, Theme.Rp)
-    return d
+-- drop shadow
+local shadow = Instance.new("ImageLabel")
+shadow.Size               = UDim2.fromOffset(WIN_W + 30, WIN_H + 30)
+shadow.Position           = UDim2.new(0, -15, 0, -15)
+shadow.BackgroundTransparency = 1
+shadow.Image              = "rbxassetid://6014261993"
+shadow.ImageColor3        = Color3.new(0,0,0)
+shadow.ImageTransparency  = 0.5
+shadow.ScaleType          = Enum.ScaleType.Slice
+shadow.SliceCenter        = Rect.new(49,49,450,450)
+shadow.ZIndex             = 0
+shadow.Parent             = win
+
+-- ============================================================
+-- TITLEBAR
+-- ============================================================
+local tbar = Instance.new("Frame")
+tbar.Size             = UDim2.new(1, 0, 0, 42)
+tbar.BackgroundColor3 = C.surface
+tbar.BorderSizePixel  = 0
+tbar.ZIndex           = 3
+tbar.Parent           = win
+corner(tbar, 14)
+-- fix bottom corners
+local tbfix = Instance.new("Frame")
+tbfix.Size             = UDim2.new(1,0,0.5,0)
+tbfix.Position         = UDim2.new(0,0,0.5,0)
+tbfix.BackgroundColor3 = C.surface
+tbfix.BorderSizePixel  = 0
+tbfix.ZIndex           = 3
+tbfix.Parent           = tbar
+
+-- traffic light dots
+local function mkDot(x, col)
+    local b = Instance.new("Frame")
+    b.Size             = UDim2.fromOffset(13,13)
+    b.Position         = UDim2.new(0, x, 0.5, -6)
+    b.BackgroundColor3 = col
+    b.BorderSizePixel  = 0
+    b.ZIndex           = 5
+    b.Parent           = tbar
+    corner(b, 7)
+    return b
 end
-local redBtn = dot(12, Theme.red)
-local ylwBtn = dot(28, Theme.yellow)
-local grnBtn = dot(44, Theme.green)
+local dotRed  = mkDot(14, C.red)
+local dotYel  = mkDot(32, C.yellow)
+local dotGrn  = mkDot(50, C.green)
 
 local titleLbl = Instance.new("TextLabel")
-titleLbl.Text = "Dungeon Quest Reborn"
-titleLbl.Font = Theme.fontBold
-titleLbl.TextSize = 12
-titleLbl.TextColor3 = Theme.textPri
+titleLbl.Text               = "DQR  ·  CHEAT MENU"
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextSize           = 13
+titleLbl.TextColor3         = C.text
 titleLbl.BackgroundTransparency = 1
-titleLbl.Size = UDim2.new(1,-80,1,0)
-titleLbl.Position = UDim2.fromOffset(60,0)
-titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-titleLbl.Parent = tb
+titleLbl.Size               = UDim2.new(1,-80,1,0)
+titleLbl.Position           = UDim2.fromOffset(76, 0)
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+titleLbl.ZIndex             = 4
+titleLbl.Parent             = tbar
 
--- ==================== SIDEBAR ====================
-local sidebar = Instance.new("Frame")
-sidebar.Size = UDim2.new(0,96,1,-32)
-sidebar.Position = UDim2.fromOffset(0,32)
-sidebar.BackgroundColor3 = Theme.bgSidebar
-sidebar.BorderSizePixel = 0
-sidebar.Parent = win
+-- status
+local statLbl = Instance.new("TextLabel")
+statLbl.Size                  = UDim2.new(1,-16,0,14)
+statLbl.Position              = UDim2.new(0,8,0,44)
+statLbl.BackgroundTransparency = 1
+statLbl.Text                  = "Idle · Lobby"
+statLbl.TextColor3            = C.dim
+statLbl.TextSize              = 10
+statLbl.Font                  = Enum.Font.Gotham
+statLbl.TextXAlignment        = Enum.TextXAlignment.Left
+statLbl.ZIndex                = 3
+statLbl.Parent                = win
 
-local sbFix = Instance.new("Frame")
-sbFix.Size = UDim2.new(0,8,1,0)
-sbFix.Position = UDim2.new(1,-8,0,0)
-sbFix.BackgroundColor3 = Theme.bgSidebar
-sbFix.BorderSizePixel = 0
-sbFix.Parent = sidebar
+-- ============================================================
+-- TAB BAR
+-- ============================================================
+local tabBar = Instance.new("Frame")
+tabBar.Size             = UDim2.new(1,-16,0,30)
+tabBar.Position         = UDim2.new(0,8,0,60)
+tabBar.BackgroundColor3 = C.surface
+tabBar.BorderSizePixel  = 0
+tabBar.ZIndex           = 3
+tabBar.Parent           = win
+corner(tabBar, 8)
+Instance.new("UIListLayout", tabBar).FillDirection = Enum.FillDirection.Horizontal
+Instance.new("UIListLayout", tabBar).VerticalAlignment = Enum.VerticalAlignment.Center
+Instance.new("UIListLayout", tabBar).HorizontalAlignment = Enum.HorizontalAlignment.Center
+Instance.new("UIListLayout", tabBar).Padding = UDim.new(0, 2)
 
-local sbPad = Instance.new("UIPadding")
-sbPad.PaddingTop = UDim.new(0,10)
-sbPad.PaddingLeft = UDim.new(0,6)
-sbPad.PaddingRight = UDim.new(0,6)
-sbPad.Parent = sidebar
+-- scroll container
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size                  = UDim2.new(1,-16,1,-100)
+scroll.Position              = UDim2.new(0,8,0,96)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel       = 0
+scroll.ScrollBarThickness    = 2
+scroll.ScrollBarImageColor3  = C.accent
+scroll.CanvasSize            = UDim2.new(0,0,0,0)
+scroll.AutomaticCanvasSize   = Enum.AutomaticSize.Y
+scroll.ZIndex                = 2
+scroll.Parent                = win
+local listL = Instance.new("UIListLayout", scroll)
+listL.Padding = UDim.new(0, 5)
 
-local sbList = Instance.new("UIListLayout")
-sbList.Padding = UDim.new(0,4)
-sbList.SortOrder = Enum.SortOrder.LayoutOrder
-sbList.Parent = sidebar
-
-local verLbl = Instance.new("TextLabel")
-verLbl.Text = "v1.0"
-verLbl.Font = Theme.font
-verLbl.TextSize = 10
-verLbl.TextColor3 = Theme.textSec
-verLbl.BackgroundTransparency = 1
-verLbl.Size = UDim2.new(1,-12,0,20)
-verLbl.Position = UDim2.new(0,6,1,-26)
-verLbl.TextXAlignment = Enum.TextXAlignment.Left
-verLbl.Parent = sidebar
-
--- ==================== CONTENT ====================
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1,-96,1,-32)
-content.Position = UDim2.fromOffset(96,32)
-content.BackgroundTransparency = 1
-content.Parent = win
--- ==================== TAB SYSTEM ====================
-local tabs = {}
+-- pages
 local pages = {}
-local current = nil
+local tabBtns = {}
+local currentPage = nil
 
-local function switchTab(name)
-    if current == name then return end
-    current = name
-    for n, page in pairs(pages) do page.Visible = (n==name) end
-    for n, t in pairs(tabs) do
-        local on = (n == name)
-        T:Create(t.bg, TweenInfo.new(0.2), {BackgroundColor3 = on and Theme.accent or Theme.bgSidebar}):Play()
-        T:Create(t.lbl, TweenInfo.new(0.2), {TextColor3 = on and Theme.textPri or Theme.textSec}):Play()
+local function showPage(name)
+    for n, p in pairs(pages) do p.Visible = (n == name) end
+    for n, b in pairs(tabBtns) do
+        TW:Create(b, TweenInfo.new(0.15), {
+            BackgroundColor3 = n==name and C.accent or C.card,
+            TextColor3       = n==name and C.text  or C.dim,
+        }):Play()
     end
+    currentPage = name
 end
 
-local function addTab(name, icon, order)
-    local btn = Instance.new("TextButton")
-    btn.Text = ""
-    btn.Size = UDim2.new(1,0,0,32)
-    btn.BackgroundColor3 = Theme.bgSidebar
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = false
-    btn.LayoutOrder = order
-    btn.Parent = sidebar
-    corner(btn, Theme.Rs)
+local function mkPage(name)
+    local sf = Instance.new("ScrollingFrame")
+    sf.Size                  = UDim2.new(1,0,1,0)
+    sf.BackgroundTransparency = 1
+    sf.BorderSizePixel       = 0
+    sf.ScrollBarThickness    = 2
+    sf.ScrollBarImageColor3  = C.accentL
+    sf.CanvasSize            = UDim2.new(0,0,0,0)
+    sf.AutomaticCanvasSize   = Enum.AutomaticSize.Y
+    sf.Visible               = false
+    sf.ZIndex                = 2
+    sf.Parent                = scroll
+    local ul = Instance.new("UIListLayout", sf)
+    ul.Padding = UDim.new(0, 5)
+    pages[name] = sf
+    return sf
+end
+
+local function mkTab(name, label)
+    local b = Instance.new("TextButton")
+    b.Text             = label
+    b.Font             = Enum.Font.GothamBold
+    b.TextSize         = 11
+    b.TextColor3       = C.dim
+    b.BackgroundColor3 = C.card
+    b.BorderSizePixel  = 0
+    b.AutoButtonColor  = false
+    b.Size             = UDim2.new(0, 98, 1, -4)
+    b.ZIndex           = 4
+    b.Parent           = tabBar
+    corner(b, 6)
+    tabBtns[name] = b
+    b.Activated:Connect(function() showPage(name) end)
+    return b
+end
+
+local pageFarm     = mkPage("Farm")
+local pageCombat   = mkPage("Combat")
+local pageSettings = mkPage("Settings")
+mkTab("Farm",     "⚔ Farm")
+mkTab("Combat",   "🛡 Combat")
+mkTab("Settings", "⚙ Settings")
+
+-- ============================================================
+-- TOGGLE BUILDER
+-- ============================================================
+local function mkToggle(parent, label, desc, key)
+    local row = Instance.new("Frame")
+    row.Size             = UDim2.new(1,-2,0,54)
+    row.BackgroundColor3 = C.card
+    row.BorderSizePixel  = 0
+    row.ZIndex           = 2
+    row.Parent           = parent
+    corner(row, 8)
 
     local lbl = Instance.new("TextLabel")
-    lbl.Text = (icon and icon.."  " or "") .. name
-    lbl.Font = Theme.fontBold
-    lbl.TextSize = 11
-    lbl.TextColor3 = Theme.textSec
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text                  = label
+    lbl.Font                  = Enum.Font.GothamBold
+    lbl.TextSize              = 13
+    lbl.TextColor3            = C.text
     lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1,-8,1,0)
-    lbl.Position = UDim2.fromOffset(10,0)
-    lbl.Parent = btn
+    lbl.Size                  = UDim2.new(1,-60,0,22)
+    lbl.Position              = UDim2.fromOffset(12,8)
+    lbl.TextXAlignment        = Enum.TextXAlignment.Left
+    lbl.ZIndex                = 3
+    lbl.Parent                = row
 
-    btn.Activated:Connect(function() switchTab(name) end)
-    tabs[name] = {bg = btn, lbl = lbl}
+    local sub = Instance.new("TextLabel")
+    sub.Text                  = desc
+    sub.Font                  = Enum.Font.Gotham
+    sub.TextSize              = 10
+    sub.TextColor3            = C.dim
+    sub.BackgroundTransparency = 1
+    sub.Size                  = UDim2.new(1,-60,0,16)
+    sub.Position              = UDim2.fromOffset(12,28)
+    sub.TextXAlignment        = Enum.TextXAlignment.Left
+    sub.ZIndex                = 3
+    sub.Parent                = row
 
-    local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.fromScale(1,1)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = Theme.textSec
-    page.CanvasSize = UDim2.new(0,0,0,0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.Visible = false
-    page.Parent = content
-    local pad = Instance.new("UIPadding")
-    pad.PaddingTop = UDim.new(0,12)
-    pad.PaddingLeft = UDim.new(0,12)
-    pad.PaddingRight = UDim.new(0,12)
-    pad.PaddingBottom = UDim.new(0,12)
-    pad.Parent = page
-    local list = Instance.new("UIListLayout")
-    list.Padding = UDim.new(0,6)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
-    list.Parent = page
-    pages[name] = page
-    return page
-end
--- ==================== COMPONENTS ====================
-local order = {}
-local function nextOrder(parent)
-    order[parent] = (order[parent] or 0) + 1
-    return order[parent]
-end
-
-local Comp = {}
-
-function Comp.section(parent, text)
-    local s = Instance.new("TextLabel")
-    s.Text = string.upper(text)
-    s.Font = Theme.fontBold
-    s.TextSize = 10
-    s.TextColor3 = Theme.textHead
-    s.TextXAlignment = Enum.TextXAlignment.Left
-    s.BackgroundTransparency = 1
-    s.Size = UDim2.new(1,0,0,18)
-    s.Position = UDim2.fromOffset(6,0)
-    s.LayoutOrder = nextOrder(parent)
-    s.Parent = parent
-end
-
-function Comp.toggle(parent, name, key, default, callback)
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1,-4,0,36)
-    card.BackgroundColor3 = Theme.bgCard
-    card.BorderSizePixel = 0
-    card.LayoutOrder = nextOrder(parent)
-    card.Parent = parent
-    corner(card, Theme.Rs)
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Text = name
-    lbl.Font = Theme.font
-    lbl.TextSize = 12
-    lbl.TextColor3 = Theme.textPri
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1,-60,1,0)
-    lbl.Position = UDim2.fromOffset(12,0)
-    lbl.Parent = card
-
-    local track = Instance.new("TextButton")
-    track.Text = ""
-    track.Size = UDim2.fromOffset(40,22)
-    track.Position = UDim2.new(1,-52,0.5,-11)
-    track.BackgroundColor3 = default and Theme.green or Theme.toggleOff
-    track.BorderSizePixel = 0
-    track.AutoButtonColor = false
-    track.Parent = card
-    corner(track, Theme.Rp)
+    local pill = Instance.new("Frame")
+    pill.Size             = UDim2.fromOffset(46,26)
+    pill.Position         = UDim2.new(1,-54,0.5,-13)
+    pill.BackgroundColor3 = C.off
+    pill.BorderSizePixel  = 0
+    pill.ZIndex           = 3
+    pill.Parent           = row
+    corner(pill, 13)
 
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(18,18)
-    knob.Position = default and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
-    knob.BackgroundColor3 = Theme.knob
-    knob.BorderSizePixel = 0
-    knob.Parent = track
-    corner(knob, Theme.Rp)
+    knob.Size             = UDim2.fromOffset(20,20)
+    knob.Position         = UDim2.new(0,3,0.5,-10)
+    knob.BackgroundColor3 = C.dim
+    knob.BorderSizePixel  = 0
+    knob.ZIndex           = 4
+    knob.Parent           = pill
+    corner(knob, 10)
 
-    local state = default or false
-    track.Activated:Connect(function()
-        state = not state
-        T:Create(track, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            BackgroundColor3 = state and Theme.green or Theme.toggleOff
+    local function setVisual(on)
+        TW:Create(pill, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
+            BackgroundColor3 = on and C.on or C.off
         }):Play()
-        T:Create(knob, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Position = state and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
+        TW:Create(knob, TweenInfo.new(0.18, Enum.EasingStyle.Quint), {
+            Position         = on and UDim2.new(0,23,0.5,-10) or UDim2.new(0,3,0.5,-10),
+            BackgroundColor3 = on and Color3.fromRGB(240,255,245) or C.dim,
         }):Play()
-        if callback then callback(state) end
+    end
+
+    local hit = Instance.new("TextButton")
+    hit.Size                  = UDim2.new(1,0,1,0)
+    hit.BackgroundTransparency = 1
+    hit.Text                  = ""
+    hit.ZIndex                = 5
+    hit.Parent                = row
+    hit.Activated:Connect(function()
+        S[key] = not S[key]
+        setVisual(S[key])
+        -- noclip special
+        if key == "noClip" then S.setNoclip(S.noClip) end
+        if key == "hitbox" and not S.hitbox then S.restoreHitbox() end
     end)
+    setVisual(S[key])
 end
-function Comp.slider(parent, name, key, min, max, step, default, callback)
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1,-4,0,48)
-    card.BackgroundColor3 = Theme.bgCard
-    card.BorderSizePixel = 0
-    card.LayoutOrder = nextOrder(parent)
-    card.Parent = parent
-    corner(card, Theme.Rs)
+
+-- ============================================================
+-- SLIDER BUILDER
+-- ============================================================
+local function mkSlider(parent, label, key, minVal, maxVal, step)
+    local row = Instance.new("Frame")
+    row.Size             = UDim2.new(1,-2,0,64)
+    row.BackgroundColor3 = C.card
+    row.BorderSizePixel  = 0
+    row.ZIndex           = 2
+    row.Parent           = parent
+    corner(row, 8)
 
     local lbl = Instance.new("TextLabel")
-    lbl.Text = name .. "   " .. default
-    lbl.Font = Theme.font
-    lbl.TextSize = 11
-    lbl.TextColor3 = Theme.textPri
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text                  = label
+    lbl.Font                  = Enum.Font.GothamBold
+    lbl.TextSize              = 12
+    lbl.TextColor3            = C.text
     lbl.BackgroundTransparency = 1
-    lbl.Size = UDim2.new(1,-16,0,16)
-    lbl.Position = UDim2.fromOffset(12,6)
-    lbl.Parent = card
+    lbl.Size                  = UDim2.new(0.65,0,0,22)
+    lbl.Position              = UDim2.fromOffset(12,6)
+    lbl.TextXAlignment        = Enum.TextXAlignment.Left
+    lbl.ZIndex                = 3
+    lbl.Parent                = row
 
-    local track = Instance.new("TextButton")
-    track.Text = ""
-    track.Size = UDim2.new(1,-24,0,8)
-    track.Position = UDim2.new(0,12,1,-18)
-    track.BackgroundColor3 = Theme.bgTrack
-    track.BorderSizePixel = 0
-    track.AutoButtonColor = false
-    track.Parent = card
-    corner(track, Theme.Rp)
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Font               = Enum.Font.GothamBold
+    valLbl.TextSize           = 12
+    valLbl.TextColor3         = C.accentL
+    valLbl.BackgroundTransparency = 1
+    valLbl.Size               = UDim2.new(0.3,0,0,22)
+    valLbl.Position           = UDim2.new(0.68,0,0,6)
+    valLbl.TextXAlignment     = Enum.TextXAlignment.Right
+    valLbl.ZIndex             = 3
+    valLbl.Parent             = row
 
-    local ratio0 = (default - min) / (max - min)
+    -- track
+    local track = Instance.new("Frame")
+    track.Size             = UDim2.new(1,-24,0,8)
+    track.Position         = UDim2.new(0,12,0,36)
+    track.BackgroundColor3 = C.off
+    track.BorderSizePixel  = 0
+    track.ZIndex           = 3
+    track.Parent           = row
+    corner(track, 4)
+
+    -- fill
     local fill = Instance.new("Frame")
-    fill.Size = UDim2.new(ratio0,0,1,0)
-    fill.BackgroundColor3 = Theme.knob
-    fill.BorderSizePixel = 0
-    fill.Parent = track
-    corner(fill, Theme.Rp)
+    fill.Size             = UDim2.new(0,0,1,0)
+    fill.BackgroundColor3 = C.slider
+    fill.BorderSizePixel  = 0
+    fill.ZIndex           = 4
+    fill.Parent           = track
+    corner(fill, 4)
 
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(16,16)
-    knob.AnchorPoint = Vector2.new(0.5,0.5)
-    knob.Position = UDim2.new(ratio0,0,0.5,0)
-    knob.BackgroundColor3 = Theme.knob
-    knob.BorderSizePixel = 0
-    knob.Parent = track
-    corner(knob, Theme.Rp)
+    -- knob
+    local kn = Instance.new("Frame")
+    kn.Size             = UDim2.fromOffset(20,20)
+    kn.AnchorPoint      = Vector2.new(0.5, 0.5)
+    kn.Position         = UDim2.new(0,0,0.5,0)
+    kn.BackgroundColor3 = Color3.new(1,1,1)
+    kn.BorderSizePixel  = 0
+    kn.ZIndex           = 5
+    kn.Parent           = track
+    corner(kn, 10)
+    stroke(kn, C.slider, 1.5)
 
-    local value = default
+    local curVal = S[key] or minVal
+
+    local function updateSlider(val)
+        val = math.clamp(math.floor(val / step + 0.5) * step, minVal, maxVal)
+        curVal      = val
+        S[key]      = val
+        valLbl.Text = tostring(val)
+        local pct   = (val - minVal) / (maxVal - minVal)
+        TW:Create(fill, TweenInfo.new(0.1), {Size = UDim2.new(pct,0,1,0)}):Play()
+        TW:Create(kn,   TweenInfo.new(0.1), {Position = UDim2.new(pct,0,0.5,0)}):Play()
+    end
+    updateSlider(curVal)
+
     local dragging = false
 
-    local function update(absX)
-        local abs = track.AbsolutePosition.X
-        local w = track.AbsoluteSize.X
-        if w <= 0 then return end
-        local r = math.clamp((absX-abs)/w, 0, 1)
-        local raw = min + r*(max-min)
-        local stepped = math.floor(raw/step + 0.5) * step
-        stepped = math.clamp(stepped, min, max)
-        stepped = math.floor(stepped*1000 + 0.5)/1000
-        value = stepped
-        lbl.Text = name .. "   " .. stepped
-        local nr = (stepped - min)/(max - min)
-        fill.Size = UDim2.new(nr,0,1,0)
-        knob.Position = UDim2.new(nr,0,0.5,0)
-        if callback then callback(stepped) end
+    local function calcFromInput(input)
+        local trackAbs = track.AbsoluteSize.X
+        local trackPos = track.AbsolutePosition.X
+        local rel = math.clamp((input.Position.X - trackPos) / trackAbs, 0, 1)
+        updateSlider(minVal + rel * (maxVal - minVal))
     end
 
-    track.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+    track.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
-            update(UIS:GetMouseLocation().X)
+            calcFromInput(inp)
         end
     end)
-    UIS.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            update(UIS:GetMouseLocation().X)
+    UIS.InputChanged:Connect(function(inp)
+        if not dragging then return end
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseMovement then
+            calcFromInput(inp)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+    UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch
+        or inp.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 end
 
--- ==================== DRAG WINDOW ====================
-local dragging, dragStart, startPos
-tb.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = i.Position
-        startPos = win.Position
+-- ============================================================
+-- POPULATE TABS
+-- ============================================================
+
+-- FARM TAB
+mkToggle(pageFarm, "Auto Swing",   "Jalan speed 16 → swing tool",     "autoSwing")
+mkToggle(pageFarm, "No Clip",      "Tembus terrain ke NPC",            "noClip")
+mkToggle(pageFarm, "Auto Sell",    "Sell item otomatis",               "autoSell")
+mkToggle(pageFarm, "Auto Upgrade", "Upgrade item otomatis",            "autoUpgrade")
+mkToggle(pageFarm, "Auto Dungeon", "Start/replay dungeon semua map",   "autoDungeon")
+
+-- COMBAT TAB
+mkToggle(pageCombat, "Auto Dodge", "Tween mundur + cover boss fight",  "autoDodge")
+mkToggle(pageCombat, "Auto Skill", "Q+E spam + remote Backpack",       "autoSkill")
+mkToggle(pageCombat, "Hitbox",     "Expand handle + visible box",      "hitbox")
+
+-- SETTINGS TAB
+mkSlider(pageSettings, "Hitbox Scale",  "hitboxScale", 1, 12, 0.5)
+mkSlider(pageSettings, "Swing Delay",   "swingDelay",  0.02, 1, 0.02)
+mkSlider(pageSettings, "Dodge Range",   "dodgeRange",  4, 25, 1)
+mkSlider(pageSettings, "Skill Delay",   "skillDelay",  0.1, 3, 0.1)
+
+-- ============================================================
+-- DRAG WINDOW
+-- ============================================================
+local dragging, dragStart, winStart = false, nil, nil
+tbar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true dragStart = inp.Position winStart = win.Position
     end
 end)
-UIS.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local d = i.Position - dragStart
-        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+UIS.InputChanged:Connect(function(inp)
+    if not dragging then return end
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = inp.Position - dragStart
+        win.Position = UDim2.new(winStart.X.Scale, winStart.X.Offset+d.X, winStart.Y.Scale, winStart.Y.Offset+d.Y)
     end
 end)
-UIS.InputEnded:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 end)
--- ==================== REGISTER TABS ====================
-local farm = addTab("Farm", "📁", 1)
-local combat = addTab("Combat", "⚔", 2)
-local visual = addTab("Visual", "👁", 3)
-local settings = addTab("Settings", "⚙", 4)
 
--- FARM (dummy)
-Comp.section(farm, "Automation")
-Comp.toggle(farm, "Auto Dungeon", "autoDungeon", false, function(v) end)
-Comp.toggle(farm, "Walk Flow", "walkFlow", false, function(v) end)
-Comp.toggle(farm, "Auto Swing", "autoSwing", false, function(v) end)
-Comp.toggle(farm, "Auto Collect", "autoCollect", false, function(v) end)
-
-Comp.section(farm, "Timing")
-Comp.slider(farm, "swing_delay", "swingDelay", 0.02, 1, 0.02, 0.08, function(v) end)
-Comp.slider(farm, "walk_delay", "walkDelay", 0.1, 1, 0.05, 0.2, function(v) end)
-Comp.slider(farm, "collect_range", "collectRange", 50, 500, 10, 250, function(v) end)
-
-Comp.section(farm, "Utility")
-Comp.toggle(farm, "No Clip", "noClip", false, function(v) end)
-Comp.toggle(farm, "Freeze NPC", "freezeNPC", false, function(v) end)
-
--- COMBAT (dummy)
-Comp.section(combat, "Skills")
-Comp.toggle(combat, "Auto Skill Q/E", "autoSkill", false, function(v) end)
-Comp.slider(combat, "skill_q_delay", "skillQDelay", 0.2, 10, 0.1, 1.5, function(v) end)
-Comp.slider(combat, "skill_e_delay", "skillEDelay", 0.2, 10, 0.1, 1.5, function(v) end)
-
-Comp.section(combat, "Healing")
-Comp.toggle(combat, "Auto Heal", "autoHeal", false, function(v) end)
-Comp.slider(combat, "heal_amount", "healAmount", 50, 1000, 50, 500, function(v) end)
-Comp.slider(combat, "heal_interval", "healInterval", 2, 30, 1, 5, function(v) end)
-
-Comp.section(combat, "Dodge")
-Comp.toggle(combat, "Auto Dodge", "autoDodge", false, function(v) end)
-Comp.slider(combat, "dodge_range", "dodgeRange", 5, 40, 1, 10, function(v) end)
-Comp.slider(combat, "dodge_speed", "dodgeSpeed", 4, 20, 1, 12, function(v) end)
-
--- VISUAL (dummy)
-Comp.section(visual, "ESP")
-Comp.toggle(visual, "ESP Overlay", "espOverlay", false, function(v) end)
-Comp.slider(visual, "esp_range", "espRange", 50, 2000, 50, 800, function(v) end)
-
-Comp.section(visual, "Hitbox")
-Comp.toggle(visual, "Hitbox Visual", "hitboxVisual", false, function(v) end)
-Comp.toggle(visual, "Hitbox Expand", "hitbox", false, function(v) end)
-Comp.slider(visual, "hitbox_size", "hitboxSize", 1, 10, 0.5, 2.5, function(v) end)
-
--- SETTINGS
-Comp.section(settings, "Info")
-local infoLbl = Instance.new("TextLabel")
-infoLbl.Text = "UI Framework v1.0\nBelum ada fitur aktif.\nFitur tinggal didaftarkan via Comp.toggle / Comp.slider."
-infoLbl.Font = Theme.font
-infoLbl.TextSize = 11
-infoLbl.TextColor3 = Theme.textSec
-infoLbl.TextXAlignment = Enum.TextXAlignment.Left
-infoLbl.TextWrapped = true
-infoLbl.BackgroundTransparency = 1
-infoLbl.Size = UDim2.new(1,-8,0,70)
-infoLbl.Position = UDim2.fromOffset(6,0)
-infoLbl.LayoutOrder = nextOrder(settings)
-infoLbl.Parent = settings
-
-switchTab("Farm")
--- ==================== TOGGLE + SMOOTH ANIMATION ====================
+-- ============================================================
+-- OPEN / CLOSE ANIMATION
+-- ============================================================
 local isOpen = true
-local isAnimating = false
 
-local baseSize = win.Size
-local basePos = win.Position
-
-local OPEN_SCALE = 0.85
-local CLOSE_SCALE = 0.85
-local DUR_OPEN = 0.4
-local DUR_CLOSE = 0.25
-
--- hitung ukuran/posisi kecil (center-anchored)
-local function scaledState(scale)
-    local w = baseSize.X.Offset * scale
-    local h = baseSize.Y.Offset * scale
-    local xOff = basePos.X.Offset + (baseSize.X.Offset - w) / 2
-    local yOff = basePos.Y.Offset + (baseSize.Y.Offset - h) / 2
-    return UDim2.fromOffset(w, h), UDim2.new(basePos.X.Scale, xOff, basePos.Y.Scale, yOff)
-end
-
--- ============ OPEN ============
-local function openWindow()
-    if isAnimating or isOpen then return end
-    isAnimating = true
-    isOpen = true
-
-    local sSize, sPos = scaledState(OPEN_SCALE)
-    win.Visible = true
-    win.Size = sSize
-    win.Position = sPos
-    win.BackgroundTransparency = 1
-
-    task.wait()
-
-    local t = T:Create(win, TweenInfo.new(DUR_OPEN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Size = baseSize,
-        Position = basePos,
-        BackgroundTransparency = 0,
-    })
-    t:Play()
-    t.Completed:Connect(function() isAnimating = false end)
-end
-
--- ============ CLOSE ============
-local function closeWindow()
-    if isAnimating or not isOpen then return end
-    isAnimating = true
+local function closeWin()
+    if not isOpen then return end
     isOpen = false
-
-    local sSize, sPos = scaledState(CLOSE_SCALE)
-
-    local t = T:Create(win, TweenInfo.new(DUR_CLOSE, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-        Size = sSize,
-        Position = sPos,
+    TW:Create(win, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        Size                = UDim2.fromOffset(WIN_W, 0),
         BackgroundTransparency = 1,
-    })
-    t:Play()
-    t.Completed:Connect(function()
-        win.Visible = false
-        win.Size = baseSize
-        win.Position = basePos
-        win.BackgroundTransparency = 0
-        isAnimating = false
-    end)
+    }):Play()
+    task.delay(0.28, function() win.Visible = false end)
 end
 
--- ============ TOGGLE BUTTON ============
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Name = "ToggleBtn"
-toggleBtn.Text = "DQ"
-toggleBtn.Font = Theme.fontBold
-toggleBtn.TextSize = 14
-toggleBtn.TextColor3 = Theme.textPri
-toggleBtn.BackgroundColor3 = Theme.accent
-toggleBtn.BorderSizePixel = 0
-toggleBtn.Size = UDim2.fromOffset(52, 52)
-toggleBtn.Position = UDim2.new(0, 20, 0, 80)
-toggleBtn.AutoButtonColor = false
-toggleBtn.Active = true
-toggleBtn.Draggable = true
-toggleBtn.ZIndex = 10
-toggleBtn.Parent = gui
-corner(toggleBtn, Theme.Rp)
-stroke(toggleBtn, Color3.fromRGB(0, 0, 0), 1, 0.6)
-
-local function toggleUI()
-    if isOpen then
-        closeWindow()
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    else
-        openWindow()
-        toggleBtn.BackgroundColor3 = Theme.accent
-    end
+local function openWin()
+    if isOpen then return end
+    isOpen = true
+    win.Visible              = true
+    win.Size                 = UDim2.fromOffset(WIN_W, 0)
+    win.BackgroundTransparency = 1
+    TW:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size                = UDim2.fromOffset(WIN_W, WIN_H),
+        BackgroundTransparency = 0,
+    }):Play()
 end
 
--- Multi-event fallback (reliable di semua executor)
-toggleBtn.MouseButton1Click:Connect(toggleUI)
-toggleBtn.Activated:Connect(toggleUI)
-
--- ============ RED / YELLOW = CLOSE ============
-redBtn.MouseButton1Click:Connect(function() if isOpen then toggleUI() end end)
-redBtn.Activated:Connect(function() if isOpen then toggleUI() end end)
-ylwBtn.MouseButton1Click:Connect(function() if isOpen then toggleUI() end end)
-ylwBtn.Activated:Connect(function() if isOpen then toggleUI() end end)
-
--- ============ GREEN = RESIZE ============
-local isBig = false
-grnBtn.MouseButton1Click:Connect(function()
-    if isAnimating then return end
-    isBig = not isBig
-    isAnimating = true
-
-    local targetSize, targetPos
-    if isBig then
-        local bigH = math.min(baseSize.Y.Offset + 100, 700)
-        targetSize = UDim2.fromOffset(baseSize.X.Offset, bigH)
-        targetPos = UDim2.new(basePos.X.Scale, basePos.X.Offset, basePos.Y.Scale, basePos.Y.Offset - 50)
-    else
-        local freshH = math.clamp(math.floor(WS.CurrentCamera.ViewportSize.Y * 0.85), 420, 620)
-        targetSize = UDim2.fromOffset(WIN_W, freshH)
-        targetPos = UDim2.new(0.5, -WIN_W/2, 0.5, -freshH/2)
+dotRed.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1 then closeWin() end
+end)
+dotYel.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1 then closeWin() end
+end)
+dotGrn.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.Touch or inp.UserInputType==Enum.UserInputType.MouseButton1 then
+        if win.Size.X.Offset >= WIN_W then
+            TW:Create(win, TweenInfo.new(0.25), {Size=UDim2.fromOffset(WIN_W+80,WIN_H+60)}):Play()
+        else
+            TW:Create(win, TweenInfo.new(0.25), {Size=UDim2.fromOffset(WIN_W,WIN_H)}):Play()
+        end
     end
-
-    baseSize = targetSize
-    basePos = targetPos
-
-    local t = T:Create(win, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Size = targetSize,
-        Position = targetPos,
-    })
-    t:Play()
-    t.Completed:Connect(function() isAnimating = false end)
 end)
 
-print("[DQR] Toggle + animation ready")
+-- ============================================================
+-- FLOATING TOGGLE BUTTON — muncul saat window ditutup
+-- ============================================================
+local fab = Instance.new("TextButton")
+fab.Size             = UDim2.fromOffset(52,38)
+fab.Position         = UDim2.new(0,10,0.45,-19)
+fab.BackgroundColor3 = C.accent
+fab.Text             = "DQR"
+fab.TextColor3       = C.text
+fab.TextSize         = 12
+fab.Font             = Enum.Font.GothamBold
+fab.BorderSizePixel  = 0
+fab.AutoButtonColor  = false
+fab.ZIndex           = 10
+fab.Parent           = gui
+corner(fab, 8)
+stroke(fab, C.accentL, 1.2)
+fab.Activated:Connect(openWin)
+
+-- ============================================================
+-- STATUS BAR UPDATE
+-- ============================================================
+task.spawn(function()
+    while gui.Parent do
+        task.wait(0.5)
+        if S.isActive() then
+            local enemies = S.getEnemies()
+            local target  = S.nearestEnemy()
+            local tName   = target and target.Name or "—"
+            local boss    = S.isBossPhase() and " 👹BOSS" or ""
+            statLbl.Text       = string.format("Wave %d · %d NPC · %s%s", S.getCurrentWave(), #enemies, tName, boss)
+            statLbl.TextColor3 = C.text
+        else
+            statLbl.Text       = "Idle · Lobby"
+            statLbl.TextColor3 = C.dim
+        end
+    end
+end)
+
+showPage("Farm")
+print("[DQR] Part 3 loaded — UI ready")
+-- ============================================================
+-- DQR FINAL | PART 4 of 4 — Physical Toggle Button
+-- paste TERAKHIR setelah semua part
+-- ============================================================
+-- Tombol fisik DQR di layar bisa di-tap untuk show/hide window
+-- Bisa digeser ke mana saja
+-- ============================================================
+
+local Players = game:GetService("Players")
+local UIS     = game:GetService("UserInputService")
+local TW      = game:GetService("TweenService")
+local LP      = Players.LocalPlayer
+local PG      = LP:WaitForChild("PlayerGui")
+
+-- cari gui yang sudah dibuat part3
+local gui = PG:WaitForChild("DQR_FINAL", 5)
+if not gui then
+    print("[DQR] Part4: GUI tidak ditemukan, tunggu part3 dulu")
+    return
+end
+
+local win = gui:WaitForChild("Window", 5)
+if not win then return end
+
+-- ============================================================
+-- FAB sudah dibuat di part3, tapi kita buat versi yang
+-- bisa di-drag sendiri (terpisah dari window)
+-- ============================================================
+local fab = gui:FindFirstChild("__fab2")
+if fab then fab:Destroy() end
+
+local dragBtn = Instance.new("TextButton")
+dragBtn.Name             = "__fab2"
+dragBtn.Size             = UDim2.fromOffset(56, 40)
+dragBtn.Position         = UDim2.new(0, 10, 0.5, -20)
+dragBtn.BackgroundColor3 = Color3.fromRGB(110, 80, 230)
+dragBtn.Text             = "☰ DQR"
+dragBtn.TextColor3       = Color3.new(1,1,1)
+dragBtn.TextSize         = 11
+dragBtn.Font             = Enum.Font.GothamBold
+dragBtn.BorderSizePixel  = 0
+dragBtn.AutoButtonColor  = false
+dragBtn.ZIndex           = 20
+dragBtn.Parent           = gui
+
+local dc = Instance.new("UICorner")
+dc.CornerRadius = UDim.new(0, 9)
+dc.Parent       = dragBtn
+
+local ds = Instance.new("UIStroke")
+ds.Color     = Color3.fromRGB(140,110,255)
+ds.Thickness = 1.2
+ds.Parent    = dragBtn
+
+-- drag logic untuk tombol ini
+local btnDragging = false
+local btnDragStart, btnStartPos
+
+dragBtn.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        btnDragging  = true
+        btnDragStart = inp.Position
+        btnStartPos  = dragBtn.Position
+    end
+end)
+
+UIS.InputChanged:Connect(function(inp)
+    if not btnDragging then return end
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = inp.Position - btnDragStart
+        dragBtn.Position = UDim2.new(
+            btnStartPos.X.Scale, btnStartPos.X.Offset + d.X,
+            btnStartPos.Y.Scale, btnStartPos.Y.Offset + d.Y
+        )
+    end
+end)
+
+local btnDownAt = 0
+dragBtn.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        btnDownAt = tick()
+    end
+end)
+
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.Touch
+    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        btnDragging = false
+        -- jika tap singkat (bukan drag), toggle window
+        local held = tick() - btnDownAt
+        if held < 0.25 then
+            if win.Visible and win.Size.Y.Offset > 10 then
+                -- tutup
+                TW:Create(win, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                    Size = UDim2.fromOffset(win.Size.X.Offset, 0),
+                    BackgroundTransparency = 1,
+                }):Play()
+                task.delay(0.28, function()
+                    win.Visible = false
+                end)
+                TW:Create(dragBtn, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(80, 55, 170)
+                }):Play()
+            else
+                -- buka
+                win.Visible = true
+                win.Size    = UDim2.fromOffset(win.Size.X.Offset, 0)
+                win.BackgroundTransparency = 1
+                TW:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Size = UDim2.fromOffset(340, 520),
+                    BackgroundTransparency = 0,
+                }):Play()
+                TW:Create(dragBtn, TweenInfo.new(0.15), {
+                    BackgroundColor3 = Color3.fromRGB(110, 80, 230)
+                }):Play()
+            end
+        end
+    end
+end)
+
+-- pulse animation di tombol saat ada fitur aktif
+task.spawn(function()
+    local S = _G.DQR
+    while dragBtn.Parent do
+        task.wait(1)
+        local anyOn = S.autoSwing or S.autoDodge or S.autoSkill or S.hitbox
+        if anyOn then
+            TW:Create(ds, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+                Thickness = 2.5
+            }):Play()
+        else
+            ds.Thickness = 1.2
+        end
+    end
+end)
+
+print("[DQR] Part 4 loaded — toggle button aktif")
+print("======================================")
+print("[DQR] SEMUA PART LOADED — SIAP DIPAKAI")
+print("  TAP tombol ☰ DQR untuk show/hide")
+print("  Drag tombol ke posisi yang nyaman")
+print("  Tab Farm / Combat / Settings")
+print("======================================")
