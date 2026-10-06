@@ -1,8 +1,8 @@
--- DUNGEON QUEST AUTO FARM — v17
+-- DUNGEON QUEST AUTO FARM — v18
 local P=game:GetService("Players")local LP=P.LocalPlayer
 local RS=game:GetService("ReplicatedStorage")local WS=game:GetService("Workspace")
 local UIS=game:GetService("UserInputService")local T=game:GetService("TweenService")
-local VIM=game:GetService("VirtualInputManager")
+local VIM=game:GetService("VirtualInputManager")local RUN=game:GetService("RunService")
 local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
 if okCG and CG then local o=CG:FindFirstChild("DQAF")if o then o:Destroy()end end
 local PG=LP:WaitForChild("PlayerGui")local oP=PG:FindFirstChild("DQAF")if oP then oP:Destroy()end
@@ -33,12 +33,112 @@ local function near()if not hrp then return nil end local best=nil local bestVal
 local function getT()if cur and cur.Parent and isE(cur)then local hE=cur:FindFirstChild("HumanoidRootPart")if hE and hrp and(hE.Position-hrp.Position).Magnitude<200 then return cur end end cur=near()return cur end
 task.spawn(function()while true do if cur then local h=cur:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 or not cur.Parent then cur=nil end end task.wait(0.1)end end)
 local function autoEquip()if not char then return end local h=char:FindFirstChildOfClass("Humanoid")if not h then return end for _,t in ipairs(char:GetChildren())do if t:IsA("Tool")then return end end local bp=LP:FindFirstChild("Backpack")if not bp then return end for _,t in ipairs(bp:GetChildren())do if t:IsA("Tool")then pcall(function()h:EquipTool(t)end)return end end end
-local function noclipLoop()while cfg.NoClip do if char then for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end end end task.wait(0.2)end if char then for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")and p.Name~="HumanoidRootPart"then pcall(function()p.CanCollide=true end)end end end end
-local toolHitboxOrig={}
-local function applyMyHitbox()if not char then return end for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then local handle=tool:FindFirstChild("Handle")if handle then local orig=toolHitboxOrig[tool]if orig then if orig.applied~=cfg.HitboxSize then pcall(function()handle.Size=orig.size*cfg.HitboxSize end)orig.applied=cfg.HitboxSize end else toolHitboxOrig[tool]={size=handle.Size,applied=cfg.HitboxSize}pcall(function()handle.Size=handle.Size*cfg.HitboxSize handle.CanQuery=true handle.CanTouch=true end)end end end end end
-local function restoreMyHitbox()for tool,orig in pairs(toolHitboxOrig)do if tool and tool.Parent then local handle=tool:FindFirstChild("Handle")if handle then pcall(function()handle.Size=orig.size end)end end end toolHitboxOrig={}end
-local function hitboxLoop()while cfg.Hitbox do applyMyHitbox()task.wait(0.3)end restoreMyHitbox()end
-LP.CharacterAdded:Connect(function()task.wait(1)toolHitboxOrig={}end)
+
+-- ==================== HITBOX (Tool.Handle Expand — from user) ====================
+local hitboxOrig={}
+local hitboxSel={}
+local lastHitboxApply=0
+local HITBOX_APPLY_RATE=0.1
+
+local function removeHitboxSel(handle)
+    local sel=hitboxSel[handle]
+    if sel then sel:Destroy() hitboxSel[handle]=nil end
+end
+
+local function restoreAllHitbox()
+    for handle,size in pairs(hitboxOrig)do
+        if handle and handle.Parent then
+            pcall(function()handle.Size=size end)
+        end
+        removeHitboxSel(handle)
+    end
+    hitboxOrig={}
+    hitboxSel={}
+end
+
+LP.CharacterAdded:Connect(function()
+    hitboxOrig={}
+    hitboxSel={}
+end)
+
+RUN.Heartbeat:Connect(function()
+    if not cfg.Hitbox then return end
+    local now=tick()
+    if now-lastHitboxApply<HITBOX_APPLY_RATE then return end
+    lastHitboxApply=now
+
+    local myChar=LP.Character
+    if not myChar then return end
+    local seen={}
+
+    for _,obj in ipairs(myChar:GetChildren())do
+        if obj:IsA("Tool")then
+            local handle=obj:FindFirstChild("Handle")
+            if handle then
+                seen[handle]=true
+                if not hitboxOrig[handle]then hitboxOrig[handle]=handle.Size end
+                pcall(function()
+                    handle.Size=hitboxOrig[handle]*cfg.HitboxSize
+                    handle.CanQuery=true
+                    handle.CanTouch=true
+                end)
+                if cfg.HitboxVisual then
+                    if not hitboxSel[handle]then
+                        local sel=Instance.new("SelectionBox")
+                        sel.Adornee=handle
+                        sel.Color3=Color3.fromRGB(255,80,80)
+                        sel.LineThickness=0.04
+                        sel.SurfaceColor3=Color3.fromRGB(255,80,80)
+                        sel.SurfaceTransparency=0.6
+                        sel.Parent=gui
+                        hitboxSel[handle]=sel
+                    end
+                else
+                    removeHitboxSel(handle)
+                end
+            end
+        end
+    end
+
+    for handle in pairs(hitboxOrig)do
+        if not seen[handle]then
+            if handle and handle.Parent then
+                pcall(function()handle.Size=hitboxOrig[handle]end)
+            end
+            removeHitboxSel(handle)
+            hitboxOrig[handle]=nil
+        end
+    end
+end)
+
+local wasHitboxOn=false
+RUN.Heartbeat:Connect(function()
+    if wasHitboxOn and not cfg.Hitbox then
+        restoreAllHitbox()
+    end
+    wasHitboxOn=cfg.Hitbox
+end)
+
+-- ==================== NO CLIP ====================
+local function noclipLoop()
+    while cfg.NoClip do
+        local myChar=LP.Character
+        if myChar then
+            for _,p in ipairs(myChar:GetDescendants())do
+                if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end
+            end
+        end
+        task.wait(0.2)
+    end
+    local myChar=LP.Character
+    if myChar then
+        for _,p in ipairs(myChar:GetDescendants())do
+            if p:IsA("BasePart")and p.Name~="HumanoidRootPart"then pcall(function()p.CanCollide=true end)end
+        end
+    end
+end
+
+-- ==================== FREEZE NPC ====================
 local frozenNPCs={}
 local function freezeNPC(m)if not m or not m.Parent then return end local h=m:FindFirstChildOfClass("Humanoid")local hrpE=m:FindFirstChild("HumanoidRootPart")if not h then return end if frozenNPCs[h]then pcall(function()h.WalkSpeed=0 h.JumpPower=0 h.JumpHeight=0 end)if hrpE then pcall(function()hrpE.Anchored=true end)end return end frozenNPCs[h]={walk=h.WalkSpeed,jump=h.JumpPower,jheight=h.JumpHeight}pcall(function()h.WalkSpeed=0 h.JumpPower=0 h.JumpHeight=0 end)if hrpE then pcall(function()hrpE.Anchored=true end)end end
 local function unfreezeNPC(h)if not h then return end local orig=frozenNPCs[h]if not orig then return end pcall(function()h.WalkSpeed=orig.walk h.JumpPower=orig.jump h.JumpHeight=orig.jheight end)local m=h.Parent if m then local hrpE=m:FindFirstChild("HumanoidRootPart")if hrpE then pcall(function()hrpE.Anchored=false end)end end frozenNPCs[h]=nil end
@@ -48,13 +148,8 @@ local SquareSupport=pcall(function()local s=Drawing.new("Square")s:Remove()end)
 local function createESPOverlay(model)if not SquareSupport then return nil end local d={}d.box=Drawing.new("Square")d.box.Visible=false d.box.Color=Color3.fromRGB(255,60,60)d.box.Thickness=1 d.box.Transparency=1 d.box.Filled=false d.hpBg=Drawing.new("Square")d.hpBg.Visible=false d.hpBg.Color=Color3.fromRGB(30,30,30)d.hpBg.Filled=true d.hpBg.Transparency=0.6 d.hpFg=Drawing.new("Square")d.hpFg.Visible=false d.hpFg.Color=Color3.fromRGB(0,255,100)d.hpFg.Filled=true d.hpFg.Transparency=1 d.nameText=Drawing.new("Text")d.nameText.Visible=false d.nameText.Center=true d.nameText.Outline=true d.nameText.Color=Color3.fromRGB(255,255,255)d.nameText.Size=13 d.nameText.Font=2 espOverlayCache[model]=d return d end
 local function removeESPOverlay(model)local d=espOverlayCache[model]if not d then return end for _,obj in pairs(d)do pcall(function()obj:Remove()end)end espOverlayCache[model]=nil end
 task.spawn(function()local cam=WS.CurrentCamera while true do if cfg.ESPOverlay and SquareSupport and hrp and cam then for _,e in ipairs(eList())do if not espOverlayCache[e]then createESPOverlay(e)end end for m,_ in pairs(espOverlayCache)do if not m.Parent or not isE(m)then removeESPOverlay(m)end end for m,d in pairs(espOverlayCache)do local hE=m:FindFirstChild("HumanoidRootPart")local h=m:FindFirstChildOfClass("Humanoid")if hE and h and hrp then local dist=(hE.Position-hrp.Position).Magnitude if dist<=cfg.ESPRange then local pos,on=cam:WorldToViewportPoint(hE.Position)local headPos,headOn=cam:WorldToViewportPoint(hE.Position+Vector3.new(0,3,0))local footPos,footOn=cam:WorldToViewportPoint(hE.Position-Vector3.new(0,3,0))if on and headOn and footOn then local boxH=math.abs(footPos.Y-headPos.Y)local boxW=boxH*0.6 local boxX=pos.X-boxW/2 local boxY=headPos.Y d.box.Visible=true d.box.Size=Vector2.new(boxW,boxH)d.box.Position=Vector2.new(boxX,boxY)d.box.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,60,60)local hpRatio=math.clamp(h.Health/h.MaxHealth,0,1)local hpBarY=boxY-8 d.hpBg.Visible=true d.hpBg.Size=Vector2.new(boxW,3)d.hpBg.Position=Vector2.new(boxX,hpBarY)d.hpFg.Visible=true d.hpFg.Size=Vector2.new(boxW*hpRatio,3)d.hpFg.Position=Vector2.new(boxX,hpBarY)if hpRatio>0.5 then d.hpFg.Color=Color3.fromRGB(0,255,100)elseif hpRatio>0.25 then d.hpFg.Color=Color3.fromRGB(255,200,0)else d.hpFg.Color=Color3.fromRGB(255,60,60)end d.nameText.Visible=true d.nameText.Text=string.format("%s [%d]",m.Name,math.floor(dist))d.nameText.Position=Vector2.new(pos.X,hpBarY-16)d.nameText.Color=(m==cur)and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,255,255)else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end else d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end end else for _,d in pairs(espOverlayCache)do d.box.Visible=false d.hpBg.Visible=false d.hpFg.Visible=false d.nameText.Visible=false end task.wait(0.3)end task.wait(0.03)end end)
-local visualBoxes={}
-local function getOrCreateVisual(part,color)if not visualBoxes[part]then local box=Instance.new("SelectionBox")box.Color3=color box.LineThickness=0.05 box.Transparency=0.5 box.Adornee=part box.Parent=gui visualBoxes[part]=box end return visualBoxes[part]end
-local function clearVisuals()for part,box in pairs(visualBoxes)do pcall(function()box:Destroy()end)end visualBoxes={}end
-local function updateHitboxVisuals()if not hrp or not char then return end local myBox=getOrCreateVisual(hrp,Color3.fromRGB(0,150,255))myBox.Color3=Color3.fromRGB(0,150,255)myBox.Transparency=0.6 local activeParts={}for _,m in ipairs(eList())do local hE=m:FindFirstChild("HumanoidRootPart")if hE then activeParts[hE]=true local dist=(hE.Position-hrp.Position).Magnitude local inRange=dist<=cfg.SwingReach local color=inRange and Color3.fromRGB(0,255,100)or Color3.fromRGB(255,60,60)local box=getOrCreateVisual(hE,color)box.Color3=color box.Transparency=inRange and 0.4 or 0.6 end end for part,box in pairs(visualBoxes)do if part~=hrp and not activeParts[part]then pcall(function()box:Destroy()end)visualBoxes[part]=nil end end end
-task.spawn(function()while true do if cfg.HitboxVisual then pcall(updateHitboxVisuals)task.wait(0.1)else clearVisuals()task.wait(0.5)end end end)
 
--- ==================== HOVER FARM (CCTV v3 + SENDAT FIX) ====================
+-- ==================== HOVER FARM (CCTV) ====================
 local hoverPhys={alignPos=nil,alignOri=nil,attach=nil}
 local bobPhase=0
 local HOVER_RESPONSIVENESS=20
@@ -66,48 +161,7 @@ local CCTV_ANGLE=45
 local function cleanupHoverPhysics()for _,obj in ipairs({hoverPhys.alignPos,hoverPhys.alignOri,hoverPhys.attach})do if obj then pcall(function()obj:Destroy()end)end end if hrp then local oldBV=hrp:FindFirstChild("DQAF_HoverVelocity")if oldBV then pcall(function()oldBV:Destroy()end)end end hoverPhys={alignPos=nil,alignOri=nil,attach=nil}end
 local function ensureHoverPhysics()if not hrp then return end if hoverPhys.alignPos and hoverPhys.alignPos.Parent then return end cleanupHoverPhysics()local att=Instance.new("Attachment")att.Name="DQAF_HoverAttach"att.Parent=hrp local ap=Instance.new("AlignPosition")ap.Name="DQAF_AlignPos"ap.Attachment0=att ap.Mode=Enum.PositionAlignmentMode.OneAttachment ap.Position=hrp.Position ap.MaxForce=150000 ap.Responsiveness=HOVER_RESPONSIVENESS ap.MaxVelocity=HOVER_MAX_SPEED ap.ApplyAtCenterOfMass=true ap.Parent=hrp local ao=Instance.new("AlignOrientation")ao.Name="DQAF_AlignOri"ao.Attachment0=att ao.Mode=Enum.OrientationAlignmentMode.OneAttachment ao.MaxTorque=150000 ao.Responsiveness=ORI_RESPONSIVENESS ao.Parent=hrp hoverPhys.alignPos=ap hoverPhys.alignOri=ao hoverPhys.attach=att pcall(function()if hum then hum.AutoRotate=false end end)end
 local function doDipSwing()if not char then return end for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end pcall(function()local cam=WS.CurrentCamera VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cam.ViewportSize.X/2,cam.ViewportSize.Y/2,0,false,game,1)end)end
-local function hoverLoop()
-    while cfg.HoverFarm do
-        if char and hum and hum.Health>0 and hrp and hrp.Parent then
-            local t=getT()
-            if t then
-                local hE=t:FindFirstChild("HumanoidRootPart")
-                if hE then
-                    ensureHoverPhysics()
-                    bobPhase=bobPhase+(BOB_SPEED*0.05)
-                    local bob=math.sin(bobPhase)*BOB_HEIGHT
-                    local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight+bob,hE.Position.Z)
-                    if hoverPhys.alignPos then
-                        local dist=(targetPos-hrp.Position).Magnitude
-                        local speed=math.min(HOVER_MAX_SPEED*(1+dist/30),40)
-                        hoverPhys.alignPos.MaxVelocity=speed
-                        hoverPhys.alignPos.Position=targetPos
-                    end
-                    if hoverPhys.alignOri then
-                        local myPos=hrp.Position
-                        local npcPos=hE.Position
-                        local toNPC=Vector3.new(npcPos.X-myPos.X,0,npcPos.Z-myPos.Z)
-                        if toNPC.Magnitude<0.5 then toNPC=Vector3.new(0,0,-1)else toNPC=toNPC.Unit end
-                        local baseCF=CFrame.lookAt(myPos,myPos+toNPC)
-                        local tiltCF=baseCF*CFrame.Angles(math.rad(CCTV_ANGLE),0,0)
-                        hoverPhys.alignOri.CFrame=tiltCF
-                    end
-                    pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)
-                    if cfg.AutoSwing then doDipSwing()end
-                    local h=t:FindFirstChildOfClass("Humanoid")
-                    if not h or h.Health<=0 then
-                        cur=near()
-                    end
-                end
-            else
-                if hoverPhys.alignPos then hoverPhys.alignPos.Position=hrp.Position end
-            end
-        end
-        task.wait(0.05)
-    end
-    cleanupHoverPhysics()
-    if hum then pcall(function()hum.PlatformStand=false hum.AutoRotate=true end)end
-end
+local function hoverLoop()while cfg.HoverFarm do if char and hum and hum.Health>0 and hrp and hrp.Parent then local t=getT()if t then local hE=t:FindFirstChild("HumanoidRootPart")if hE then ensureHoverPhysics()bobPhase=bobPhase+(BOB_SPEED*0.05)local bob=math.sin(bobPhase)*BOB_HEIGHT local targetPos=Vector3.new(hE.Position.X,hE.Position.Y+cfg.HoverHeight+bob,hE.Position.Z)if hoverPhys.alignPos then local dist=(targetPos-hrp.Position).Magnitude local speed=math.min(HOVER_MAX_SPEED*(1+dist/30),40)hoverPhys.alignPos.MaxVelocity=speed hoverPhys.alignPos.Position=targetPos end if hoverPhys.alignOri then local myPos=hrp.Position local npcPos=hE.Position local toNPC=Vector3.new(npcPos.X-myPos.X,0,npcPos.Z-myPos.Z)if toNPC.Magnitude<0.5 then toNPC=Vector3.new(0,0,-1)else toNPC=toNPC.Unit end local baseCF=CFrame.lookAt(myPos,myPos+toNPC)local tiltCF=baseCF*CFrame.Angles(math.rad(CCTV_ANGLE),0,0)hoverPhys.alignOri.CFrame=tiltCF end pcall(function()if not hum.PlatformStand then hum.PlatformStand=true end end)if cfg.AutoSwing then doDipSwing()end local h=t:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then cur=near()end end else if hoverPhys.alignPos then hoverPhys.alignPos.Position=hrp.Position end end end task.wait(0.05)end cleanupHoverPhysics()if hum then pcall(function()hum.PlatformStand=false hum.AutoRotate=true end)end end
 
 local function autoHealSmallLoop()local lastHeal=0 local lastChar=nil local lastHP=0 local lastDamageTime=0 while cfg.AutoHealSmall do if char~=lastChar then lastChar=char lastHeal=tick()lastHP=0 end if hum and hum.Parent and hum.Health>0 then local currentHP=hum.Health if currentHP<lastHP-5 then lastDamageTime=tick()end lastHP=currentHP local timeSinceDamage=tick()-lastDamageTime local timeSinceHeal=tick()-lastHeal if timeSinceHeal>=cfg.HealInterval and timeSinceDamage>=2 then if currentHP<hum.MaxHealth then local newHP=math.min(currentHP+cfg.HealAmount,hum.MaxHealth)pcall(function()hum.Health=newHP end)end lastHeal=tick()end task.wait(0.2)else task.wait(0.5)end end end
 local function swingLoop()while cfg.AutoSwing do if char and hum and hum.Health>0 then autoEquip()if not cfg.HoverFarm then local t=getT()if t then local hE=t:FindFirstChild("HumanoidRootPart")if hE and hrp and hrp.Parent then pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))end)end end end for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end pcall(function()local cam=WS.CurrentCamera if not cam then return end local cx=cam.ViewportSize.X/2 local cy=cam.ViewportSize.Y/2 VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)end)task.wait(cfg.SwingDelay)else task.wait(0.5)end end end
@@ -165,7 +219,7 @@ head(pageFarm,"FREEZE")mkT(pageFarm,"Freeze NPC","FreezeNPC",freezeLoop)
 head(pageFarm,"AUTO HEAL")mkT(pageFarm,"Auto Heal (+500/5s)","AutoHealSmall",autoHealSmallLoop)mkS(pageFarm,"heal_amount","HealAmount",50,1000,50,500)mkS(pageFarm,"heal_interval","HealInterval",2,30,1,5)
 head(pageFarm,"UTILITY")mkT(pageFarm,"No Clip","NoClip",noclipLoop)
 head(pageVisual,"ESP")mkT(pageVisual,"ESP Overlay","ESPOverlay",nil)mkS(pageVisual,"esp_range","ESPRange",50,2000,50,800)
-head(pageVisual,"HITBOX")mkT(pageVisual,"Hitbox Visual","HitboxVisual",nil)mkT(pageVisual,"Hitbox Expand (Tool)","Hitbox",hitboxLoop)mkS(pageVisual,"hitbox_size","HitboxSize",1,10,0.5,2.5)
+head(pageVisual,"HITBOX")mkT(pageVisual,"Hitbox (Tool Expand)","Hitbox",nil)mkT(pageVisual,"Hitbox Visual (Box)","HitboxVisual",nil)mkS(pageVisual,"hitbox_size","HitboxSize",1,10,0.5,2.5)
 head(pageSettings,"TARGETING")mkPriority(pageSettings)
 local function refreshAllUI()for key,ref in pairs(uiToggles)do local on=cfg[key]and true or false ref.track.BackgroundColor3=on and Mac.Green or Mac.ToggleOff ref.knob.Position=on and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)end for key,ref in pairs(uiSliders)do local v=cfg[key]if type(v)=="number"then local ratio=math.clamp((v-ref.mn)/(ref.mx-ref.mn),0,1)ref.fill.Size=UDim2.new(ratio,0,1,0)ref.knob.Position=UDim2.new(ratio,0,0.5,0)ref.lbl.Text=ref.name.."  ·  "..v end end end
 local resetBtn=Instance.new("TextButton")resetBtn.Text="Reset Config"resetBtn.Font=Mac.FontBold resetBtn.TextSize=10 resetBtn.TextColor3=Color3.new(1,1,1)resetBtn.BackgroundColor3=Mac.Red resetBtn.BorderSizePixel=0 resetBtn.Size=UDim2.new(1,-2,0,28)resetBtn.AutoButtonColor=false resetBtn.LayoutOrder=nextOrder()resetBtn.Parent=pageSettings local crb=Instance.new("UICorner")crb.CornerRadius=Mac.Rs crb.Parent=resetBtn
@@ -192,4 +246,4 @@ local stg=Instance.new("UIStroke")stg.Color=Color3.new(0,0,0)stg.Thickness=1 stg
 tg.Activated:Connect(function()if isOpen then closeWindow()else openWindow()end end)
 task.wait(0.1)openWindow()
 task.spawn(function()while gui.Parent do if inD()then local l=eList()local tn=cur and cur.Name or "none"st.Text=string.format("W%d · %d mob · %s",wv(),#l,tn)st.TextColor3=Mac.Text else st.Text="Idle · Lobby"st.TextColor3=Mac.TextDim end task.wait(0.5)end end)
-print("[DQAF] v17 loaded. Config:",hasFileIO and "auto-save" or "no-save")
+print("[DQAF] v18 loaded. Config:",hasFileIO and "auto-save" or "no-save")
