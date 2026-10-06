@@ -1,5 +1,5 @@
 -- ============================================================
--- DQR PROJECT v1.1 (Part 1/8)
+-- DQR PROJECT v1.2 (Part 1/8)
 -- ============================================================
 local P = game:GetService("Players")
 local LP = P.LocalPlayer
@@ -51,7 +51,6 @@ win.Active = true
 win.Parent = gui
 corner(win, Theme.R)
 stroke(win, Color3.fromRGB(60,60,65), 1, 0.3)
--- TITLE BAR
 local tb = Instance.new("Frame")
 tb.Size = UDim2.new(1,0,0,32)
 tb.BackgroundColor3 = Theme.bgTitle
@@ -89,7 +88,6 @@ titleLbl.Position = UDim2.fromOffset(60,0)
 titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 titleLbl.Parent = tb
 
--- SIDEBAR
 local sidebar = Instance.new("Frame")
 sidebar.Size = UDim2.new(0,96,1,-32)
 sidebar.Position = UDim2.fromOffset(0,32)
@@ -113,7 +111,7 @@ sbList.SortOrder = Enum.SortOrder.LayoutOrder
 sbList.Parent = sidebar
 
 local verLbl = Instance.new("TextLabel")
-verLbl.Text = "v1.1"
+verLbl.Text = "v1.2"
 verLbl.Font = Theme.font
 verLbl.TextSize = 10
 verLbl.TextColor3 = Theme.textSec
@@ -123,13 +121,11 @@ verLbl.Position = UDim2.new(0,6,1,-26)
 verLbl.TextXAlignment = Enum.TextXAlignment.Left
 verLbl.Parent = sidebar
 
--- CONTENT
 local content = Instance.new("Frame")
 content.Size = UDim2.new(1,-96,1,-32)
 content.Position = UDim2.fromOffset(96,32)
 content.BackgroundTransparency = 1
 content.Parent = win
--- TAB SYSTEM
 local tabs = {}
 local pages = {}
 local current = nil
@@ -193,7 +189,6 @@ local function addTab(name, icon, order)
     pages[name] = page
     return page
 end
--- COMPONENTS
 local order = {}
 local function nextOrder(parent)
     order[parent] = (order[parent] or 0) + 1
@@ -243,6 +238,9 @@ function Comp.toggle(parent, name, key, default, callback)
     track.BackgroundColor3 = default and Theme.green or Theme.toggleOff
     track.BorderSizePixel = 0
     track.AutoButtonColor = false
+    track.Active = true
+    track.Selectable = true
+    track.ZIndex = 5
     track.Parent = card
     corner(track, Theme.Rp)
 
@@ -251,11 +249,18 @@ function Comp.toggle(parent, name, key, default, callback)
     knob.Position = default and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
     knob.BackgroundColor3 = Theme.knob
     knob.BorderSizePixel = 0
+    knob.ZIndex = 6
     knob.Parent = track
     corner(knob, Theme.Rp)
 
     local state = default or false
+    local lastClick = 0
+
     local function doToggle()
+        local now = tick()
+        if now - lastClick < 0.2 then return end
+        lastClick = now
+
         state = not state
         T:Create(track, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             BackgroundColor3 = state and Theme.green or Theme.toggleOff
@@ -263,10 +268,29 @@ function Comp.toggle(parent, name, key, default, callback)
         T:Create(knob, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             Position = state and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
         }):Play()
-        if callback then callback(state) end
+
+        print("[Toggle]", name, "→", state and "ON" or "OFF")
+
+        if callback then
+            local ok, err = pcall(callback, state)
+            if not ok then warn("[Toggle] Error:", err) end
+        end
     end
-    track.MouseButton1Click:Connect(doToggle)
-    track.Activated:Connect(doToggle)
+
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            doToggle()
+        end
+    end)
+    track.MouseButton1Click:Connect(function()
+        task.wait(0.05)
+        doToggle()
+    end)
+    track.Activated:Connect(function()
+        task.wait(0.1)
+        doToggle()
+    end)
 end
 
 function Comp.slider(parent, name, key, min, max, step, default, callback)
@@ -296,6 +320,7 @@ function Comp.slider(parent, name, key, min, max, step, default, callback)
     track.BackgroundColor3 = Theme.bgTrack
     track.BorderSizePixel = 0
     track.AutoButtonColor = false
+    track.Active = true
     track.Parent = card
     corner(track, Theme.Rp)
 
@@ -332,7 +357,7 @@ function Comp.slider(parent, name, key, min, max, step, default, callback)
         local nr = (stepped - min)/(max - min)
         fill.Size = UDim2.new(nr,0,1,0)
         knob.Position = UDim2.new(nr,0,0.5,0)
-        if callback then callback(stepped) end
+        if callback then pcall(callback, stepped) end
     end
 
     track.InputBegan:Connect(function(i)
@@ -353,7 +378,6 @@ function Comp.slider(parent, name, key, min, max, step, default, callback)
     end)
 end
 
--- DRAG WINDOW
 local dragging, dragStart, startPos
 tb.InputBegan:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -369,7 +393,6 @@ end)
 UIS.InputEnded:Connect(function(i)
     if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
 end)
--- FEATURE HELPERS
 local char, hrp, hum
 local cur = nil
 
@@ -450,7 +473,6 @@ local function isBossPhase()
     end
     return false
 end
--- FEATURE MODULES
 local Feat = {}
 Feat.threads = {}
 
@@ -465,7 +487,6 @@ local function startFeat(name, fn)
     Feat.threads[name] = task.spawn(fn)
 end
 
--- Auto Dungeon
 Feat.AutoDungeon = function()
     while true do
         if not inDungeon() then
@@ -487,7 +508,6 @@ Feat.AutoDungeon = function()
     end
 end
 
--- Walk Flow
 Feat.WalkFlow = function()
     while true do
         if hrp and hum and hum.Health > 0 then
@@ -497,9 +517,7 @@ Feat.WalkFlow = function()
                 if hE then
                     local d = (hE.Position - hrp.Position).Magnitude
                     if d > 8 then
-                        pcall(function()
-                            hum:MoveTo(Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z))
-                        end)
+                        pcall(function() hum:MoveTo(Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z)) end)
                     else
                         pcall(function() hum:MoveTo(hrp.Position) end)
                     end
@@ -510,7 +528,6 @@ Feat.WalkFlow = function()
     end
 end
 
--- Auto Swing
 Feat.AutoSwing = function()
     while true do
         if char and hum and hum.Health > 0 then
@@ -520,8 +537,7 @@ Feat.AutoSwing = function()
                 local hE = t:FindFirstChild("HumanoidRootPart")
                 if hE and hrp then
                     pcall(function()
-                        hrp.CFrame = CFrame.new(hrp.Position,
-                            Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z))
+                        hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z))
                     end)
                 end
             end
@@ -542,7 +558,6 @@ Feat.AutoSwing = function()
     end
 end
 
--- Auto Skill Q/E
 Feat.AutoSkill = function()
     while true do
         if char and hum and hum.Health > 0 then
@@ -562,23 +577,17 @@ Feat.AutoSkill = function()
     end
 end
 
--- Auto Heal
 Feat.AutoHeal = function()
     local lastHeal = 0 local lastHP = 0 local lastDamage = 0 local lastChar = nil
     while true do
-        if char ~= lastChar then
-            lastChar = char lastHeal = tick() lastHP = 0
-        end
+        if char ~= lastChar then lastChar = char lastHeal = tick() lastHP = 0 end
         if hum and hum.Parent and hum.Health > 0 then
             local now = hum.Health
             if now < lastHP - 5 then lastDamage = tick() end
             lastHP = now
-            local sinceDamage = tick() - lastDamage
-            local sinceHeal = tick() - lastHeal
-            if sinceHeal >= (_G.DQR_HealInterval or 5) and sinceDamage >= 2 then
+            if tick() - lastHeal >= (_G.DQR_HealInterval or 5) and tick() - lastDamage >= 2 then
                 if now < hum.MaxHealth then
-                    local newHP = math.min(now + (_G.DQR_HealAmount or 500), hum.MaxHealth)
-                    pcall(function() hum.Health = newHP end)
+                    pcall(function() hum.Health = math.min(now + (_G.DQR_HealAmount or 500), hum.MaxHealth) end)
                 end
                 lastHeal = tick()
             end
@@ -587,7 +596,6 @@ Feat.AutoHeal = function()
     end
 end
 
--- Freeze NPC
 Feat.FreezeNPC = function()
     local frozen = {}
     while true do
@@ -595,21 +603,16 @@ Feat.FreezeNPC = function()
             local h = m:FindFirstChildOfClass("Humanoid")
             local hE = m:FindFirstChild("HumanoidRootPart")
             if h then
-                if not frozen[h] then
-                    frozen[h] = {walk=h.WalkSpeed, jump=h.JumpPower, jheight=h.JumpHeight}
-                end
+                if not frozen[h] then frozen[h] = {walk=h.WalkSpeed, jump=h.JumpPower, jheight=h.JumpHeight} end
                 pcall(function() h.WalkSpeed = 0 h.JumpPower = 0 h.JumpHeight = 0 end)
                 if hE then pcall(function() hE.Anchored = true end) end
             end
         end
-        for h, orig in pairs(frozen) do
-            if not h.Parent then frozen[h] = nil end
-        end
+        for h, _ in pairs(frozen) do if not h.Parent then frozen[h] = nil end end
         task.wait(0.4)
     end
 end
 
--- No Clip
 Feat.NoClip = function()
     while true do
         if char then
@@ -621,7 +624,6 @@ Feat.NoClip = function()
     end
 end
 
--- Auto Dodge (Tween-based, from user)
 Feat.AutoDodge = function()
     local lastDodge = 0
     while true do
@@ -638,8 +640,7 @@ Feat.AutoDodge = function()
                         if dist < range then
                             local away = hrp.Position - root.Position
                             if away.Magnitude < 0.01 then away = Vector3.new(1,0,0) else away = away.Unit end
-                            local backDist = speed * 1.2
-                            local tp = hrp.Position + away * backDist
+                            local tp = hrp.Position + away * (speed * 1.2)
                             T:Create(hrp, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                                 CFrame = CFrame.new(tp)
                             }):Play()
@@ -654,52 +655,34 @@ Feat.AutoDodge = function()
     end
 end
 
--- ESP Lines (from user's drawing)
 Feat.ESPLines = function()
     local espCache = {}
-    local ESP_OK = pcall(function()
-        local d = Drawing.new("Line")
-        d:Remove()
-    end)
-    if not ESP_OK then
-        print("[DQR] Drawing API gak support — ESP disabled")
-        return
-    end
-
+    local ESP_OK = pcall(function() local d = Drawing.new("Line") d:Remove() end)
+    if not ESP_OK then print("[DQR] Drawing gak support") return end
     while true do
         if char and hrp and WS.CurrentCamera then
             local enemies = getEnemies()
             local seen = {}
-
-            -- Buat line baru
             for _, m in ipairs(enemies) do
                 seen[m] = true
                 if not espCache[m] then
                     local l = Drawing.new("Line")
-                    l.Visible = false
-                    l.Color = Color3.fromRGB(255, 60, 60)
-                    l.Thickness = 1.5
-                    l.Transparency = 0.85
-                    l.From = Vector2.new(0, 0)
-                    l.To = Vector2.new(0, 0)
+                    l.Visible = false l.Color = Color3.fromRGB(255,60,60)
+                    l.Thickness = 1.5 l.Transparency = 0.85
+                    l.From = Vector2.new(0,0) l.To = Vector2.new(0,0)
                     espCache[m] = l
                 end
             end
-
-            -- Hapus line yang NPC-nya hilang
             for m, line in pairs(espCache) do
                 if not seen[m] or not m.Parent then
                     pcall(function() line:Remove() end)
                     espCache[m] = nil
                 end
             end
-
-            -- Update posisi line
             local cam = WS.CurrentCamera
             local ss = cam.ViewportSize
             local bc = Vector2.new(ss.X / 2, ss.Y)
             local espRange = _G.DQR_ESPRange or 800
-
             for m, line in pairs(espCache) do
                 local hE = m:FindFirstChild("HumanoidRootPart")
                 if hE and hrp then
@@ -710,30 +693,21 @@ Feat.ESPLines = function()
                             line.From = bc
                             line.To = Vector2.new(sp.X, sp.Y)
                             if m == cur then
-                                line.Color = Color3.fromRGB(255, 220, 0)
+                                line.Color = Color3.fromRGB(255,220,0)
                                 line.Thickness = 2.5
                             else
-                                line.Color = Color3.fromRGB(255, 60, 60)
+                                line.Color = Color3.fromRGB(255,60,60)
                                 line.Thickness = 1.5
                             end
                             line.Visible = true
-                        else
-                            line.Visible = false
-                        end
-                    else
-                        line.Visible = false
-                    end
-                else
-                    line.Visible = false
-                end
+                        else line.Visible = false end
+                    else line.Visible = false end
+                else line.Visible = false end
             end
-        else
-            task.wait(0.5)
-        end
+        else task.wait(0.5) end
         task.wait(0.03)
     end
 end
--- REGISTER TABS
 local farm = addTab("Farm", "📁", 1)
 local combat = addTab("Combat", "⚔", 2)
 local visual = addTab("Visual", "👁", 3)
@@ -805,7 +779,6 @@ Comp.slider(visual, "esp_range", "espRange", 50, 2000, 50, 800, function(v)
     _G.DQR_ESPRange = v
 end)
 
--- Default values
 _G.DQR_SwingDelay = 0.08
 _G.DQR_SkillQDelay = 1.5
 _G.DQR_SkillEDelay = 1.5
@@ -844,7 +817,6 @@ task.spawn(function()
 end)
 
 switchTab("Farm")
--- TOGGLE + ANIMATION
 local isOpen = true
 local isAnimating = false
 local baseSize = win.Size
@@ -949,6 +921,6 @@ grnBtn.MouseButton1Click:Connect(function()
     t.Completed:Connect(function() isAnimating = false end)
 end)
 
-print("[DQR] v1.1 loaded")
-print("  Tabs: Farm · Combat · Visual · Settings")
-print("  Fitur: 9 aktif (+ ESP Lines)")
+print("[DQR] v1.2 loaded")
+print("  Toggle: InputBegan fallback active")
+print("  Fitur: 9 aktif")
