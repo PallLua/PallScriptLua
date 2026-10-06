@@ -1,478 +1,598 @@
--- NopallKing Dungeon Cheat | PART 1
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+-- ============================================================
+-- DQR PROJECT v1.0 — UI FRAMEWORK (Part 1/7)
+-- ============================================================
+local P = game:GetService("Players")
+local LP = P.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local T = game:GetService("TweenService")
+local WS = game:GetService("Workspace")
+local CG local okCG = pcall(function() CG = game:GetService("CoreGui") end)
+local PG = LP:WaitForChild("PlayerGui")
 
-local LP = Players.LocalPlayer
-local Char, Hum, HRP
+if okCG and CG and CG:FindFirstChild("DQR") then CG.DQR:Destroy() end
+if PG:FindFirstChild("DQR") then PG.DQR:Destroy() end
 
-local CFG = {
-    Enabled = false,
-    autoFarm = false,
-    autoSwing = false,
-    autoSkill = false,
-    autoDodge = false,
-    noClip = false,
-    autoSell = false,
-    autoUpgrade = false,
-    autoStart = false,
-    tweenSpeed = 16,
-    hitboxSize = 8,
-    hitboxVisible = true,
-    skillDelay = 1.2,
-    swingDelay = 0.35,
-    dodgeDist = 18,
-    farmRange = 120,
+local Theme = {
+    bgWindow   = Color3.fromRGB(30,30,32),
+    bgSidebar  = Color3.fromRGB(24,24,26),
+    bgTitle    = Color3.fromRGB(38,38,40),
+    bgCard     = Color3.fromRGB(44,44,46),
+    bgTrack    = Color3.fromRGB(28,28,30),
+    textPri    = Color3.fromRGB(245,245,247),
+    textSec    = Color3.fromRGB(150,150,155),
+    textHead   = Color3.fromRGB(120,120,125),
+    accent     = Color3.fromRGB(10,132,255),
+    accentHov  = Color3.fromRGB(16,137,230),
+    green      = Color3.fromRGB(48,209,88),
+    red        = Color3.fromRGB(255,69,58),
+    yellow     = Color3.fromRGB(255,214,10),
+    toggleOff  = Color3.fromRGB(72,72,74),
+    knob       = Color3.fromRGB(255,255,255),
+    font       = Enum.Font.Gotham,
+    fontBold   = Enum.Font.GothamBold,
+    R          = UDim.new(0,10),
+    Rs         = UDim.new(0,8),
+    Rp         = UDim.new(1,0),
 }
 
-local Remotes = ReplicatedStorage:WaitForChild("remotes", 9)
-local Abilities = ReplicatedStorage:WaitForChild("abilities", 9)
+local function corner(o,r) local c=Instance.new("UICorner") c.CornerRadius=r or Theme.R c.Parent=o return c end
+local function stroke(o,col,t) local s=Instance.new("UIStroke") s.Color=col or Color3.fromRGB(70,70,75) s.Thickness=t or 1 s.Transparency=0.5 s.Parent=o return s end
 
-local function getRemote(name)
-    return Remotes and Remotes:FindFirstChild(name)
+local gui = Instance.new("ScreenGui")
+gui.Name = "DQR"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.Parent = (okCG and CG) or PG
+
+local vpSize = WS.CurrentCamera.ViewportSize
+local WIN_W = 400
+local WIN_H = math.clamp(math.floor(vpSize.Y * 0.85), 420, 620)
+
+local win = Instance.new("Frame")
+win.Size = UDim2.fromOffset(WIN_W, WIN_H)
+win.Position = UDim2.new(0.5, -WIN_W/2, 0.5, -WIN_H/2)
+win.BackgroundColor3 = Theme.bgWindow
+win.BorderSizePixel = 0
+win.Active = true
+win.Parent = gui
+corner(win, Theme.R)
+stroke(win, Color3.fromRGB(60,60,65), 1, 0.3)
+-- ==================== TITLE BAR ====================
+local tb = Instance.new("Frame")
+tb.Size = UDim2.new(1,0,0,32)
+tb.BackgroundColor3 = Theme.bgTitle
+tb.BorderSizePixel = 0
+tb.Parent = win
+corner(tb, Theme.R)
+local tbFix = Instance.new("Frame")
+tbFix.Size = UDim2.new(1,0,0,12)
+tbFix.Position = UDim2.new(0,0,1,-12)
+tbFix.BackgroundColor3 = Theme.bgTitle
+tbFix.BorderSizePixel = 0
+tbFix.Parent = tb
+
+local function dot(x,col)
+    local d = Instance.new("TextButton")
+    d.Text = "" d.Size = UDim2.fromOffset(10,10)
+    d.Position = UDim2.fromOffset(x,11)
+    d.BackgroundColor3 = col d.BorderSizePixel = 0
+    d.AutoButtonColor = false d.Parent = tb
+    corner(d, Theme.Rp)
+    return d
 end
+local redBtn = dot(12, Theme.red)
+local ylwBtn = dot(28, Theme.yellow)
+local grnBtn = dot(44, Theme.green)
 
-local function fireAbility(name)
-    local folder = Abilities and Abilities:FindFirstChild(name)
-    if folder then
-        local ev = folder:FindFirstChild("abilityEvent") or folder:FindFirstChild("spellEvent")
-        if ev then pcall(function() ev:FireServer() end) end
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Text = "Dungeon Quest Reborn"
+titleLbl.Font = Theme.fontBold
+titleLbl.TextSize = 12
+titleLbl.TextColor3 = Theme.textPri
+titleLbl.BackgroundTransparency = 1
+titleLbl.Size = UDim2.new(1,-80,1,0)
+titleLbl.Position = UDim2.fromOffset(60,0)
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.Parent = tb
+
+-- ==================== SIDEBAR ====================
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0,96,1,-32)
+sidebar.Position = UDim2.fromOffset(0,32)
+sidebar.BackgroundColor3 = Theme.bgSidebar
+sidebar.BorderSizePixel = 0
+sidebar.Parent = win
+
+local sbFix = Instance.new("Frame")
+sbFix.Size = UDim2.new(0,8,1,0)
+sbFix.Position = UDim2.new(1,-8,0,0)
+sbFix.BackgroundColor3 = Theme.bgSidebar
+sbFix.BorderSizePixel = 0
+sbFix.Parent = sidebar
+
+local sbPad = Instance.new("UIPadding")
+sbPad.PaddingTop = UDim.new(0,10)
+sbPad.PaddingLeft = UDim.new(0,6)
+sbPad.PaddingRight = UDim.new(0,6)
+sbPad.Parent = sidebar
+
+local sbList = Instance.new("UIListLayout")
+sbList.Padding = UDim.new(0,4)
+sbList.SortOrder = Enum.SortOrder.LayoutOrder
+sbList.Parent = sidebar
+
+local verLbl = Instance.new("TextLabel")
+verLbl.Text = "v1.0"
+verLbl.Font = Theme.font
+verLbl.TextSize = 10
+verLbl.TextColor3 = Theme.textSec
+verLbl.BackgroundTransparency = 1
+verLbl.Size = UDim2.new(1,-12,0,20)
+verLbl.Position = UDim2.new(0,6,1,-26)
+verLbl.TextXAlignment = Enum.TextXAlignment.Left
+verLbl.Parent = sidebar
+
+-- ==================== CONTENT ====================
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1,-96,1,-32)
+content.Position = UDim2.fromOffset(96,32)
+content.BackgroundTransparency = 1
+content.Parent = win
+-- ==================== TAB SYSTEM ====================
+local tabs = {}
+local pages = {}
+local current = nil
+
+local function switchTab(name)
+    if current == name then return end
+    current = name
+    for n, page in pairs(pages) do page.Visible = (n==name) end
+    for n, t in pairs(tabs) do
+        local on = (n == name)
+        T:Create(t.bg, TweenInfo.new(0.2), {BackgroundColor3 = on and Theme.accent or Theme.bgSidebar}):Play()
+        T:Create(t.lbl, TweenInfo.new(0.2), {TextColor3 = on and Theme.textPri or Theme.textSec}):Play()
     end
 end
 
-local function refreshChar()
-    Char = LP.Character or LP.CharacterAdded:Wait()
-    Hum = Char:WaitForChild("Humanoid")
-    HRP = Char:WaitForChild("HumanoidRootPart")
-end
-refreshChar()
-LP.CharacterAdded:Connect(function()
-    task.wait(0.4)
-    refreshChar()
-end)
--- NopallKing Dungeon Cheat | PART 2
-local HitboxPart
-local currentTween
-local lastDodge = 0
-
-local function destroyHitbox()
-    if HitboxPart then HitboxPart:Destroy() HitboxPart = nil end
-end
-
-local function createHitbox()
-    destroyHitbox()
-    if not Char or not HRP then return end
-    HitboxPart = Instance.new("Part")
-    HitboxPart.Name = "PlayerHitbox"
-    HitboxPart.Anchored = true
-    HitboxPart.CanCollide = false
-    HitboxPart.CanQuery = false
-    HitboxPart.CastShadow = false
-    HitboxPart.Material = Enum.Material.ForceField
-    HitboxPart.Color = Color3.fromRGB(0, 255, 170)
-    HitboxPart.Transparency = 0.55
-    HitboxPart.Size = Vector3.new(CFG.hitboxSize, CFG.hitboxSize, CFG.hitboxSize)
-    HitboxPart.CFrame = HRP.CFrame
-    HitboxPart.Parent = Workspace
-    local box = Instance.new("SelectionBox")
-    box.Adornee = HitboxPart
-    box.Color3 = Color3.fromRGB(0, 255, 170)
-    box.LineThickness = 0.05
-    box.Transparency = 0.2
-    box.Parent = HitboxPart
-end
-
-RunService.Heartbeat:Connect(function()
-    if HitboxPart and HRP and HitboxPart.Parent then
-        HitboxPart.CFrame = HRP.CFrame
-        HitboxPart.Size = Vector3.new(CFG.hitboxSize, CFG.hitboxSize, CFG.hitboxSize)
-    end
-end)
-
-local function setNoClip(state)
-    if not Char then return end
-    for _, p in ipairs(Char:GetDescendants()) do
-        if p:IsA("BasePart") then
-            p.CanCollide = not state
-        end
-    end
-end
-
-local function tweenTo(pos)
-    if not HRP then return end
-    if currentTween then currentTween:Cancel() end
-    local dist = (HRP.Position - pos).Magnitude
-    local t = math.clamp(dist / CFG.tweenSpeed, 0.15, 4)
-    currentTween = TweenService:Create(HRP, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(pos)})
-    currentTween:Play()
-end
-
-local function getNearestEnemy()
-    local best, bestDist = nil, CFG.farmRange
-    local dungeon = Workspace:FindFirstChild("dungeon")
-    if not dungeon then return nil end
-    for _, room in ipairs(dungeon:GetChildren()) do
-        local folder = room:FindFirstChild("enemyFolder")
-        if folder then
-            for _, model in ipairs(folder:GetChildren()) do
-                if model:IsA("Model") then
-                    local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-                    local hum = model:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health > 0 then
-                        local d = (HRP.Position - hrp.Position).Magnitude
-                        if d < bestDist then
-                            bestDist = d
-                            best = hrp
-                        end
-                    end
-                end
-            end
-        end
-    end
-    local boss = dungeon:FindFirstChild("bossRoom")
-    if boss then
-        local folder = boss:FindFirstChild("enemyFolder")
-        if folder then
-            for _, model in ipairs(folder:GetChildren()) do
-                if model:IsA("Model") then
-                    local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-                    local hum = model:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health > 0 then
-                        local d = (HRP.Position - hrp.Position).Magnitude
-                        if d < bestDist then
-                            bestDist = d
-                            best = hrp
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return best
-end
-
-local function doDodge()
-    if tick() - lastDodge < 1.1 then return end
-    lastDodge = tick()
-    if not HRP then return end
-    local dir = Vector3.new(math.random(-1,1), 0, math.random(-1,1))
-    if dir.Magnitude < 0.1 then dir = Vector3.new(1,0,0) end
-    dir = dir.Unit * CFG.dodgeDist
-    tweenTo(HRP.Position + dir)
-end
--- NopallKing Dungeon Cheat | PART 3
-local lastSwing, lastSkill = 0, 0
-
-task.spawn(function()
-    while true do
-        task.wait(0.05)
-        if not CFG.enabled or not HRP or not Hum or Hum.Health <= 0 then continue end
-
-        if CFG.noClip then setNoClip(true) end
-
-        if CFG.autoFarm then
-            local target = getNearestEnemy()
-            if target then
-                local goal = target.Position + (HRP.Position - target.Position).Unit * 4
-                tweenTo(goal)
-            end
-        end
-
-        if CFG.autoSwing and tick() - lastSwing > CFG.swingDelay then
-            lastSwing = tick()
-            local tool = Char:FindFirstChildOfClass("Tool") or LP.Backpack:FindFirstChildOfClass("Tool")
-            if tool then pcall(function() tool:Activate() end) end
-            local wu = getRemote("weaponUsed")
-            if wu then pcall(function() wu:FireServer() end) end
-            if tool then
-                local ab = tool:FindFirstChild("abilityEvent")
-                if ab then pcall(function() ab:FireServer() end) end
-            end
-        end
-
-        if CFG.autoSkill and tick() - lastSkill > CFG.skillDelay then
-            lastSkill = tick()
-            fireAbility("Gale Slice")
-            fireAbility("Redemption")
-            fireAbility("Lightning Beam")
-            fireAbility("Pulsefire")
-        end
-
-        if CFG.autoDodge then
-            local t = getNearestEnemy()
-            if t and (t.Position - HRP.Position).Magnitude < 12 then
-                doDodge()
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(2.5)
-        if not CFG.enabled then continue end
-        if CFG.autoSell then
-            local sell = getRemote("sellItemEvent") or getRemote("openSellShop")
-            if sell then pcall(function() sell:FireServer() end) end
-        end
-        if CFG.autoUpgrade then
-            local up = getRemote("upgradeItem") or getRemote("upgradeKey") or getRemote("equipOrBuyWeaponEnchant")
-            if up then pcall(function() up:FireServer() end) end
-        end
-        if CFG.autoStart then
-            local start = getRemote("startDungeon") or getRemote("startBossRaid") or getRemote("joinDungeon")
-            if start then pcall(function() start:FireServer() end) end
-        end
-    end
-end)
--- NopallKing Dungeon Cheat | PART 4 (UI)
-local function corner(r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r)
-    return c
-end
-local function stroke(col, th)
-    local s = Instance.new("UIStroke")
-    s.Color = col
-    s.Thickness = th or 1
-    s.Transparency = 0.3
-    return s
-end
-
-local Screen = Instance.new("ScreenGui")
-Screen.Name = "NopallCheat"
-Screen.ResetOnSpawn = false
-Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-Screen.Parent = game:GetService("CoreGui")
-
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 340, 0, 520)
-Main.Position = UDim2.new(0.5, -170, 0.5, -260)
-Main.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-Main.Parent = Screen
-corner(14).Parent = Main
-stroke(Color3.fromRGB(0, 255, 170), 1.5).Parent = Main
-
-local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1, 0, 0, 48)
-Header.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
-Header.BorderSizePixel = 0
-Header.Parent = Main
-corner(14).Parent = Header
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 1, 0)
-Title.Position = UDim2.new(0, 16, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "NOPALL · DUNGEON"
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-Title.TextColor3 = Color3.fromRGB(0, 255, 170)
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Header
-
-local Close = Instance.new("TextButton")
-Close.Size = UDim2.new(0, 32, 0, 32)
-Close.Position = UDim2.new(1, -40, 0.5, -16)
-Close.BackgroundColor3 = Color3.fromRGB(255, 60, 80)
-Close.Text = "×"
-Close.Font = Enum.Font.GothamBold
-Close.TextSize = 20
-Close.TextColor3 = Color3.new(1,1,1)
-Close.Parent = Header
-corner(8).Parent = Close
-Close.MouseButton1Click:Connect(function() Screen:Destroy() end)
-
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -16, 1, -60)
-Scroll.Position = UDim2.new(0, 8, 0, 52)
-Scroll.BackgroundTransparency = 1
-Scroll.BorderSizePixel = 0
-Scroll.ScrollBarThickness = 3
-Scroll.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 170)
-Scroll.CanvasSize = UDim2.new(0, 0, 0, 780)
-Scroll.Parent = Main
-
-local List = Instance.new("UIListLayout")
-List.Padding = UDim.new(0, 8)
-List.SortOrder = Enum.SortOrder.LayoutOrder
-List.Parent = Scroll
-
-local function section(txt, order)
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, 0, 0, 22)
-    l.BackgroundTransparency = 1
-    l.Text = txt
-    l.Font = Enum.Font.GothamBold
-    l.TextSize = 13
-    l.TextColor3 = Color3.fromRGB(140, 140, 160)
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.LayoutOrder = order
-    l.Parent = Scroll
-end
-
-local function makeToggle(name, key, order)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, 0, 0, 36)
-    f.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
-    f.BorderSizePixel = 0
-    f.LayoutOrder = order
-    f.Parent = Scroll
-    corner(8).Parent = f
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -60, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 14
-    lbl.TextColor3 = Color3.fromRGB(230, 230, 240)
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = f
+local function addTab(name, icon, order)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 44, 0, 24)
-    btn.Position = UDim2.new(1, -52, 0.5, -12)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
     btn.Text = ""
-    btn.Parent = f
-    corner(12).Parent = btn
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 18, 0, 18)
-    knob.Position = UDim2.new(0, 3, 0.5, -9)
-    knob.BackgroundColor3 = Color3.fromRGB(180, 180, 190)
-    knob.BorderSizePixel = 0
-    knob.Parent = btn
-    corner(9).Parent = knob
-    local function update()
-        if CFG[key] then
-            btn.BackgroundColor3 = Color3.fromRGB(0, 200, 140)
-            knob.Position = UDim2.new(1, -21, 0.5, -9)
-            knob.BackgroundColor3 = Color3.new(1,1,1)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-            knob.Position = UDim2.new(0, 3, 0.5, -9)
-            knob.BackgroundColor3 = Color3.fromRGB(180, 180, 190)
-        end
-    end
-    update()
-    btn.MouseButton1Click:Connect(function()
-        CFG[key] = not CFG[key]
-        update()
-        if key == "hitboxVisible" then
-            if CFG.hitboxVisible then createHitbox() else destroyHitbox() end
-        elseif key == "noClip" then
-            setNoClip(CFG.noClip)
-        elseif key == "enabled" and CFG.enabled then
-            if CFG.hitboxVisible then createHitbox() end
-        end
-    end)
+    btn.Size = UDim2.new(1,0,0,32)
+    btn.BackgroundColor3 = Theme.bgSidebar
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.Parent = sidebar
+    corner(btn, Theme.Rs)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = (icon and icon.."  " or "") .. name
+    lbl.Font = Theme.fontBold
+    lbl.TextSize = 11
+    lbl.TextColor3 = Theme.textSec
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1,-8,1,0)
+    lbl.Position = UDim2.fromOffset(10,0)
+    lbl.Parent = btn
+
+    btn.Activated:Connect(function() switchTab(name) end)
+    tabs[name] = {bg = btn, lbl = lbl}
+
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.fromScale(1,1)
+    page.BackgroundTransparency = 1
+    page.BorderSizePixel = 0
+    page.ScrollBarThickness = 3
+    page.ScrollBarImageColor3 = Theme.textSec
+    page.CanvasSize = UDim2.new(0,0,0,0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    page.Visible = false
+    page.Parent = content
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop = UDim.new(0,12)
+    pad.PaddingLeft = UDim.new(0,12)
+    pad.PaddingRight = UDim.new(0,12)
+    pad.PaddingBottom = UDim.new(0,12)
+    pad.Parent = page
+    local list = Instance.new("UIListLayout")
+    list.Padding = UDim.new(0,6)
+    list.SortOrder = Enum.SortOrder.LayoutOrder
+    list.Parent = page
+    pages[name] = page
+    return page
+end
+-- ==================== COMPONENTS ====================
+local order = {}
+local function nextOrder(parent)
+    order[parent] = (order[parent] or 0) + 1
+    return order[parent]
 end
 
-local function makeSlider(name, key, minV, maxV, order)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(1, 0, 0, 58)
-    f.BackgroundColor3 = Color3.fromRGB(22, 22, 32)
-    f.BorderSizePixel = 0
-    f.LayoutOrder = order
-    f.Parent = Scroll
-    corner(8).Parent = f
+local Comp = {}
+
+function Comp.section(parent, text)
+    local s = Instance.new("TextLabel")
+    s.Text = string.upper(text)
+    s.Font = Theme.fontBold
+    s.TextSize = 10
+    s.TextColor3 = Theme.textHead
+    s.TextXAlignment = Enum.TextXAlignment.Left
+    s.BackgroundTransparency = 1
+    s.Size = UDim2.new(1,0,0,18)
+    s.Position = UDim2.fromOffset(6,0)
+    s.LayoutOrder = nextOrder(parent)
+    s.Parent = parent
+end
+
+function Comp.toggle(parent, name, key, default, callback)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1,-4,0,36)
+    card.BackgroundColor3 = Theme.bgCard
+    card.BorderSizePixel = 0
+    card.LayoutOrder = nextOrder(parent)
+    card.Parent = parent
+    corner(card, Theme.Rs)
+
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -20, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 6)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = name .. "  ·  " .. tostring(CFG[key])
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 13
-    lbl.TextColor3 = Color3.fromRGB(230, 230, 240)
+    lbl.Text = name
+    lbl.Font = Theme.font
+    lbl.TextSize = 12
+    lbl.TextColor3 = Theme.textPri
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = f
-    local track = Instance.new("Frame")
-    track.Size = UDim2.new(1, -24, 0, 8)
-    track.Position = UDim2.new(0, 12, 0, 36)
-    track.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1,-60,1,0)
+    lbl.Position = UDim2.fromOffset(12,0)
+    lbl.Parent = card
+
+    local track = Instance.new("TextButton")
+    track.Text = ""
+    track.Size = UDim2.fromOffset(40,22)
+    track.Position = UDim2.new(1,-52,0.5,-11)
+    track.BackgroundColor3 = default and Theme.green or Theme.toggleOff
     track.BorderSizePixel = 0
-    track.Parent = f
-    corner(4).Parent = track
-    local fill = Instance.new("Frame")
-    fill.Size = UDim2.new((CFG[key]-minV)/(maxV-minV), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(0, 255, 170)
-    fill.BorderSizePixel = 0
-    fill.Parent = track
-    corner(4).Parent = fill
+    track.AutoButtonColor = false
+    track.Parent = card
+    corner(track, Theme.Rp)
+
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 18, 0, 18)
-    knob.Position = UDim2.new((CFG[key]-minV)/(maxV-minV), -9, 0.5, -9)
-    knob.BackgroundColor3 = Color3.new(1,1,1)
+    knob.Size = UDim2.fromOffset(18,18)
+    knob.Position = default and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
+    knob.BackgroundColor3 = Theme.knob
     knob.BorderSizePixel = 0
     knob.Parent = track
-    corner(9).Parent = knob
-    stroke(Color3.fromRGB(0, 200, 140), 1).Parent = knob
+    corner(knob, Theme.Rp)
+
+    local state = default or false
+    track.Activated:Connect(function()
+        state = not state
+        T:Create(track, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            BackgroundColor3 = state and Theme.green or Theme.toggleOff
+        }):Play()
+        T:Create(knob, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = state and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
+        }):Play()
+        if callback then callback(state) end
+    end)
+end
+function Comp.slider(parent, name, key, min, max, step, default, callback)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1,-4,0,48)
+    card.BackgroundColor3 = Theme.bgCard
+    card.BorderSizePixel = 0
+    card.LayoutOrder = nextOrder(parent)
+    card.Parent = parent
+    corner(card, Theme.Rs)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = name .. "   " .. default
+    lbl.Font = Theme.font
+    lbl.TextSize = 11
+    lbl.TextColor3 = Theme.textPri
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1,-16,0,16)
+    lbl.Position = UDim2.fromOffset(12,6)
+    lbl.Parent = card
+
+    local track = Instance.new("TextButton")
+    track.Text = ""
+    track.Size = UDim2.new(1,-24,0,8)
+    track.Position = UDim2.new(0,12,1,-18)
+    track.BackgroundColor3 = Theme.bgTrack
+    track.BorderSizePixel = 0
+    track.AutoButtonColor = false
+    track.Parent = card
+    corner(track, Theme.Rp)
+
+    local ratio0 = (default - min) / (max - min)
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(ratio0,0,1,0)
+    fill.BackgroundColor3 = Theme.knob
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    corner(fill, Theme.Rp)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.fromOffset(16,16)
+    knob.AnchorPoint = Vector2.new(0.5,0.5)
+    knob.Position = UDim2.new(ratio0,0,0.5,0)
+    knob.BackgroundColor3 = Theme.knob
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    corner(knob, Theme.Rp)
+
+    local value = default
     local dragging = false
-    local function setFromX(x)
-        local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-        local val = math.floor(minV + rel * (maxV - minV) + 0.5)
-        CFG[key] = val
-        fill.Size = UDim2.new(rel, 0, 1, 0)
-        knob.Position = UDim2.new(rel, -9, 0.5, -9)
-        lbl.Text = name .. "  ·  " .. tostring(val)
-        if key == "hitboxSize" and HitboxPart then
-            HitboxPart.Size = Vector3.new(val, val, val)
-        end
+
+    local function update(absX)
+        local abs = track.AbsolutePosition.X
+        local w = track.AbsoluteSize.X
+        if w <= 0 then return end
+        local r = math.clamp((absX-abs)/w, 0, 1)
+        local raw = min + r*(max-min)
+        local stepped = math.floor(raw/step + 0.5) * step
+        stepped = math.clamp(stepped, min, max)
+        stepped = math.floor(stepped*1000 + 0.5)/1000
+        value = stepped
+        lbl.Text = name .. "   " .. stepped
+        local nr = (stepped - min)/(max - min)
+        fill.Size = UDim2.new(nr,0,1,0)
+        knob.Position = UDim2.new(nr,0,0.5,0)
+        if callback then callback(stepped) end
     end
-    track.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dragging = true
-            setFromX(inp.Position.X)
+            update(UIS:GetMouseLocation().X)
         end
     end)
-    track.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+    UIS.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            update(UIS:GetMouseLocation().X)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
-    UserInputService.InputChanged:Connect(function(inp)
-        if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-            setFromX(inp.Position.X)
-        end
+end
+
+-- ==================== DRAG WINDOW ====================
+local dragging, dragStart, startPos
+tb.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = i.Position
+        startPos = win.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - dragStart
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+-- ==================== REGISTER TABS ====================
+local farm = addTab("Farm", "📁", 1)
+local combat = addTab("Combat", "⚔", 2)
+local visual = addTab("Visual", "👁", 3)
+local settings = addTab("Settings", "⚙", 4)
+
+-- FARM (dummy)
+Comp.section(farm, "Automation")
+Comp.toggle(farm, "Auto Dungeon", "autoDungeon", false, function(v) end)
+Comp.toggle(farm, "Walk Flow", "walkFlow", false, function(v) end)
+Comp.toggle(farm, "Auto Swing", "autoSwing", false, function(v) end)
+Comp.toggle(farm, "Auto Collect", "autoCollect", false, function(v) end)
+
+Comp.section(farm, "Timing")
+Comp.slider(farm, "swing_delay", "swingDelay", 0.02, 1, 0.02, 0.08, function(v) end)
+Comp.slider(farm, "walk_delay", "walkDelay", 0.1, 1, 0.05, 0.2, function(v) end)
+Comp.slider(farm, "collect_range", "collectRange", 50, 500, 10, 250, function(v) end)
+
+Comp.section(farm, "Utility")
+Comp.toggle(farm, "No Clip", "noClip", false, function(v) end)
+Comp.toggle(farm, "Freeze NPC", "freezeNPC", false, function(v) end)
+
+-- COMBAT (dummy)
+Comp.section(combat, "Skills")
+Comp.toggle(combat, "Auto Skill Q/E", "autoSkill", false, function(v) end)
+Comp.slider(combat, "skill_q_delay", "skillQDelay", 0.2, 10, 0.1, 1.5, function(v) end)
+Comp.slider(combat, "skill_e_delay", "skillEDelay", 0.2, 10, 0.1, 1.5, function(v) end)
+
+Comp.section(combat, "Healing")
+Comp.toggle(combat, "Auto Heal", "autoHeal", false, function(v) end)
+Comp.slider(combat, "heal_amount", "healAmount", 50, 1000, 50, 500, function(v) end)
+Comp.slider(combat, "heal_interval", "healInterval", 2, 30, 1, 5, function(v) end)
+
+Comp.section(combat, "Dodge")
+Comp.toggle(combat, "Auto Dodge", "autoDodge", false, function(v) end)
+Comp.slider(combat, "dodge_range", "dodgeRange", 5, 40, 1, 10, function(v) end)
+Comp.slider(combat, "dodge_speed", "dodgeSpeed", 4, 20, 1, 12, function(v) end)
+
+-- VISUAL (dummy)
+Comp.section(visual, "ESP")
+Comp.toggle(visual, "ESP Overlay", "espOverlay", false, function(v) end)
+Comp.slider(visual, "esp_range", "espRange", 50, 2000, 50, 800, function(v) end)
+
+Comp.section(visual, "Hitbox")
+Comp.toggle(visual, "Hitbox Visual", "hitboxVisual", false, function(v) end)
+Comp.toggle(visual, "Hitbox Expand", "hitbox", false, function(v) end)
+Comp.slider(visual, "hitbox_size", "hitboxSize", 1, 10, 0.5, 2.5, function(v) end)
+
+-- SETTINGS
+Comp.section(settings, "Info")
+local infoLbl = Instance.new("TextLabel")
+infoLbl.Text = "UI Framework v1.0\nBelum ada fitur aktif.\nFitur tinggal didaftarkan via Comp.toggle / Comp.slider."
+infoLbl.Font = Theme.font
+infoLbl.TextSize = 11
+infoLbl.TextColor3 = Theme.textSec
+infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+infoLbl.TextWrapped = true
+infoLbl.BackgroundTransparency = 1
+infoLbl.Size = UDim2.new(1,-8,0,70)
+infoLbl.Position = UDim2.fromOffset(6,0)
+infoLbl.LayoutOrder = nextOrder(settings)
+infoLbl.Parent = settings
+
+switchTab("Farm")
+-- ==================== TOGGLE BUTTON + SMOOTH ANIMATION ====================
+local isOpen = true
+local isAnimating = false
+
+local baseSize = win.Size
+local basePos = win.Position
+
+local OPEN_SCALE = 0.88
+local CLOSE_SCALE = 0.88
+local DUR_OPEN = 0.45
+local DUR_CLOSE = 0.28
+
+local function scaledState(scale)
+    local w = baseSize.X.Offset * scale
+    local h = baseSize.Y.Offset * scale
+    local xOff = basePos.X.Offset + (baseSize.X.Offset - w) / 2
+    local yOff = basePos.Y.Offset + (baseSize.Y.Offset - h) / 2
+    return UDim2.fromOffset(w, h), UDim2.new(basePos.X.Scale, xOff, basePos.Y.Scale, yOff)
+end
+
+local function openWindow()
+    if isAnimating or isOpen then return end
+    isAnimating = true
+    isOpen = true
+
+    local sSize, sPos = scaledState(OPEN_SCALE)
+
+    win.Visible = true
+    win.Size = sSize
+    win.Position = sPos
+    win.GroupTransparency = 1
+
+    task.wait()
+
+    local t = T:Create(
+        win,
+        TweenInfo.new(DUR_OPEN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        {
+            Size = baseSize,
+            Position = basePos,
+            GroupTransparency = 0,
+        }
+    )
+    t:Play()
+    t.Completed:Connect(function() isAnimating = false end)
+end
+
+local function closeWindow()
+    if isAnimating or not isOpen then return end
+    isAnimating = true
+    isOpen = false
+
+    local sSize, sPos = scaledState(CLOSE_SCALE)
+
+    local t = T:Create(
+        win,
+        TweenInfo.new(DUR_CLOSE, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+        {
+            Size = sSize,
+            Position = sPos,
+            GroupTransparency = 1,
+        }
+    )
+    t:Play()
+    t.Completed:Connect(function()
+        win.Visible = false
+        win.Size = baseSize
+        win.Position = basePos
+        win.GroupTransparency = 0
+        isAnimating = false
     end)
 end
 
-section("MAIN", 1)
-makeToggle("Master Enable", "enabled", 2)
-makeToggle("Auto Farm (Tween)", "autoFarm", 3)
-makeToggle("Auto Swing", "autoSwing", 4)
-makeToggle("Auto Skill (Q+E)", "autoSkill", 5)
-makeToggle("Auto Dodge (Tween)", "autoDodge", 6)
-makeToggle("No-Clip", "noClip", 7)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Text = "DQ"
+toggleBtn.Font = Theme.fontBold
+toggleBtn.TextSize = 13
+toggleBtn.TextColor3 = Theme.textPri
+toggleBtn.BackgroundColor3 = Theme.accent
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Size = UDim2.fromOffset(48,36)
+toggleBtn.Position = UDim2.new(0, 20, 0, 80)
+toggleBtn.AutoButtonColor = false
+toggleBtn.Draggable = true
+toggleBtn.ZIndex = 10
+toggleBtn.Parent = gui
+corner(toggleBtn, Theme.Rp)
+stroke(toggleBtn, Color3.fromRGB(0,0,0), 1, 0.6)
 
-section("HITBOX (PLAYER ONLY · VISIBLE)", 10)
-makeToggle("Show Hitbox", "hitboxVisible", 11)
-makeSlider("Hitbox Size", "hitboxSize", 4, 30, 12)
+toggleBtn.MouseEnter:Connect(function()
+    T:Create(toggleBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundColor3 = Theme.accentHov,
+        Size = UDim2.fromOffset(52,40),
+    }):Play()
+end)
+toggleBtn.MouseLeave:Connect(function()
+    T:Create(toggleBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundColor3 = Theme.accent,
+        Size = UDim2.fromOffset(48,36),
+    }):Play()
+end)
 
-section("SPEED / TIMING", 15)
-makeSlider("Tween Speed", "tweenSpeed", 8, 40, 16)
-makeSlider("Swing Delay", "swingDelay", 0.15, 1.5, 17)
-makeSlider("Skill Delay", "skillDelay", 0.5, 3, 18)
+toggleBtn.MouseButton1Down:Connect(function()
+    T:Create(toggleBtn, TweenInfo.new(0.08, Enum.EasingStyle.Quart), {
+        Size = UDim2.fromOffset(42,32),
+    }):Play()
+end)
+toggleBtn.MouseButton1Up:Connect(function()
+    T:Create(toggleBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(52,40),
+    }):Play()
+end)
 
-section("AUTO SYSTEMS", 20)
-makeToggle("Auto Sell", "autoSell", 21)
-makeToggle("Auto Upgrade", "autoUpgrade", 22)
-makeToggle("Auto Start Dungeon", "autoStart", 23)
+toggleBtn.Activated:Connect(function()
+    if isOpen then closeWindow() else openWindow() end
+end)
 
-local Foot = Instance.new("TextLabel")
-Foot.Size = UDim2.new(1, 0, 0, 20)
-Foot.BackgroundTransparency = 1
-Foot.Text = "tween farm · visible hitbox · all maps"
-Foot.Font = Enum.Font.Gotham
-Foot.TextSize = 11
-Foot.TextColor3 = Color3.fromRGB(90, 90, 110)
-Foot.LayoutOrder = 30
-Foot.Parent = Scroll
+redBtn.Activated:Connect(closeWindow)
+ylwBtn.Activated:Connect(closeWindow)
 
-print("[PART 4] UI loaded · toggle Master Enable")
+local isBig = false
+grnBtn.Activated:Connect(function()
+    if isAnimating then return end
+    isBig = not isBig
+    isAnimating = true
+
+    local targetSize, targetPos
+    if isBig then
+        local bigH = math.min(baseSize.Y.Offset + 100, 700)
+        targetSize = UDim2.fromOffset(baseSize.X.Offset, bigH)
+        targetPos = UDim2.new(basePos.X.Scale, basePos.X.Offset, basePos.Y.Scale, basePos.Y.Offset - 50)
+    else
+        local freshH = math.clamp(math.floor(WS.CurrentCamera.ViewportSize.Y * 0.85), 420, 620)
+        targetSize = UDim2.fromOffset(WIN_W, freshH)
+        targetPos = UDim2.new(0.5, -WIN_W/2, 0.5, -freshH/2)
+    end
+
+    baseSize = targetSize
+    basePos = targetPos
+
+    local t = T:Create(win, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size = targetSize,
+        Position = targetPos,
+    })
+    t:Play()
+    t.Completed:Connect(function() isAnimating = false end)
+end)
+
+print("[DQR] UI Framework v1.0 loaded")
+print("  - Window: " .. WIN_W .. "x" .. WIN_H)
+print("  - 4 tabs: Farm, Combat, Visual, Settings")
