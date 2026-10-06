@@ -445,18 +445,19 @@ infoLbl.LayoutOrder = nextOrder(settings)
 infoLbl.Parent = settings
 
 switchTab("Farm")
--- ==================== TOGGLE BUTTON + SMOOTH ANIMATION ====================
+-- ==================== TOGGLE + SMOOTH ANIMATION ====================
 local isOpen = true
 local isAnimating = false
 
 local baseSize = win.Size
 local basePos = win.Position
 
-local OPEN_SCALE = 0.88
-local CLOSE_SCALE = 0.88
-local DUR_OPEN = 0.45
-local DUR_CLOSE = 0.28
+local OPEN_SCALE = 0.85
+local CLOSE_SCALE = 0.85
+local DUR_OPEN = 0.4
+local DUR_CLOSE = 0.25
 
+-- hitung ukuran/posisi kecil (center-anchored)
 local function scaledState(scale)
     local w = baseSize.X.Offset * scale
     local h = baseSize.Y.Offset * scale
@@ -465,33 +466,30 @@ local function scaledState(scale)
     return UDim2.fromOffset(w, h), UDim2.new(basePos.X.Scale, xOff, basePos.Y.Scale, yOff)
 end
 
+-- ============ OPEN ============
 local function openWindow()
     if isAnimating or isOpen then return end
     isAnimating = true
     isOpen = true
 
     local sSize, sPos = scaledState(OPEN_SCALE)
-
     win.Visible = true
     win.Size = sSize
     win.Position = sPos
-    win.GroupTransparency = 1
+    win.BackgroundTransparency = 1
 
     task.wait()
 
-    local t = T:Create(
-        win,
-        TweenInfo.new(DUR_OPEN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-        {
-            Size = baseSize,
-            Position = basePos,
-            GroupTransparency = 0,
-        }
-    )
+    local t = T:Create(win, TweenInfo.new(DUR_OPEN, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Size = baseSize,
+        Position = basePos,
+        BackgroundTransparency = 0,
+    })
     t:Play()
     t.Completed:Connect(function() isAnimating = false end)
 end
 
+-- ============ CLOSE ============
 local function closeWindow()
     if isAnimating or not isOpen then return end
     isAnimating = true
@@ -499,74 +497,63 @@ local function closeWindow()
 
     local sSize, sPos = scaledState(CLOSE_SCALE)
 
-    local t = T:Create(
-        win,
-        TweenInfo.new(DUR_CLOSE, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-        {
-            Size = sSize,
-            Position = sPos,
-            GroupTransparency = 1,
-        }
-    )
+    local t = T:Create(win, TweenInfo.new(DUR_CLOSE, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        Size = sSize,
+        Position = sPos,
+        BackgroundTransparency = 1,
+    })
     t:Play()
     t.Completed:Connect(function()
         win.Visible = false
         win.Size = baseSize
         win.Position = basePos
-        win.GroupTransparency = 0
+        win.BackgroundTransparency = 0
         isAnimating = false
     end)
 end
 
+-- ============ TOGGLE BUTTON ============
 local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleBtn"
 toggleBtn.Text = "DQ"
 toggleBtn.Font = Theme.fontBold
-toggleBtn.TextSize = 13
+toggleBtn.TextSize = 14
 toggleBtn.TextColor3 = Theme.textPri
 toggleBtn.BackgroundColor3 = Theme.accent
 toggleBtn.BorderSizePixel = 0
-toggleBtn.Size = UDim2.fromOffset(48,36)
+toggleBtn.Size = UDim2.fromOffset(52, 52)
 toggleBtn.Position = UDim2.new(0, 20, 0, 80)
 toggleBtn.AutoButtonColor = false
+toggleBtn.Active = true
 toggleBtn.Draggable = true
 toggleBtn.ZIndex = 10
 toggleBtn.Parent = gui
 corner(toggleBtn, Theme.Rp)
-stroke(toggleBtn, Color3.fromRGB(0,0,0), 1, 0.6)
+stroke(toggleBtn, Color3.fromRGB(0, 0, 0), 1, 0.6)
 
-toggleBtn.MouseEnter:Connect(function()
-    T:Create(toggleBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        BackgroundColor3 = Theme.accentHov,
-        Size = UDim2.fromOffset(52,40),
-    }):Play()
-end)
-toggleBtn.MouseLeave:Connect(function()
-    T:Create(toggleBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        BackgroundColor3 = Theme.accent,
-        Size = UDim2.fromOffset(48,36),
-    }):Play()
-end)
+local function toggleUI()
+    if isOpen then
+        closeWindow()
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    else
+        openWindow()
+        toggleBtn.BackgroundColor3 = Theme.accent
+    end
+end
 
-toggleBtn.MouseButton1Down:Connect(function()
-    T:Create(toggleBtn, TweenInfo.new(0.08, Enum.EasingStyle.Quart), {
-        Size = UDim2.fromOffset(42,32),
-    }):Play()
-end)
-toggleBtn.MouseButton1Up:Connect(function()
-    T:Create(toggleBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        Size = UDim2.fromOffset(52,40),
-    }):Play()
-end)
+-- Multi-event fallback (reliable di semua executor)
+toggleBtn.MouseButton1Click:Connect(toggleUI)
+toggleBtn.Activated:Connect(toggleUI)
 
-toggleBtn.Activated:Connect(function()
-    if isOpen then closeWindow() else openWindow() end
-end)
+-- ============ RED / YELLOW = CLOSE ============
+redBtn.MouseButton1Click:Connect(function() if isOpen then toggleUI() end end)
+redBtn.Activated:Connect(function() if isOpen then toggleUI() end end)
+ylwBtn.MouseButton1Click:Connect(function() if isOpen then toggleUI() end end)
+ylwBtn.Activated:Connect(function() if isOpen then toggleUI() end end)
 
-redBtn.Activated:Connect(closeWindow)
-ylwBtn.Activated:Connect(closeWindow)
-
+-- ============ GREEN = RESIZE ============
 local isBig = false
-grnBtn.Activated:Connect(function()
+grnBtn.MouseButton1Click:Connect(function()
     if isAnimating then return end
     isBig = not isBig
     isAnimating = true
@@ -593,6 +580,4 @@ grnBtn.Activated:Connect(function()
     t.Completed:Connect(function() isAnimating = false end)
 end)
 
-print("[DQR] UI Framework v1.0 loaded")
-print("  - Window: " .. WIN_W .. "x" .. WIN_H)
-print("  - 4 tabs: Farm, Combat, Visual, Settings")
+print("[DQR] Toggle + animation ready")
