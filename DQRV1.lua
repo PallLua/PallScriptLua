@@ -409,22 +409,75 @@ Feat.WalkFlow=function()
                     local now=tick()
                     local needRecompute=(#waypoints==0)or(lastTargetPos and(targetPos-lastTargetPos).Magnitude>8)or(now-lastComputeTime>1.5)
                     if needRecompute and dist>5 then computePath(targetPos)lastTargetPos=targetPos lastComputeTime=now end
-                    if #waypoints>0 and currentWP<=#waypoints then
-                        local wp=waypoints[currentWP]
-                        if wp.Action==Enum.PathWaypointAction.Jump then pcall(function()hum:ChangeState(Enum.HumanoidStateType.Jumping)end)end
-                        pcall(function()hum:MoveTo(wp.Position)end)
-                        if(wp.Position-hrp.Position).Magnitude<3 then currentWP=currentWP+1 end
-                    else pcall(function()hum:MoveTo(targetPos)end)end
-                    if lastPos then
-                        if(hrp.Position-lastPos).Magnitude<0.5 then
-                            stuckCounter=stuckCounter+1
-                            if stuckCounter>10 then waypoints={}currentWP=1 lastTargetPos=nil stuckCounter=0 end
-                        else stuckCounter=0 end
-                    end
-                    lastPos=hrp.Position
-                end
-            else waypoints={}currentWP=1 lastTargetPos=nil end
-            task.wait(0.1)
+-- === SMOOTH WALK FLOW (LinearVelocity) ===
+local RunService = game:GetService("RunService")
+
+-- pastikan LinearVelocity ada
+local lv = hrp:FindFirstChild("DQR_WalkLV")
+if not lv then
+    lv = Instance.new("LinearVelocity")
+    lv.Name = "DQR_WalkLV"
+    lv.MaxForce = math.huge
+    lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Line
+    lv.LineDirection = Vector3.new(1, 0, 0)
+    lv.LineVelocity = 0
+    lv.Parent = hrp
+end
+
+local speed = 20  -- sesuaikan kecepatan sesuai selera
+
+RunService.Heartbeat:Connect(function()
+    if not hrp or not hrp.Parent then return end
+
+    -- tentukan target saat ini
+    local target
+    if #waypoints > 0 and currentWP <= #waypoints then
+        local wp = waypoints[currentWP]
+        if wp.Action == Enum.PathWaypointAction.Jump then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+        end
+        target = wp.Position
+        if (wp.Position - hrp.Position).Magnitude < 3 then
+            currentWP = currentWP + 1
+        end
+    else
+        target = targetPos
+    end
+
+    if not target then
+        lv.LineVelocity = 0
+        return
+    end
+
+    -- hitung arah horizontal
+    local dir = target - hrp.Position
+    dir = Vector3.new(dir.X, 0, dir.Z)
+    if dir.Magnitude < 0.1 then
+        lv.LineVelocity = 0
+        return
+    end
+
+    dir = dir.Unit
+    lv.LineDirection = dir
+    lv.LineVelocity = speed
+
+    -- cek stuck
+    if lastPos then
+        if (hrp.Position - lastPos).Magnitude < 0.5 then
+            stuckCounter = stuckCounter + 1
+            if stuckCounter > 10 then
+                waypoints = {}
+                currentWP = 1
+                lastTargetPos = nil
+                stuckCounter = 0
+            end
+        else
+            stuckCounter = 0
+        end
+    end
+    lastPos = hrp.Position
+end)
+-- === END SMOOTH WALK FLOW ===
         else task.wait(0.5)end
     end
 end
