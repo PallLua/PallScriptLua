@@ -36,6 +36,7 @@ win.Active=true
 win.Parent=gui
 corner(win,Theme.R)
 stroke(win,Color3.fromRGB(60,60,65),1)
+print("[DQR] PART 1 OK")
 -- DQR v1.5 fixed | PART 2
 local tb=Instance.new("Frame")
 tb.Size=UDim2.new(1,0,0,32)
@@ -167,6 +168,7 @@ function Comp.section(parent,text)
     s.LayoutOrder=nextOrder(parent)
     s.Parent=parent
 end
+print("[DQR] PART 2 OK")
 -- DQR v1.5 fixed | PART 3
 function Comp.toggle(parent,name,key,default,callback)
     local card=Instance.new("Frame")
@@ -351,6 +353,7 @@ local function isBossPhase()
     end
     return false
 end
+print("[DQR] PART 3 OK")
 -- DQR v1.5 fixed | PART 4
 local Feat={}
 Feat.threads={}
@@ -590,6 +593,7 @@ Feat.ESPLines=function()
         task.wait(0.03)
     end
 end
+print("[DQR] PART 4 OK")
 -- DQR v1.5 fixed | PART 5
 local auto=addTab("Auto","A",1)
 local combat=addTab("Combat","C",2)
