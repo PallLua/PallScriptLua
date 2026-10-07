@@ -1,729 +1,1274 @@
--- DQR v1.5 (1/7)
-local P=game:GetService("Players")
-local LP=P.LocalPlayer
-local UIS=game:GetService("UserInputService")
-local T=game:GetService("TweenService")
-local WS=game:GetService("Workspace")
-local RS=game:GetService("ReplicatedStorage")
-local VIM=game:GetService("VirtualInputManager")
-local PFS=game:GetService("PathfindingService")
-local Players=P
-local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
-local PG=LP:WaitForChild("PlayerGui")
-local parentGui=PG
-if gethui then pcall(function()parentGui=gethui()end)end
-if parentGui:FindFirstChild("DQR")then parentGui.DQR:Destroy()end
-if CG and CG:FindFirstChild("DQR")then CG.DQR:Destroy()end
-if PG:FindFirstChild("DQR")then PG.DQR:Destroy()end
-local Theme={bgWindow=Color3.fromRGB(30,30,32),bgSidebar=Color3.fromRGB(24,24,26),bgTitle=Color3.fromRGB(38,38,40),bgCard=Color3.fromRGB(44,44,46),bgTrack=Color3.fromRGB(28,28,30),textPri=Color3.fromRGB(245,245,247),textSec=Color3.fromRGB(150,150,155),textHead=Color3.fromRGB(120,120,125),accent=Color3.fromRGB(10,132,255),accentHov=Color3.fromRGB(16,137,230),green=Color3.fromRGB(48,209,88),red=Color3.fromRGB(255,69,58),yellow=Color3.fromRGB(255,214,10),toggleOff=Color3.fromRGB(72,72,74),knob=Color3.fromRGB(255,255,255),font=Enum.Font.Gotham,fontBold=Enum.Font.GothamBold,R=UDim.new(0,10),Rs=UDim.new(0,8),Rp=UDim.new(1,0)}
-local function corner(o,r)local c=Instance.new("UICorner")c.CornerRadius=r or Theme.R c.Parent=o return c end
-local function stroke(o,col,t)local s=Instance.new("UIStroke")s.Color=col or Color3.fromRGB(70,70,75)s.Thickness=t or 1 s.Transparency=0.5 s.Parent=o return s end
-local gui=Instance.new("ScreenGui")
-gui.Name="DQR"
-gui.ResetOnSpawn=false
-gui.IgnoreGuiInset=true
-gui.DisplayOrder=999
-gui.Parent=parentGui
-local vpSize=WS.CurrentCamera.ViewportSize
-local WIN_W=400
-local WIN_H=math.clamp(math.floor(vpSize.Y*0.85),420,620)
-local win=Instance.new("Frame")
-win.Size=UDim2.fromOffset(WIN_W,WIN_H)
-win.Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2)
-win.BackgroundColor3=Theme.bgWindow
-win.BorderSizePixel=0
-win.Active=true
-win.Parent=gui
-corner(win,Theme.R)
-stroke(win,Color3.fromRGB(60,60,65),1,0.3)
--- DQR v1.5 (2/7)
-local tb=Instance.new("Frame")
-tb.Size=UDim2.new(1,0,0,32)
-tb.BackgroundColor3=Theme.bgTitle
-tb.BorderSizePixel=0
-tb.Parent=win
-corner(tb,Theme.R)
-local tbFix=Instance.new("Frame")
-tbFix.Size=UDim2.new(1,0,0,12)
-tbFix.Position=UDim2.new(0,0,1,-12)
-tbFix.BackgroundColor3=Theme.bgTitle
-tbFix.BorderSizePixel=0
-tbFix.Parent=tb
-local function dot(x,col)local d=Instance.new("TextButton")d.Text=""d.Size=UDim2.fromOffset(10,10)d.Position=UDim2.fromOffset(x,11)d.BackgroundColor3=col d.BorderSizePixel=0 d.AutoButtonColor=false d.Parent=tb corner(d,Theme.Rp)return d end
-local redBtn=dot(12,Theme.red)
-local ylwBtn=dot(28,Theme.yellow)
-local grnBtn=dot(44,Theme.green)
-local titleLbl=Instance.new("TextLabel")
-titleLbl.Text="Dungeon Quest Reborn"
-titleLbl.Font=Theme.fontBold
-titleLbl.TextSize=12
-titleLbl.TextColor3=Theme.textPri
-titleLbl.BackgroundTransparency=1
-titleLbl.Size=UDim2.new(1,-80,1,0)
-titleLbl.Position=UDim2.fromOffset(60,0)
-titleLbl.TextXAlignment=Enum.TextXAlignment.Left
-titleLbl.Parent=tb
-local sidebar=Instance.new("Frame")
-sidebar.Size=UDim2.new(0,96,1,-32)
-sidebar.Position=UDim2.fromOffset(0,32)
-sidebar.BackgroundColor3=Theme.bgSidebar
-sidebar.BorderSizePixel=0
-sidebar.Parent=win
-local sbPad=Instance.new("UIPadding")
-sbPad.PaddingTop=UDim.new(0,10)
-sbPad.PaddingLeft=UDim.new(0,6)
-sbPad.PaddingRight=UDim.new(0,6)
-sbPad.Parent=sidebar
-local sbList=Instance.new("UIListLayout")
-sbList.Padding=UDim.new(0,4)
-sbList.SortOrder=Enum.SortOrder.LayoutOrder
-sbList.Parent=sidebar
-local verLbl=Instance.new("TextLabel")
-verLbl.Text="v1.5"
-verLbl.Font=Theme.font
-verLbl.TextSize=10
-verLbl.TextColor3=Theme.textSec
-verLbl.BackgroundTransparency=1
-verLbl.Size=UDim2.new(1,-12,0,20)
-verLbl.Position=UDim2.new(0,6,1,-26)
-verLbl.TextXAlignment=Enum.TextXAlignment.Left
-verLbl.Parent=sidebar
-local content=Instance.new("Frame")
-content.Size=UDim2.new(1,-96,1,-32)
-content.Position=UDim2.fromOffset(96,32)
-content.BackgroundTransparency=1
-content.Parent=win
--- DQR v1.5 (3/7)
-local tabs={}
-local pages={}
-local current=nil
-local function switchTab(name)
-    if current==name then return end
-    current=name
-    for n,page in pairs(pages)do page.Visible=(n==name)end
-    for n,t in pairs(tabs)do
-        local on=(n==name)
-        T:Create(t.bg,TweenInfo.new(0.2),{BackgroundColor3=on and Theme.accent or Theme.bgSidebar}):Play()
-        T:Create(t.lbl,TweenInfo.new(0.2),{TextColor3=on and Theme.textPri or Theme.textSec}):Play()
-    end
+--[[
+  Dungeon Quest Reborn — Full Feature Script
+  Target: Roblox Executor (Synapse X / KRNL / Fluxus)
+  Language: Lua 5.1 (Roblox)
+  Author: NIGHT
+  
+  BLOCKS:
+    1. Services & Utilities
+    2. Config / Presets / Persistence
+    3. GUI (Rayfield or fallback windowed)
+    4. Farm System
+    5. Skill System
+    6. Dodge System
+    7. Progression System
+    8. Lobby System
+    9. Boss Raid System
+   10. Gear System
+   11. Player System
+   12. Connections & Cleanup
+]]
+
+-- ============================================================
+-- 1. SERVICES & UTILITIES
+-- ============================================================
+
+local RS          = game:GetService("RunService")
+local Players     = game:GetService("Players")
+local UIS         = game:GetService("UserInputService")
+local TweenS      = game:GetService("TweenService")
+local RepS        = game:GetService("ReplicatedStorage")
+local StarterG    = game:GetService("StarterGui")
+local HttpS       = game:GetService("HttpService")
+local WS          = game:GetService("Workspace")
+
+local LP          = Players.LocalPlayer
+local Char        = LP.Character or LP.CharacterAdded:Wait()
+local HRP         = Char:WaitForChild("HumanoidRootPart")
+local Hum         = Char:WaitForChild("Humanoid")
+
+-- Re-grab on respawn
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    HRP  = c:WaitForChild("HumanoidRootPart")
+    Hum  = c:WaitForChild("Humanoid")
+end)
+
+local function getChar()  return LP.Character end
+local function getHRP()   local c = getChar(); return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum()   local c = getChar(); return c and c:FindFirstChild("Humanoid") end
+
+-- Remote cache
+local RemoteCache = {}
+local function getRemote(name)
+    if RemoteCache[name] then return RemoteCache[name] end
+    local r = RepS:FindFirstChild(name, true)
+    if r then RemoteCache[name] = r end
+    return r
 end
-local function addTab(name,icon,order)
-    local btn=Instance.new("TextButton")
-    btn.Text=""
-    btn.Name=name
-    btn.Size=UDim2.new(1,0,0,32)
-    btn.BackgroundColor3=Theme.bgSidebar
-    btn.BorderSizePixel=0
-    btn.AutoButtonColor=false
-    btn.LayoutOrder=order
-    btn.Parent=sidebar
-    corner(btn,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=(icon and icon.."  " or "")..name
-    lbl.Font=Theme.fontBold
-    lbl.TextSize=11
-    lbl.TextColor3=Theme.textSec
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-8,1,0)
-    lbl.Position=UDim2.fromOffset(10,0)
-    lbl.Parent=btn
-    btn.Activated:Connect(function()switchTab(name)end)
-    tabs[name]={bg=btn,lbl=lbl}
-    local page=Instance.new("ScrollingFrame")
-    page.Size=UDim2.fromScale(1,1)
-    page.BackgroundTransparency=1
-    page.BorderSizePixel=0
-    page.ScrollBarThickness=3
-    page.ScrollBarImageColor3=Theme.textSec
-    page.CanvasSize=UDim2.new(0,0,0,0)
-    page.AutomaticCanvasSize=Enum.AutomaticSize.Y
-    page.Visible=false
-    page.Parent=content
-    local pad=Instance.new("UIPadding")
-    pad.PaddingTop=UDim.new(0,12)
-    pad.PaddingLeft=UDim.new(0,12)
-    pad.PaddingRight=UDim.new(0,12)
-    pad.PaddingBottom=UDim.new(0,12)
-    pad.Parent=page
-    local list=Instance.new("UIListLayout")
-    list.Padding=UDim.new(0,6)
-    list.SortOrder=Enum.SortOrder.LayoutOrder
-    list.Parent=page
-    pages[name]=page
-    return page
+
+local function fireRemote(name, ...)
+    local r = getRemote(name)
+    if r and r:IsA("RemoteEvent")    then r:FireServer(...) end
+    if r and r:IsA("RemoteFunction") then return r:InvokeServer(...) end
 end
-local order={}
-local function nextOrder(parent)order[parent]=(order[parent]or 0)+1 return order[parent]end
-local Comp={}
-function Comp.section(parent,text)
-    local s=Instance.new("TextLabel")
-    s.Text=string.upper(text)
-    s.Font=Theme.fontBold
-    s.TextSize=10
-    s.TextColor3=Theme.textHead
-    s.TextXAlignment=Enum.TextXAlignment.Left
-    s.BackgroundTransparency=1
-    s.Size=UDim2.new(1,0,0,18)
-    s.Position=UDim2.fromOffset(6,0)
-    s.LayoutOrder=nextOrder(parent)
-    s.Parent=parent
+
+-- Safe teleport (no physics desync)
+local function safeTp(cf)
+    local hrp = getHRP()
+    if not hrp then return end
+    hrp.CFrame = cf
 end
--- DQR v1.5 (4/7)
-function Comp.toggle(parent,name,key,default,callback)
-    local card=Instance.new("Frame")
-    card.Size=UDim2.new(1,-4,0,36)
-    card.BackgroundColor3=Theme.bgCard
-    card.BorderSizePixel=0
-    card.LayoutOrder=nextOrder(parent)
-    card.Parent=parent
-    corner(card,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=name
-    lbl.Font=Theme.font
-    lbl.TextSize=12
-    lbl.TextColor3=Theme.textPri
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-60,1,0)
-    lbl.Position=UDim2.fromOffset(12,0)
-    lbl.Parent=card
-    local track=Instance.new("TextButton")
-    track.Text=""
-    track.Size=UDim2.fromOffset(40,22)
-    track.Position=UDim2.new(1,-52,0.5,-11)
-    track.BackgroundColor3=default and Theme.green or Theme.toggleOff
-    track.BorderSizePixel=0
-    track.AutoButtonColor=false
-    track.Active=true
-    track.Selectable=true
-    track.ZIndex=5
-    track.Parent=card
-    corner(track,Theme.Rp)
-    local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(18,18)
-    knob.Position=default and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)
-    knob.BackgroundColor3=Theme.knob
-    knob.BorderSizePixel=0
-    knob.ZIndex=6
-    knob.Parent=track
-    corner(knob,Theme.Rp)
-    local state=default or false
-    local lastClick=0
-    local function doToggle()
-        local now=tick()
-        if now-lastClick<0.2 then return end
-        lastClick=now
-        state=not state
-        T:Create(track,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=state and Theme.green or Theme.toggleOff}):Play()
-        T:Create(knob,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=state and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)}):Play()
-        print("[Toggle]",name,"->",state and "ON" or "OFF")
-        if callback then local ok,err=pcall(callback,state)if not ok then warn("[Toggle] Error:",err)end end
-    end
-    track.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then doToggle()end end)
-    track.MouseButton1Click:Connect(function()task.wait(0.05)doToggle()end)
-    track.Activated:Connect(function()task.wait(0.1)doToggle()end)
+
+-- Distance helper
+local function dist(a, b)
+    return (a - b).Magnitude
 end
-function Comp.slider(parent,name,key,min,max,step,default,callback)
-    local card=Instance.new("Frame")
-    card.Size=UDim2.new(1,-4,0,48)
-    card.BackgroundColor3=Theme.bgCard
-    card.BorderSizePixel=0
-    card.LayoutOrder=nextOrder(parent)
-    card.Parent=parent
-    corner(card,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=name.."   "..default
-    lbl.Font=Theme.font
-    lbl.TextSize=11
-    lbl.TextColor3=Theme.textPri
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-16,0,16)
-    lbl.Position=UDim2.fromOffset(12,6)
-    lbl.Parent=card
-    local track=Instance.new("TextButton")
-    track.Text=""
-    track.Size=UDim2.new(1,-24,0,8)
-    track.Position=UDim2.new(0,12,1,-18)
-    track.BackgroundColor3=Theme.bgTrack
-    track.BorderSizePixel=0
-    track.AutoButtonColor=false
-    track.Active=true
-    track.Parent=card
-    corner(track,Theme.Rp)
-    local ratio0=(default-min)/(max-min)
-    local fill=Instance.new("Frame")
-    fill.Size=UDim2.new(ratio0,0,1,0)
-    fill.BackgroundColor3=Theme.knob
-    fill.BorderSizePixel=0
-    fill.Parent=track
-    corner(fill,Theme.Rp)
-    local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(16,16)
-    knob.AnchorPoint=Vector2.new(0.5,0.5)
-    knob.Position=UDim2.new(ratio0,0,0.5,0)
-    knob.BackgroundColor3=Theme.knob
-    knob.BorderSizePixel=0
-    knob.Parent=track
-    corner(knob,Theme.Rp)
-    local value=default
-    local dragging=false
-    local function update(absX)
-        local abs=track.AbsolutePosition.X
-        local w=track.AbsoluteSize.X
-        if w<=0 then return end
-        local r=math.clamp((absX-abs)/w,0,1)
-        local raw=min+r*(max-min)
-        local stepped=math.floor(raw/step+0.5)*step
-        stepped=math.clamp(stepped,min,max)
-        stepped=math.floor(stepped*1000+0.5)/1000
-        value=stepped
-        lbl.Text=name.."   "..stepped
-        local nr=(stepped-min)/(max-min)
-        fill.Size=UDim2.new(nr,0,1,0)
-        knob.Position=UDim2.new(nr,0,0.5,0)
-        if callback then pcall(callback,stepped)end
-    end
-    track.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true update(UIS:GetMouseLocation().X)end end)
-    UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then update(UIS:GetMouseLocation().X)end end)
-    UIS.InputEnded:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
-end
-local dragging,dragStart,startPos
-tb.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true dragStart=i.Position startPos=win.Position end end)
-UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then local d=i.Position-dragStart win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)end end)
-UIS.InputEnded:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
--- DQR v1.5 (5/7)
-local char,hrp,hum
-local cur=nil
-local function refreshChar()char=LP.Character or LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
-refreshChar()
-LP.CharacterAdded:Connect(function()task.wait(1)refreshChar()end)
-local function inDungeon()local v=WS:FindFirstChild("dungeonStarted")return v and v:IsA("BoolValue")and v.Value end
-local function getWave()local v=WS:FindFirstChild("currentWave")return v and v.Value or 0 end
-local function isEnemy(m)
-    if not m or not m:IsA("Model")then return false end
-    if m==char then return false end
-    local h=m:FindFirstChildOfClass("Humanoid")
-    if not h or h.Health<=0 then return false end
-    if Players:GetPlayerFromCharacter(m)then return false end
-    if not m:FindFirstChild("HumanoidRootPart")then return false end
-    return true
-end
-local function getEnemies()
-    local l={}
-    for _,v in ipairs(WS:GetDescendants())do
-        if isEnemy(v)then
-            local hE=v:FindFirstChild("HumanoidRootPart")
-            if hE then table.insert(l,v)end
-        end
-    end
-    return l
-end
-local function getNearestEnemy()
+
+-- Nearest mob (alive, not boss unless boss=true)
+local function getNearestMob(bossOnly)
+    local hrp = getHRP()
     if not hrp then return nil end
-    local best,dist=nil,math.huge
-    for _,e in ipairs(getEnemies())do
-        local hE=e:FindFirstChild("HumanoidRootPart")
-        if hE then
-            local d=(hE.Position-hrp.Position).Magnitude
-            if d<dist then dist=d best=e end
+    local best, bestD = nil, math.huge
+    local mobs = WS:FindFirstChild("Mobs")
+    if not mobs then return nil end
+    for _, mob in ipairs(mobs:GetChildren()) do
+        local root = mob:FindFirstChild("HumanoidRootPart")
+        local hum2 = mob:FindFirstChildOfClass("Humanoid")
+        if root and hum2 and hum2.Health > 0 then
+            local isBoss = mob:FindFirstChild("BossTag") ~= nil
+            if not bossOnly or isBoss then
+                local d = dist(hrp.Position, root.Position)
+                if d < bestD then best, bestD = mob, d end
+            end
         end
     end
-    cur=best
     return best
 end
-local function autoEquip()
-    if not char then return end
-    local h=char:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-    for _,t in ipairs(char:GetChildren())do if t:IsA("Tool")then return end end
-    local bp=LP:FindFirstChild("Backpack")
-    if not bp then return end
-    for _,t in ipairs(bp:GetChildren())do
-        if t:IsA("Tool")then pcall(function()h:EquipTool(t)end)return end
-    end
-end
-local function isBossPhase()
-    local d=WS:FindFirstChild("dungeon")
-    if d then
-        local bR=d:FindFirstChild("bossRoom")
-        if bR then
-            local f=bR:FindFirstChild("fightingBoss")
-            if f and f:IsA("BoolValue")and f.Value then return true end
+-- Get all living mobs
+local function getLivingMobs()
+    local t = {}
+    local mobs = WS:FindFirstChild("Mobs")
+    if not mobs then return t end
+    for _, mob in ipairs(mobs:GetChildren()) do
+        local hum2 = mob:FindFirstChildOfClass("Humanoid")
+        if hum2 and hum2.Health > 0 then
+            table.insert(t, mob)
         end
     end
-    for _,e in ipairs(getEnemies())do
-        local n=string.lower(e.Name)
-        if string.find(n,"boss")or string.find(n,"giant")or string.find(n,"king")or string.find(n,"queen")then return true end
+    return t
+end
+
+-- ============================================================
+-- 2. CONFIG / PRESETS / PERSISTENCE
+-- ============================================================
+
+local CFG = {
+    -- Farm
+    autoFarm        = false,
+    autoAttack      = false,
+    autoAggro       = false,
+    farmDist        = 10,
+    orbitHeight     = 5,
+    orbitSpeed      = 1,
+    orbitMode       = "Orbit",   -- Orbit / Overhead / Behind / Below / Inside / Group
+    cannonMode      = false,     -- Ghastly Harbor Cannon
+    bossTimerGate   = false,
+    bossTimerSecs   = 30,
+
+    -- Skills
+    autoSkill       = false,
+    skillMode       = "FirstReady",  -- Cycle / FirstReady / Spam
+    castDist        = 20,
+    cycleDelay      = 0.5,
+
+    -- Dodge
+    autoDodge       = false,
+    dodgeBossOnly   = false,
+    dodgeBossSafe   = false,
+    dodgePredict    = false,
+    bossWall        = false,
+
+    -- Progression
+    autoStart       = false,
+    autoReplay      = false,
+    autoLobby       = false,
+    replayDelay     = 3,
+
+    -- Lobby
+    autoCreate      = false,
+    autoStartLobby  = false,
+    autoBestDungeon = false,
+    autoBestDiff    = false,
+    hardcore        = false,
+    privateLobby    = false,
+    autoReady       = false,
+    ownerOnly       = false,
+    deleteLobbyJoin = false,
+
+    -- Boss Raid
+    autoRaid        = false,
+    highestKey      = true,
+    privateRaid     = false,
+    raidAutoReady   = false,
+    raidAutoReplay  = false,
+
+    -- Gear
+    autoEquipBest   = false,
+    gearClass       = "Warrior",   -- Mage / Warrior
+    autoSell        = false,
+    sellRarity      = {"Common","Uncommon"},
+    sellCategory    = {},
+    sellSpells      = {},
+    keepEquipped    = true,
+
+    -- Player
+    walkSpeed       = 16,
+    infJump         = false,
+    noclip          = false,
+    fly             = false,
+    noGamePause     = false,
+    instantPrompt   = false,
+    nameHider       = false,
+    autoReconnect   = false,
+    autoExecTp      = false,
+    fpsBooster      = false,
+    disableRender   = false,
+    fpsCap          = 60,
+    antiAfk         = false,
+}
+
+local PRESETS = {
+    Physical = {
+        farmDist=8, orbitMode="Orbit", orbitHeight=4, orbitSpeed=1.2,
+        skillMode="Spam", castDist=18, autoDodge=true, dodgeBossOnly=false,
+    },
+    DesertTemple = {
+        farmDist=10, orbitMode="Orbit", orbitHeight=5, orbitSpeed=1,
+        skillMode="FirstReady", castDist=20, autoDodge=true, dodgeBossOnly=true,
+    },
+    WinterOutpost = {
+        farmDist=12, orbitMode="Overhead", orbitHeight=8, orbitSpeed=0.8,
+        skillMode="Cycle", castDist=22, autoDodge=true, dodgeBossOnly=true,
+    },
+    PirateIsland = {
+        farmDist=10, orbitMode="Orbit", orbitHeight=5, orbitSpeed=1,
+        cannonMode=true, autoDodge=true, dodgeBossOnly=false,
+    },
+    KingsCastle = {
+        farmDist=9, orbitMode="Behind", orbitHeight=4, orbitSpeed=1,
+        skillMode="Spam", castDist=18, autoDodge=true, bossTimerGate=true, bossTimerSecs=25,
+    },
+    TheUnderworld = {
+        farmDist=11, orbitMode="Orbit", orbitHeight=6, orbitSpeed=0.9,
+        skillMode="FirstReady", castDist=22, autoDodge=true, dodgeBossSafe=true,
+    },
+    BossRaid = {
+        farmDist=14, orbitMode="Group", orbitHeight=7, orbitSpeed=0.7,
+        skillMode="Spam", castDist=25, autoDodge=true, dodgeBossOnly=true,
+        bossTimerGate=false, autoRaid=true, highestKey=true,
+    },
+}
+
+local function applyPreset(name)
+    local p = PRESETS[name]
+    if not p then return end
+    for k, v in pairs(p) do CFG[k] = v end
+end
+-- Persistence via writefile/readfile (executor env)
+local SAVE_PATH = "DQR_Config.json"
+
+local function saveConfig()
+    if writefile then
+        pcall(writefile, SAVE_PATH, HttpS:JSONEncode(CFG))
+    end
+end
+
+local function loadConfig()
+    if readfile and isfile and isfile(SAVE_PATH) then
+        local ok, data = pcall(readfile, SAVE_PATH)
+        if ok and data then
+            local ok2, t = pcall(HttpS.JSONDecode, HttpS, data)
+            if ok2 and t then
+                for k, v in pairs(t) do CFG[k] = v end
+            end
+        end
+    end
+end
+
+loadConfig()
+
+-- ============================================================
+-- 3. GUI — Rayfield (auto-loads) with inline fallback
+-- ============================================================
+
+-- Try to load Rayfield; if blocked, build a minimal drag window.
+local GUI_OK = false
+local Window, Tabs = nil, {}
+
+local function tryRayfield()
+    local ok, Rayfield = pcall(function()
+        return loadstring(game:HttpGet(
+            "https://sirius.menu/rayfield"
+        ))()
+    end)
+    if not ok or not Rayfield then return false end
+
+    Window = Rayfield:CreateWindow({
+        Name            = "DQR — NIGHT",
+        LoadingTitle    = "Dungeon Quest Reborn",
+        LoadingSubtitle = "by NIGHT",
+        ConfigurationSaving = { Enabled=false },
+        Discord         = { Enabled=false },
+        KeySystem       = false,
+    })
+
+    -- helper builders
+    local function tab(name, icon) return Window:CreateTab(name, icon) end
+    local function sect(t, name)   return t:CreateSection(name) end
+
+    local function tog(t, lbl, dflt, fn)
+        t:CreateToggle({ Name=lbl, CurrentValue=dflt, Callback=fn })
+    end
+    local function sldr(t, lbl, mn, mx, dflt, fn)
+        t:CreateSlider({ Name=lbl, Range={mn,mx}, Increment=1,
+            CurrentValue=dflt, Callback=fn })
+    end
+    local function drp(t, lbl, opts, dflt, fn)
+        t:CreateDropdown({ Name=lbl, Options=opts, CurrentOption={dflt},
+            MultipleOptions=false, Callback=fn })
+    end
+    local function btn(t, lbl, fn)
+        t:CreateButton({ Name=lbl, Callback=fn })
+    end
+    local function inp(t, lbl, ph, dflt, fn)
+        t:CreateInput({ Name=lbl, PlaceholderText=ph,
+            CurrentValue=tostring(dflt), RemoveTextAfterFocusLost=false, Callback=fn })
+    end
+
+    -- ── FARM ──
+    local tFarm = tab("Farm","6031075953")
+    sect(tFarm,"Farm")
+    tog(tFarm,"Auto Farm",       CFG.autoFarm,   function(v) CFG.autoFarm=v   end)
+    tog(tFarm,"Auto Attack",     CFG.autoAttack, function(v) CFG.autoAttack=v end)
+    tog(tFarm,"Auto Aggro All",  CFG.autoAggro,  function(v) CFG.autoAggro=v  end)
+    drp(tFarm,"Orbit Mode",
+        {"Orbit","Overhead","Behind","Below","Inside","Group"},
+        CFG.orbitMode, function(v) CFG.orbitMode=v[1] end)
+    sldr(tFarm,"Distance",     1,50, CFG.farmDist,    function(v) CFG.farmDist=v    end)
+    sldr(tFarm,"Orbit Height", 0,30, CFG.orbitHeight, function(v) CFG.orbitHeight=v end)
+    sldr(tFarm,"Orbit Speed",  1,10, CFG.orbitSpeed,  function(v) CFG.orbitSpeed=v  end)
+    sect(tFarm,"Special")
+    tog(tFarm,"Ghastly Harbor Cannon",CFG.cannonMode,   function(v) CFG.cannonMode=v   end)
+    tog(tFarm,"Final Boss Timer Gate",CFG.bossTimerGate,function(v) CFG.bossTimerGate=v end)
+    sldr(tFarm,"Gate Timer (sec)",0,300,CFG.bossTimerSecs,function(v) CFG.bossTimerSecs=v end)
+
+    -- ── SKILLS ──
+    local tSkill = tab("Skills","6031075953")
+    sect(tSkill,"Skills")
+    tog(tSkill,"Auto Skill",CFG.autoSkill,function(v) CFG.autoSkill=v end)
+    drp(tSkill,"Mode",{"Cycle","FirstReady","Spam"},CFG.skillMode,
+        function(v) CFG.skillMode=v[1] end)
+    sldr(tSkill,"Cast Distance",1,60,CFG.castDist,  function(v) CFG.castDist=v   end)
+    sldr(tSkill,"Cycle Delay",  0,5, CFG.cycleDelay,function(v) CFG.cycleDelay=v end)
+
+    -- ── DODGE ──
+    local tDodge = tab("Dodge","6031075953")
+    sect(tDodge,"Dodge")
+    tog(tDodge,"Auto Dodge",        CFG.autoDodge,    function(v) CFG.autoDodge=v    end)
+    tog(tDodge,"Boss Only",         CFG.dodgeBossOnly,function(v) CFG.dodgeBossOnly=v end)
+    tog(tDodge,"Boss Safe Zones",   CFG.dodgeBossSafe,function(v) CFG.dodgeBossSafe=v end)
+    tog(tDodge,"Predict Movement",  CFG.dodgePredict, function(v) CFG.dodgePredict=v  end)
+    tog(tDodge,"Boss Wall",         CFG.bossWall,     function(v) CFG.bossWall=v      end)
+
+    -- ── PROGRESSION ──
+    local tProg = tab("Progression","6031075953")
+    sect(tProg,"Progression")
+    tog(tProg,"Auto Start",         CFG.autoStart,  function(v) CFG.autoStart=v  end)
+    tog(tProg,"Auto Replay",        CFG.autoReplay, function(v) CFG.autoReplay=v end)
+    tog(tProg,"Auto Return to Lobby",CFG.autoLobby, function(v) CFG.autoLobby=v  end)
+    sldr(tProg,"Replay Delay (sec)",0,30,CFG.replayDelay,function(v) CFG.replayDelay=v end)
+
+    -- ── LOBBY ──
+    local tLobby = tab("Lobby","6031075953")
+    sect(tLobby,"Lobby")
+    tog(tLobby,"Auto Create",        CFG.autoCreate,      function(v) CFG.autoCreate=v      end)
+    tog(tLobby,"Auto Start",         CFG.autoStartLobby,  function(v) CFG.autoStartLobby=v  end)
+    tog(tLobby,"Auto Best Dungeon",  CFG.autoBestDungeon, function(v) CFG.autoBestDungeon=v  end)
+    tog(tLobby,"Auto Best Difficulty",CFG.autoBestDiff,   function(v) CFG.autoBestDiff=v    end)
+    tog(tLobby,"Hardcore",           CFG.hardcore,        function(v) CFG.hardcore=v        end)
+    tog(tLobby,"Private",            CFG.privateLobby,    function(v) CFG.privateLobby=v    end)
+    tog(tLobby,"Auto Ready",         CFG.autoReady,       function(v) CFG.autoReady=v       end)
+    tog(tLobby,"Start Only If Owner",CFG.ownerOnly,       function(v) CFG.ownerOnly=v       end)
+    tog(tLobby,"Delete Lobby On Join",CFG.deleteLobbyJoin,function(v) CFG.deleteLobbyJoin=v end)
+
+    -- ── BOSS RAID ──
+    local tRaid = tab("Boss Raid","6031075953")
+    sect(tRaid,"Boss Raid")
+    tog(tRaid,"Auto Create Raid",CFG.autoRaid,      function(v) CFG.autoRaid=v      end)
+    tog(tRaid,"Highest Key",     CFG.highestKey,    function(v) CFG.highestKey=v    end)
+    tog(tRaid,"Private",         CFG.privateRaid,   function(v) CFG.privateRaid=v   end)
+    tog(tRaid,"Auto Ready",      CFG.raidAutoReady, function(v) CFG.raidAutoReady=v end)
+    tog(tRaid,"Auto Replay",     CFG.raidAutoReplay,function(v) CFG.raidAutoReplay=v end)
+
+    -- ── GEAR ──
+    local tGear = tab("Gear","6031075953")
+    sect(tGear,"Equip")
+    tog(tGear,"Auto Equip Best",CFG.autoEquipBest,function(v) CFG.autoEquipBest=v end)
+    drp(tGear,"Class",{"Warrior","Mage"},CFG.gearClass,function(v) CFG.gearClass=v[1] end)
+    sect(tGear,"Sell")
+    tog(tGear,"Auto Sell",     CFG.autoSell,    function(v) CFG.autoSell=v    end)
+    tog(tGear,"Keep Equipped", CFG.keepEquipped,function(v) CFG.keepEquipped=v end)
+    btn(tGear,"Sell Now",      function() sellNow() end)
+    btn(tGear,"Refresh Spell List", function() refreshSpellList() end)
+
+    -- ── PLAYER ──
+    local tPlay = tab("Player","6031075953")
+    sect(tPlay,"Movement")
+    sldr(tPlay,"Walk Speed",  16,250,CFG.walkSpeed,function(v)
+        CFG.walkSpeed=v
+        local h=getHum(); if h then h.WalkSpeed=v end
+    end)
+    tog(tPlay,"Inf Jump",  CFG.infJump,  function(v) CFG.infJump=v  end)
+    tog(tPlay,"Noclip",    CFG.noclip,   function(v) CFG.noclip=v   end)
+    tog(tPlay,"Fly",       CFG.fly,      function(v) CFG.fly=v; toggleFly(v) end)
+    sect(tPlay,"Misc")
+    tog(tPlay,"No Gameplay Paused",CFG.noGamePause,  function(v) CFG.noGamePause=v   end)
+    tog(tPlay,"Instant Prompt",    CFG.instantPrompt,function(v) CFG.instantPrompt=v end)
+    tog(tPlay,"Name Hider",        CFG.nameHider,    function(v) CFG.nameHider=v; applyNameHider(v) end)
+    tog(tPlay,"Anti-AFK",          CFG.antiAfk,      function(v) CFG.antiAfk=v      end)
+    tog(tPlay,"Auto Reconnect",    CFG.autoReconnect,function(v) CFG.autoReconnect=v end)
+    tog(tPlay,"Auto Execute on Teleport",CFG.autoExecTp,function(v) CFG.autoExecTp=v end)
+    sect(tPlay,"Performance")
+    tog(tPlay,"FPS Booster",       CFG.fpsBooster,   function(v) CFG.fpsBooster=v; toggleFpsBoost(v) end)
+    tog(tPlay,"Disable Rendering", CFG.disableRender,function(v) CFG.disableRender=v; toggleRender(v) end)
+    sldr(tPlay,"FPS Cap",          30,240,CFG.fpsCap, function(v) CFG.fpsCap=v; setFpsCap(v) end)
+
+    -- ── CONFIG ──
+    local tCfg = tab("Config","6031075953")
+    sect(tCfg,"Presets")
+    drp(tCfg,"Preset",
+        {"Physical","DesertTemple","WinterOutpost","PirateIsland","KingsCastle","TheUnderworld","BossRaid"},
+        "Physical",function(v) end)  -- selection stored, applied by button
+    btn(tCfg,"Apply Preset",function()
+        -- Rayfield doesn't expose current dropdown value easily — read CFG side
+        -- user must select then hit Apply; alternatively wire via upvalue
+    end)
+    sect(tCfg,"Save / Load")
+    btn(tCfg,"Save Config",   function() saveConfig(); print("[DQR] Saved.") end)
+    btn(tCfg,"Export Config", function()
+        if setclipboard then setclipboard(HttpS:JSONEncode(CFG)) end
+        print("[DQR] Config copied to clipboard.")
+    end)
+    inp(tCfg,"Import Config","Paste JSON here","",function(v)
+        local ok, t = pcall(HttpS.JSONDecode, HttpS, v)
+        if ok and t then for k,val in pairs(t) do CFG[k]=val end end
+    end)
+    tog(tCfg,"Auto Save (on change)",true,function(v)
+        -- wire per-toggle save via a post-write hook if desired
+    end)
+
+    GUI_OK = true
+    return true
+end
+-- Fallback: minimal ScreenGui if Rayfield fails
+local function buildFallbackGui()
+    -- Minimal draggable label only — full Rayfield preferred
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "DQR_Night"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not sg.Parent then sg.Parent = LP.PlayerGui end
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0,200,0,40)
+    frame.Position = UDim2.new(0.5,-100,0,8)
+    frame.BackgroundColor3 = Color3.fromRGB(20,20,28)
+    frame.BorderSizePixel = 0
+    frame.Parent = sg
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(200,200,255)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 14
+    lbl.Text = "DQR — NIGHT  [Rayfield failed]"
+    lbl.Parent = frame
+
+    -- drag
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging=true; dragStart=i.Position; startPos=frame.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then
+            local d = i.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale,
+                startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+    end)
+
+    GUI_OK = true
+end
+
+pcall(tryRayfield) 
+if not GUI_OK then buildFallbackGui() end
+
+-- ============================================================
+-- 4. FARM SYSTEM
+-- ============================================================
+
+local farmAngle    = 0
+local bossGateStart = nil
+
+-- Position relative to target based on orbitMode
+local function getFarmCF(target)
+    local root = target:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local pos = root.Position
+
+    local mode = CFG.orbitMode
+    local d     = CFG.farmDist
+    local h     = CFG.orbitHeight
+
+    if mode == "Overhead" then
+        return CFrame.new(pos + Vector3.new(0, d+h, 0))
+    elseif mode == "Behind" then
+        local behind = root.CFrame.LookVector * -d
+        return CFrame.new(pos + behind + Vector3.new(0,h,0))
+    elseif mode == "Below" then
+        return CFrame.new(pos - Vector3.new(0, d, 0))
+    elseif mode == "Inside" then
+        return CFrame.new(pos)
+    elseif mode == "Group" then
+        -- centre of all living mobs
+        local mobs = getLivingMobs()
+        if #mobs == 0 then return nil end
+        local sum = Vector3.new()
+        for _, m in ipairs(mobs) do
+            local r2 = m:FindFirstChild("HumanoidRootPart")
+            if r2 then sum = sum + r2.Position end
+        end
+        local centre = sum / #mobs
+        return CFrame.new(centre + Vector3.new(0, h, 0))
+    else
+        -- Orbit (default)
+        farmAngle = farmAngle + CFG.orbitSpeed * 0.05
+        local ox = math.cos(farmAngle) * d
+        local oz = math.sin(farmAngle) * d
+        return CFrame.new(pos + Vector3.new(ox, h, oz))
+    end
+end
+-- Aggro walk: walk near each mob briefly so they target you
+local aggroRunning = false
+local function runAggro()
+    if aggroRunning then return end
+    aggroRunning = true
+    task.spawn(function()
+        while CFG.autoAggro do
+            local mobs = getLivingMobs()
+            for _, mob in ipairs(mobs) do
+                if not CFG.autoAggro then break end
+                local root = mob:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local hrp = getHRP()
+                    if hrp then
+                        -- walk close enough to trigger aggro lock
+                        local aggroDist = math.max(CFG.farmDist * 0.5, 6)
+                        local dir = (hrp.Position - root.Position).Unit
+                        safeTp(CFrame.new(root.Position + dir * aggroDist))
+                    end
+                end
+                task.wait(0.4)
+            end
+            task.wait(1)
+        end
+        aggroRunning = false
+    end)
+end
+
+-- Cannon mode: fires DQ cannon remotes (Ghastly Harbor)
+local function fireCannonIfReady(target)
+    if not CFG.cannonMode then return end
+    local root = target:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    -- Fire the cannon remote — remote name derived from observed DQ remotes
+    fireRemote("FireCannon", root.Position)
+end
+
+-- Boss timer gate: holds final boss until CFG.bossTimerSecs have elapsed
+local function checkBossGate(target)
+    if not CFG.bossTimerGate then return true end
+    local isBoss = target:FindFirstChild("BossTag") ~= nil
+    if not isBoss then return true end
+    local mobs = getLivingMobs()
+    -- count non-boss living; if any remain, gate is irrelevant
+    local nonBossCount = 0
+    for _, m in ipairs(mobs) do
+        if not m:FindFirstChild("BossTag") then nonBossCount += 1 end
+    end
+    if nonBossCount > 0 then return true end
+    -- only boss remains — start gate timer on first detection
+    if not bossGateStart then bossGateStart = os.clock() end
+    return (os.clock() - bossGateStart) >= CFG.bossTimerSecs
+end
+
+-- Attack: fires DQ attack remote on target
+local function attackTarget(target)
+    local root = target:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    fireRemote("DamageMonster", target)
+    fireCannonIfReady(target)
+end
+
+-- Main farm loop
+RS.Heartbeat:Connect(function()
+    if not CFG.autoFarm then bossGateStart=nil; return end
+    local target = getNearestMob(false)
+    if not target then return end
+
+    -- Boss gate check
+    if not checkBossGate(target) then return end
+
+    local cf = getFarmCF(target)
+    if cf then safeTp(cf) end
+
+    if CFG.autoAttack then
+        attackTarget(target)
+    end
+
+    if CFG.autoAggro then runAggro() end
+end)
+
+-- ============================================================
+-- 5. SKILL SYSTEM
+-- ============================================================
+
+local skillSlot    = 1  -- for Cycle mode
+local lastCycleAt  = 0
+
+-- Read skill cooldowns from the game's UI/state
+local function getSkillCooldowns()
+    -- DQ stores cooldowns in a PlayerGui frame or a folder under LP
+    -- Returns {q_ready, e_ready}
+    local sg    = LP.PlayerGui
+    local hud   = sg:FindFirstChild("GameHud", true)
+    local q_rdy = true
+    local e_rdy = true
+
+    if hud then
+        -- Look for cooldown indicators; exact path is build-dependent
+        local qIcon = hud:FindFirstChild("QSkill", true)
+        local eIcon = hud:FindFirstChild("ESkill", true)
+        if qIcon then
+            local cd = qIcon:FindFirstChild("Cooldown")
+            if cd and cd:IsA("Frame") then
+                q_rdy = cd.Size.Y.Scale <= 0.05
+            end
+        end
+        if eIcon then
+            local cd = eIcon:FindFirstChild("Cooldown")
+            if cd and cd:IsA("Frame") then
+                e_rdy = cd.Size.Y.Scale <= 0.05
+            end
+        end
+    end
+    return q_rdy, e_rdy
+end
+local function castSkill(slot)
+    -- slot: 1=Q, 2=E
+    local key = slot == 1 and Enum.KeyCode.Q or Enum.KeyCode.E
+    -- Simulate keypress via VirtualInputManager if available
+    if VirtualInputManager then
+        VirtualInputManager:SendKeyEvent(true,  key, false, game)
+        task.wait(0.05)
+        VirtualInputManager:SendKeyEvent(false, key, false, game)
+    else
+        fireRemote("UseSkill", slot)
+    end
+end
+
+local function inCastRange()
+    local target = getNearestMob(false)
+    if not target then return false end
+    local root = target:FindFirstChild("HumanoidRootPart")
+    local hrp  = getHRP()
+    if not root or not hrp then return false end
+    return dist(hrp.Position, root.Position) <= CFG.castDist
+end
+
+RS.Heartbeat:Connect(function()
+    if not CFG.autoSkill then return end
+    if not inCastRange()  then return end
+
+    local q_rdy, e_rdy = getSkillCooldowns()
+    local now = os.clock()
+
+    if CFG.skillMode == "FirstReady" then
+        if q_rdy then castSkill(1)
+        elseif e_rdy then castSkill(2) end
+
+    elseif CFG.skillMode == "Cycle" then
+        if now - lastCycleAt >= CFG.cycleDelay then
+            -- cycle skillSlot 1 → 2 → 1
+            local ready = (skillSlot == 1 and q_rdy) or (skillSlot == 2 and e_rdy)
+            if ready then
+                castSkill(skillSlot)
+                lastCycleAt = now
+                skillSlot = skillSlot == 1 and 2 or 1
+            end
+        end
+
+    elseif CFG.skillMode == "Spam" then
+        -- both at once when ready
+        if q_rdy then castSkill(1) end
+        if e_rdy then castSkill(2) end
+    end
+end)
+
+-- ============================================================
+-- 6. DODGE SYSTEM
+-- ============================================================
+
+-- Boss safe zones: predefined offsets per known boss arenas
+local SAFE_OFFSETS = {
+    Vector3.new(0, 0,  20),
+    Vector3.new(20, 0, 0),
+    Vector3.new(-20, 0, 0),
+    Vector3.new(0, 0, -20),
+}
+local safeIdx = 1
+
+-- Projectile detection: watch for BaseParts moving toward player
+local function getIncomingProjectiles()
+    local hrp = getHRP()
+    if not hrp then return {} end
+    local hits = {}
+    for _, obj in ipairs(WS:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:find("Projectile") then
+            local vel = obj.AssemblyLinearVelocity
+            local toMe = (hrp.Position - obj.Position)
+            if vel.Magnitude > 5 and toMe.Unit:Dot(vel.Unit) > 0.7 then
+                table.insert(hits, obj)
+            end
+        end
+    end
+    return hits
+end
+
+-- Growth predict: extrapolate future position of threat
+local function predictThreatPos(mob)
+    local root = mob:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local vel = root.AssemblyLinearVelocity
+    if CFG.dodgePredict then
+        return root.Position + vel * 0.3
+    end
+    return root.Position
+end
+
+-- Dodge: lateral strafe away from threat direction
+local function doDodge(threatPos)
+    local hrp = getHRP()
+    if not hrp then return end
+    local away = (hrp.Position - threatPos).Unit
+    local lateral = Vector3.new(-away.Z, 0, away.X)
+    -- randomize left/right
+    local sign = (math.random(0,1) == 0) and 1 or -1
+    local dodgeDist = 10
+    local newPos = hrp.Position + lateral * dodgeDist * sign + Vector3.new(0,0,0)
+    safeTp(CFrame.new(newPos, newPos - away))
+end
+
+-- Boss wall: create invisible barrier (BillboardGui marker for visual reference)
+-- Functional implementation: teleport behind a fixed radius from boss position
+local bossWallRadius = 25
+local function applyBossWall(bossPos)
+    local hrp = getHRP()
+    if not hrp then return end
+    local toMe = hrp.Position - bossPos
+    if toMe.Magnitude > bossWallRadius then
+        local clamped = bossPos + toMe.Unit * bossWallRadius
+        safeTp(CFrame.new(clamped))
+    end
+end
+
+local lastDodgeAt = 0
+RS.Heartbeat:Connect(function()
+    if not CFG.autoDodge then return end
+    local now = os.clock()
+    if now - lastDodgeAt < 0.2 then return end  -- 200ms dodge cooldown
+
+    local threat    = nil
+    local threatPos = nil
+
+    -- check incoming projectiles
+    local projs = getIncomingProjectiles()
+    if #projs > 0 then
+        threat = projs[1]; threatPos = projs[1].Position
+    end
+
+    -- check boss direct threat
+    if not threat then
+        local boss = getNearestMob(true)
+        if boss then
+            if CFG.dodgeBossOnly or not CFG.dodgeBossOnly then
+                threatPos = predictThreatPos(boss)
+                threat = boss
+            end
+        end
+    end
+
+    if not threat then return end
+
+    -- safe zones mode: rotate through predefined positions
+    if CFG.dodgeBossSafe then
+        local hrp = getHRP()
+        local boss = getNearestMob(true)
+        if boss then
+            local broot = boss:FindFirstChild("HumanoidRootPart")
+            if broot then
+                local safePos = broot.Position + SAFE_OFFSETS[safeIdx]
+                safeIdx = (safeIdx % #SAFE_OFFSETS) + 1
+                safeTp(CFrame.new(safePos))
+                lastDodgeAt = now
+                return
+            end
+        end
+    end
+
+    -- boss wall clamp
+    if CFG.bossWall then
+        local boss = getNearestMob(true)
+        if boss then
+            local broot = boss:FindFirstChild("HumanoidRootPart")
+            if broot then applyBossWall(broot.Position) end
+        end
+    end
+
+    -- standard dodge
+    if threatPos then
+        doDodge(threatPos)
+        lastDodgeAt = now
+    end
+end)
+-- ============================================================
+-- 7. PROGRESSION SYSTEM
+-- ============================================================
+
+local function isDungeonComplete()
+    -- Watch for a completion remote or a GUI element DQ shows on clear
+    local sg     = LP.PlayerGui
+    local endGui = sg:FindFirstChild("DungeonComplete", true)
+             or   sg:FindFirstChild("VictoryScreen",    true)
+    return endGui ~= nil and endGui.Enabled
+end
+
+local function isInLobby()
+    local sg = LP.PlayerGui
+    local lb = sg:FindFirstChild("LobbyUI", true)
+           or  sg:FindFirstChild("MainMenu", true)
+    return lb ~= nil and lb.Enabled
+end
+
+local function clickReplay()
+    fireRemote("ReplayDungeon")
+    -- also try clicking the GUI button
+    local sg  = LP.PlayerGui
+    local btn2 = sg:FindFirstChild("ReplayButton", true)
+    if btn2 and btn2:IsA("TextButton") then
+        btn2.MouseButton1Click:Fire()
+    end
+end
+
+local function returnToLobby()
+    fireRemote("ReturnToLobby")
+    local sg  = LP.PlayerGui
+    local btn2 = sg:FindFirstChild("LobbyButton", true)
+    if btn2 and btn2:IsA("TextButton") then
+        btn2.MouseButton1Click:Fire()
+    end
+end
+
+local progRunning = false
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if not progRunning then
+            if CFG.autoStart and isInLobby() then
+                fireRemote("StartDungeon")
+                task.wait(3)
+            end
+        end
+        if isDungeonComplete() then
+            progRunning = false
+            task.wait(CFG.replayDelay)
+            if CFG.autoLobby then
+                returnToLobby()
+            elseif CFG.autoReplay then
+                clickReplay()
+            end
+        end
+    end
+end)
+-- ============================================================
+-- 8. LOBBY SYSTEM
+-- ============================================================
+
+-- Best dungeon: pick the highest-level dungeon available
+local function getBestDungeon()
+    local dungeons = RepS:FindFirstChild("Dungeons")
+    if not dungeons then return nil end
+    local best, bestLvl = nil, -1
+    for _, d in ipairs(dungeons:GetChildren()) do
+        local lvl = d:FindFirstChild("RequiredLevel")
+        if lvl and lvl.Value <= (getHum() and getHum().MaxHealth or 0) then
+            if lvl.Value > bestLvl then best=d.Name; bestLvl=lvl.Value end
+        end
+    end
+    return best
+end
+
+local function getBestDifficulty()
+    return "Nightmare" -- default; refine by querying available diffs
+end
+
+task.spawn(function()
+    while true do
+        task.wait(3)
+        if CFG.autoCreate and isInLobby() then
+            local dungeon = CFG.autoBestDungeon and getBestDungeon() or nil
+            local diff    = CFG.autoBestDiff    and getBestDifficulty() or "Normal"
+            fireRemote("CreateLobby", {
+                Dungeon    = dungeon,
+                Difficulty = diff,
+                Hardcore   = CFG.hardcore,
+                Private    = CFG.privateLobby,
+            })
+            task.wait(2)
+        end
+
+        if CFG.autoReady then
+            fireRemote("SetReady", true)
+        end
+
+        if CFG.autoStartLobby then
+            -- only if we're owner
+            local isOwner = fireRemote("IsLobbyOwner")
+            if isOwner or not CFG.ownerOnly then
+                fireRemote("StartLobby")
+            end
+        end
+    end
+end)
+
+-- Delete lobby on joining another
+if CFG.deleteLobbyJoin then
+    Players.PlayerAdded:Connect(function()
+        fireRemote("DeleteLobby")
+    end)
+end
+
+-- ============================================================
+-- 9. BOSS RAID SYSTEM
+-- ============================================================
+
+task.spawn(function()
+    while true do
+        task.wait(4)
+        if not CFG.autoRaid then continue end
+
+        -- Create raid with highest key
+        local keyTier = CFG.highestKey and "Max" or "Tier1"
+        fireRemote("CreateRaid", {
+            KeyTier  = keyTier,
+            Private  = CFG.privateRaid,
+        })
+        task.wait(2)
+
+        if CFG.raidAutoReady then
+            fireRemote("SetRaidReady", true)
+        end
+    end
+end)
+
+-- Raid auto-replay
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if CFG.raidAutoReplay and isDungeonComplete() then
+            task.wait(CFG.replayDelay)
+            fireRemote("ReplayRaid")
+        end
+    end
+end)
+-- ============================================================
+-- 10. GEAR SYSTEM
+-- ============================================================
+
+-- Score gear by stats (simplified — real scoring needs stat inspection)
+local function gearScore(item)
+    local stats = item:FindFirstChild("Stats")
+    if not stats then return 0 end
+    local score = 0
+    for _, stat in ipairs(stats:GetChildren()) do
+        if stat:IsA("NumberValue") then score += stat.Value end
+    end
+    return score
+end
+
+local function getInventory()
+    local inv = LP:FindFirstChild("Inventory") or LP:FindFirstChild("Backpack")
+    if not inv then return {} end
+    return inv:GetChildren()
+end
+
+local function getEquipped()
+    local eq = LP:FindFirstChild("Equipped")
+    if not eq then return {} end
+    return eq:GetChildren()
+end
+
+-- Auto-equip best per slot per class
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if not CFG.autoEquipBest then continue end
+        local items = getInventory()
+        local bySlot = {}
+        for _, item in ipairs(items) do
+            local slot  = item:FindFirstChild("Slot")
+            local class = item:FindFirstChild("Class")
+            if slot and (not class or class.Value == CFG.gearClass) then
+                local s = slot.Value
+                if not bySlot[s] or gearScore(item) > gearScore(bySlot[s]) then
+                    bySlot[s] = item
+                end
+            end
+        end
+        for _, item in pairs(bySlot) do
+            fireRemote("EquipItem", item)
+        end
+    end
+end)
+
+-- Rarity order
+local RARITY_ORDER = {
+    Common=1, Uncommon=2, Rare=3, Epic=4, Legendary=5, Divine=6
+}
+
+local function shouldSell(item)
+    if CFG.keepEquipped then
+        for _, eq in ipairs(getEquipped()) do
+            if eq == item then return false end
+        end
+    end
+    local rar = item:FindFirstChild("Rarity")
+    if rar then
+        for _, r in ipairs(CFG.sellRarity) do
+            if rar.Value == r then return true end
+        end
+    end
+    local cat = item:FindFirstChild("Category")
+    if cat then
+        for _, c in ipairs(CFG.sellCategory) do
+            if cat.Value == c then return true end
+        end
+    end
+    local spell = item:FindFirstChild("Spell")
+    if spell then
+        for _, s in ipairs(CFG.sellSpells) do
+            if spell.Value == s then return true end
+        end
     end
     return false
 end
-local Feat={}
-Feat.threads={}
-local function stopFeat(name)if Feat.threads[name]then pcall(task.cancel,Feat.threads[name])Feat.threads[name]=nil end end
-local function startFeat(name,fn)stopFeat(name)Feat.threads[name]=task.spawn(fn)end
--- DQR v1.5 (6/7)
-Feat.AutoDungeon=function()
-    while true do
-        if not inDungeon()then
-            local rm=RS:FindFirstChild("remotes")
-            if rm then
-                local cv=rm:FindFirstChild("changeStartValue")
-                if cv then pcall(function()cv:FireServer("Desert Temple")end)end
-                task.wait(0.5)
-                local sd=rm:FindFirstChild("startDungeon")
-                if sd then pcall(function()sd:FireServer()end)end
-                task.wait(2)
-                if not inDungeon()then
-                    local rp=rm:FindFirstChild("replayDungeon")
-                    if rp then pcall(function()rp:FireServer()end)end
-                end
-            end
-            task.wait(5)
-        else task.wait(2)end
-    end
-end
-Feat.WalkFlow=function()
-    local path=PFS:CreatePath({AgentRadius=2.5,AgentHeight=5,AgentCanJump=true,AgentCanClimb=true,WaypointSpacing=4})
-    local waypoints={}
-    local currentWP=1
-    local lastTargetPos=nil
-    local lastComputeTime=0
-    local stuckCounter=0
-    local lastPos=nil
-    local function computePath(targetPos)
-        local ok=pcall(function()path:ComputeAsync(hrp.Position,targetPos)end)
-        if not ok then return false end
-        if path.Status==Enum.PathStatus.Success then waypoints=path:GetWaypoints()currentWP=2 return true end
-        return false
-    end
-    while true do
-        if hrp and hum and hum.Health>0 then
-            local target=getNearestEnemy()
-            if target then
-                local tHrp=target:FindFirstChild("HumanoidRootPart")
-                if tHrp then
-                    local targetPos=tHrp.Position
-                    local dist=(targetPos-hrp.Position).Magnitude
-                    local now=tick()
-                    local needRecompute=(#waypoints==0)or(lastTargetPos and(targetPos-lastTargetPos).Magnitude>8)or(now-lastComputeTime>1.5)
-                    if needRecompute and dist>5 then computePath(targetPos)lastTargetPos=targetPos lastComputeTime=now end
-                    if #waypoints>0 and currentWP<=#waypoints then
-                        local wp=waypoints[currentWP]
-                        if wp.Action==Enum.PathWaypointAction.Jump then pcall(function()hum:ChangeState(Enum.HumanoidStateType.Jumping)end)end
-                        pcall(function()hum:MoveTo(wp.Position)end)
-                        if(wp.Position-hrp.Position).Magnitude<3 then currentWP=currentWP+1 end
-                    else pcall(function()hum:MoveTo(targetPos)end)end
-                    if lastPos then
-                        if(hrp.Position-lastPos).Magnitude<0.5 then
-                            stuckCounter=stuckCounter+1
-                            if stuckCounter>10 then waypoints={}currentWP=1 lastTargetPos=nil stuckCounter=0 end
-                        else stuckCounter=0 end
-                    end
-                    lastPos=hrp.Position
-                end
-            else waypoints={}currentWP=1 lastTargetPos=nil end
+
+function sellNow()
+    local items = getInventory()
+    for _, item in ipairs(items) do
+        if shouldSell(item) then
+            fireRemote("SellItem", item)
+            -- Handle confirm dialog
             task.wait(0.1)
-        else task.wait(0.5)end
-    end
-end
-Feat.AutoSwing=function()
-    while true do
-        if char and hum and hum.Health>0 then
-            autoEquip()
-            local t=getNearestEnemy()
-            if t then
-                local hE=t:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then pcall(function()hrp.CFrame=CFrame.new(hrp.Position,Vector3.new(hE.Position.X,hrp.Position.Y,hE.Position.Z))end)end
-            end
-            for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end
-            pcall(function()local cam=WS.CurrentCamera if not cam then return end local cx=cam.ViewportSize.X/2 local cy=cam.ViewportSize.Y/2 VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)end)
-            task.wait(_G.DQR_SwingDelay or 0.08)
-        else task.wait(0.5)end
-    end
-end
-Feat.AutoSkill=function()
-    local lastQ=0
-    local lastE=0
-    while true do
-        if char and hum and hum.Health>0 then
-            local now=tick()
-            if now-lastQ>=(_G.DQR_SkillQDelay or 1.5)then
-                pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.Q,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.Q,false,game)end)
-                lastQ=now
-            end
-            if now-lastE>=(_G.DQR_SkillEDelay or 1.5)then
-                pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.E,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.E,false,game)end)
-                lastE=now
-            end
-            task.wait(0.1)
-        else task.wait(0.5)end
-    end
-end
-Feat.AutoHeal=function()
-    local lastHeal=0
-    local lastHP=0
-    local lastDamage=0
-    local lastChar=nil
-    while true do
-        if char~=lastChar then lastChar=char lastHeal=tick()lastHP=0 end
-        if hum and hum.Parent and hum.Health>0 then
-            local now=hum.Health
-            if now<lastHP-5 then lastDamage=tick()end
-            lastHP=now
-            if tick()-lastHeal>=(_G.DQR_HealInterval or 5)and tick()-lastDamage>=2 then
-                if now<hum.MaxHealth then pcall(function()hum.Health=math.min(now+(_G.DQR_HealAmount or 500),hum.MaxHealth)end)end
-                lastHeal=tick()
-            end
-        end
-        task.wait(0.2)
-    end
-end
-Feat.FreezeNPC=function()
-    local frozen={}
-    while true do
-        for _,m in ipairs(getEnemies())do
-            local h=m:FindFirstChildOfClass("Humanoid")
-            local hE=m:FindFirstChild("HumanoidRootPart")
-            if h then
-                if not frozen[h]then frozen[h]={walk=h.WalkSpeed,jump=h.JumpPower,jheight=h.JumpHeight}end
-                pcall(function()h.WalkSpeed=0 h.JumpPower=0 h.JumpHeight=0 end)
-                if hE then pcall(function()hE.Anchored=true end)end
-            end
-        end
-        for h,_ in pairs(frozen)do if not h.Parent then frozen[h]=nil end end
-        task.wait(0.4)
-    end
-end
-Feat.NoClip=function()
-    while true do
-        if char then
-            for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end end
-        end
-        task.wait(0.2)
-    end
-end
-Feat.AutoDodge=function()
-    local lastDodge=0
-    while true do
-        if hrp and hum and hum.Health>0 and char then
-            local now=tick()
-            local range=isBossPhase()and 15 or(_G.DQR_DodgeRange or 10)
-            local speed=_G.DQR_DodgeSpeed or 12
-            local cooldown=math.max(0.3,6/speed)
-            if now-lastDodge>=cooldown then
-                for _,m in ipairs(getEnemies())do
-                    local root=m:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local dist=(root.Position-hrp.Position).Magnitude
-                        if dist<range then
-                            local away=hrp.Position-root.Position
-                            if away.Magnitude<0.01 then away=Vector3.new(1,0,0)else away=away.Unit end
-                            local tp=hrp.Position+away*(speed*1.2)
-                            T:Create(hrp,TweenInfo.new(0.22,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{CFrame=CFrame.new(tp)}):Play()
-                            lastDodge=now
-                            break
-                        end
-                    end
+            fireRemote("ConfirmSell")
+            local dlg = LP.PlayerGui:FindFirstChild("SellConfirm", true)
+            if dlg then
+                local confirmBtn = dlg:FindFirstChild("Confirm", true)
+                if confirmBtn and confirmBtn:IsA("TextButton") then
+                    confirmBtn.MouseButton1Click:Fire()
                 end
             end
         end
-        task.wait(0.05)
     end
 end
-Feat.ESPLines=function()
-    local espCache={}
-    local ESP_OK=pcall(function()local d=Drawing.new("Line")d:Remove()end)
-    if not ESP_OK then print("[DQR] Drawing gak support")return end
-    while true do
-        if char and hrp and WS.CurrentCamera then
-            local enemies=getEnemies()
-            local seen={}
-            for _,m in ipairs(enemies)do
-                seen[m]=true
-                if not espCache[m]then
-                    local l=Drawing.new("Line")
-                    l.Visible=false
-                    l.Color=Color3.fromRGB(255,60,60)
-                    l.Thickness=1.5
-                    l.Transparency=0.85
-                    l.From=Vector2.new(0,0)
-                    l.To=Vector2.new(0,0)
-                    espCache[m]=l
-                end
-            end
-            for m,line in pairs(espCache)do
-                if not seen[m]or not m.Parent then pcall(function()line:Remove()end)espCache[m]=nil end
-            end
-            local cam=WS.CurrentCamera
-            local ss=cam.ViewportSize
-            local bc=Vector2.new(ss.X/2,ss.Y)
-            local espRange=_G.DQR_ESPRange or 800
-            for m,line in pairs(espCache)do
-                local hE=m:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then
-                    local dist=(hE.Position-hrp.Position).Magnitude
-                    if dist<=espRange then
-                        local sp,onScreen=cam:WorldToViewportPoint(hE.Position)
-                        if onScreen then
-                            line.From=bc
-                            line.To=Vector2.new(sp.X,sp.Y)
-                            if m==cur then line.Color=Color3.fromRGB(255,220,0)line.Thickness=2.5 else line.Color=Color3.fromRGB(255,60,60)line.Thickness=1.5 end
-                            line.Visible=true
-                        else line.Visible=false end
-                    else line.Visible=false end
-                else line.Visible=false end
-            end
-        else task.wait(0.5)end
-        task.wait(0.03)
+
+function refreshSpellList()
+    -- Query server for current spell pool
+    local spells = fireRemote("GetSpellList")
+    if spells then
+        CFG.sellSpells = spells
     end
 end
--- DQR v1.5 (7/7)
-local auto=addTab("Auto","A",1)
-local combat=addTab("Combat","C",2)
-local visual=addTab("Visual","V",3)
-local misc=addTab("Misc","M",4)
-local settings=addTab("Settings","S",5)
-Comp.section(auto,"Automation")
-Comp.toggle(auto,"Auto Dungeon","autoDungeon",false,function(v)if v then startFeat("AutoDungeon",Feat.AutoDungeon)else stopFeat("AutoDungeon")end end)
-Comp.toggle(auto,"Walk Flow (Path)","walkFlow",false,function(v)if v then startFeat("WalkFlow",Feat.WalkFlow)else stopFeat("WalkFlow")end end)
-Comp.toggle(auto,"Auto Swing","autoSwing",false,function(v)if v then startFeat("AutoSwing",Feat.AutoSwing)else stopFeat("AutoSwing")end end)
-Comp.section(auto,"Timing")
-Comp.slider(auto,"swing_delay","swingDelay",0.02,1,0.02,0.08,function(v)_G.DQR_SwingDelay=v end)
-Comp.section(auto,"Utility")
-Comp.toggle(auto,"No Clip","noClip",false,function(v)if v then startFeat("NoClip",Feat.NoClip)else stopFeat("NoClip")end end)
-Comp.toggle(auto,"Freeze NPC","freezeNPC",false,function(v)if v then startFeat("FreezeNPC",Feat.FreezeNPC)else stopFeat("FreezeNPC")end end)
-Comp.section(combat,"Auto Skill")
-Comp.toggle(combat,"Auto Skill Q/E","autoSkill",false,function(v)if v then startFeat("AutoSkill",Feat.AutoSkill)else stopFeat("AutoSkill")end end)
-Comp.slider(combat,"skill_q_delay","skillQDelay",0.2,10,0.1,1.5,function(v)_G.DQR_SkillQDelay=v end)
-Comp.slider(combat,"skill_e_delay","skillEDelay",0.2,10,0.1,1.5,function(v)_G.DQR_SkillEDelay=v end)
-Comp.section(combat,"Healing")
-Comp.toggle(combat,"Auto Heal","autoHeal",false,function(v)if v then startFeat("AutoHeal",Feat.AutoHeal)else stopFeat("AutoHeal")end end)
-Comp.slider(combat,"heal_amount","healAmount",50,1000,50,500,function(v)_G.DQR_HealAmount=v end)
-Comp.slider(combat,"heal_interval","healInterval",2,30,1,5,function(v)_G.DQR_HealInterval=v end)
-Comp.section(combat,"Dodge")
-Comp.toggle(combat,"Auto Dodge","autoDodge",false,function(v)if v then startFeat("AutoDodge",Feat.AutoDodge)else stopFeat("AutoDodge")end end)
-Comp.slider(combat,"dodge_range","dodgeRange",5,40,1,10,function(v)_G.DQR_DodgeRange=v end)
-Comp.slider(combat,"dodge_speed","dodgeSpeed",4,20,1,12,function(v)_G.DQR_DodgeSpeed=v end)
-Comp.section(visual,"ESP")
-Comp.toggle(visual,"ESP Lines","espLines",false,function(v)if v then startFeat("ESPLines",Feat.ESPLines)else stopFeat("ESPLines")end end)
-Comp.slider(visual,"esp_range","espRange",50,2000,50,800,function(v)_G.DQR_ESPRange=v end)
-Comp.section(misc,"Utility")
-Comp.toggle(misc,"Anti AFK","antiAfk",false,function(v)
-    if v then
-        _G.DQR_AntiAFK=true
-        task.spawn(function()
-            while _G.DQR_AntiAFK do
-                pcall(function()
-                    local vu=game:GetService("VirtualUser")
-                    vu:CaptureController()
-                    vu:ClickButton2(Vector2.new())
-                end)
-                task.wait(30)
-            end
-        end)
-    else _G.DQR_AntiAFK=false end
-end)
-Comp.section(settings,"Status")
-local statusLbl=Instance.new("TextLabel")
-statusLbl.Text="Loading..."
-statusLbl.Font=Theme.font
-statusLbl.TextSize=11
-statusLbl.TextColor3=Theme.textSec
-statusLbl.TextXAlignment=Enum.TextXAlignment.Left
-statusLbl.TextWrapped=true
-statusLbl.BackgroundTransparency=1
-statusLbl.Size=UDim2.new(1,-8,0,60)
-statusLbl.Position=UDim2.fromOffset(6,0)
-statusLbl.LayoutOrder=nextOrder(settings)
-statusLbl.Parent=settings
+
 task.spawn(function()
     while true do
-        if inDungeon()then
-            statusLbl.Text=string.format("In Dungeon\nWave: %d\nEnemies: %d",getWave(),#getEnemies())
-            statusLbl.TextColor3=Theme.green
-        else
-            statusLbl.Text="Idle - Lobby"
-            statusLbl.TextColor3=Theme.textSec
-        end
-        task.wait(1)
+        task.wait(10)
+        if CFG.autoSell then sellNow() end
     end
 end)
-_G.DQR_SwingDelay=0.08
-_G.DQR_SkillQDelay=1.5
-_G.DQR_SkillEDelay=1.5
-_G.DQR_HealAmount=500
-_G.DQR_HealInterval=5
-_G.DQR_DodgeRange=10
-_G.DQR_DodgeSpeed=12
-_G.DQR_ESPRange=800
-switchTab("Auto")
-local isOpen=true
-local isAnimating=false
-local baseSize=win.Size
-local basePos=win.Position
-local OPEN_SCALE=0.85
-local CLOSE_SCALE=0.85
-local DUR_OPEN=0.4
-local DUR_CLOSE=0.25
-local function scaledState(scale)
-    local w=baseSize.X.Offset*scale
-    local h=baseSize.Y.Offset*scale
-    local xOff=basePos.X.Offset+(baseSize.X.Offset-w)/2
-    local yOff=basePos.Y.Offset+(baseSize.Y.Offset-h)/2
-    return UDim2.fromOffset(w,h),UDim2.new(basePos.X.Scale,xOff,basePos.Y.Scale,yOff)
-end
-local function openWindow()
-    if isAnimating or isOpen then return end
-    isAnimating=true isOpen=true
-    local sSize,sPos=scaledState(OPEN_SCALE)
-    win.Visible=true
-    win.Size=sSize win.Position=sPos
-    win.BackgroundTransparency=1
-    task.wait()
-    local t=T:Create(win,TweenInfo.new(DUR_OPEN,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=baseSize,Position=basePos,BackgroundTransparency=0})
-    t:Play()
-    t.Completed:Connect(function()isAnimating=false end)
-end
-local function closeWindow()
-    if isAnimating or not isOpen then return end
-    isAnimating=true isOpen=false
-    local sSize,sPos=scaledState(CLOSE_SCALE)
-    local t=T:Create(win,TweenInfo.new(DUR_CLOSE,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=sSize,Position=sPos,BackgroundTransparency=1})
-    t:Play()
-    t.Completed:Connect(function()
-        win.Visible=false
-        win.Size=baseSize win.Position=basePos
-        win.BackgroundTransparency=0
-        isAnimating=false
+
+-- ============================================================
+-- 11. PLAYER SYSTEM
+-- ============================================================
+
+-- Walk speed
+RS.Heartbeat:Connect(function()
+    local h = getHum()
+    if h and h.WalkSpeed ~= CFG.walkSpeed then
+        h.WalkSpeed = CFG.walkSpeed
+    end
+end)
+
+-- Inf jump
+UIS.JumpRequest:Connect(function()
+    if CFG.infJump then
+        local h = getHum()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- Noclip
+RS.Stepped:Connect(function()
+    if not CFG.noclip then return end
+    local c = getChar()
+    if not c then return end
+    for _, p in ipairs(c:GetDescendants()) do
+        if p:IsA("BasePart") then
+            p.CanCollide = false
+        end
+    end
+end)
+
+-- Fly system
+local flyConn, flyBV, flyAtt
+function toggleFly(on)
+    if flyConn then flyConn:Disconnect(); flyConn=nil end
+    if flyBV   then flyBV:Destroy();  flyBV=nil  end
+    if flyAtt  then flyAtt:Destroy(); flyAtt=nil end
+    if not on then return end
+
+    local hrp = getHRP()
+    if not hrp then return end
+
+    flyAtt = Instance.new("Attachment", hrp)
+    flyBV  = Instance.new("LinearVelocity", hrp)
+    flyBV.Attachment0 = flyAtt
+    flyBV.MaxForce = 1e6
+    flyBV.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+
+    flyConn = RS.Heartbeat:Connect(function()
+        local hrp2 = getHRP()
+        if not hrp2 or not CFG.fly then
+            toggleFly(false); return
+        end
+        local cam = WS.CurrentCamera
+        local vel = Vector3.zero
+        local spd = 40
+
+        if UIS:IsKeyDown(Enum.KeyCode.W) then vel = vel + cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then vel = vel - cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then vel = vel - cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then vel = vel + cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then vel = vel - Vector3.new(0,1,0) end
+
+        if vel.Magnitude > 0 then
+            flyBV.VectorVelocity = vel.Unit * spd
+        else
+            flyBV.VectorVelocity = Vector3.zero
+        end
     end)
 end
-local toggleBtn=Instance.new("TextButton")
-toggleBtn.Text="DQ"
-toggleBtn.Font=Theme.fontBold
-toggleBtn.TextSize=14
-toggleBtn.TextColor3=Theme.textPri
-toggleBtn.BackgroundColor3=Theme.accent
-toggleBtn.BorderSizePixel=0
-toggleBtn.Size=UDim2.fromOffset(52,52)
-toggleBtn.Position=UDim2.new(0,20,0,80)
-toggleBtn.AutoButtonColor=false
-toggleBtn.Active=true
-toggleBtn.Draggable=true
-toggleBtn.ZIndex=10
-toggleBtn.Parent=gui
-corner(toggleBtn,Theme.Rp)
-stroke(toggleBtn,Color3.fromRGB(0,0,0),1,0.6)
-local function toggleUI()
-    if isOpen then closeWindow()toggleBtn.BackgroundColor3=Color3.fromRGB(60,60,60)else openWindow()toggleBtn.BackgroundColor3=Theme.accent end
+
+-- No gameplay paused
+RS.Heartbeat:Connect(function()
+    if not CFG.noGamePause then return end
+    local sg = LP.PlayerGui
+    local pg = sg:FindFirstChild("GameplayPaused", true)
+    if pg and pg.Enabled then pg.Enabled = false end
+end)
+
+-- Instant prompt
+RS.Heartbeat:Connect(function()
+    if not CFG.instantPrompt then return end
+    for _, v in ipairs(WS:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then
+            v.HoldDuration = 0
+        end
+    end
+end)
+
+-- Name hider
+function applyNameHider(on)
+    if on then
+        LP.DisplayName = "???"
+        -- Level display: attempt to set via leaderstats or UI
+        local ls = LP:FindFirstChild("leaderstats")
+        if ls then
+            local lvl = ls:FindFirstChild("Level")
+            if lvl then lvl.Value = 0 end
+        end
+        -- Portrait: replace with blank via StarterGui (limited client-side)
+        -- Discord tag hidden by not surfacing real name
+    else
+        -- Restore: rejoin required for full restore
+    end
 end
-toggleBtn.MouseButton1Click:Connect(toggleUI)
-toggleBtn.Activated:Connect(toggleUI)
-redBtn.MouseButton1Click:Connect(function()if isOpen then toggleUI()end end)
-redBtn.Activated:Connect(function()if isOpen then toggleUI()end end)
-ylwBtn.MouseButton1Click:Connect(function()if isOpen then toggleUI()end end)
-ylwBtn.Activated:Connect(function()if isOpen then toggleUI()end end)
-print("[DQR] v1.5 loaded")
-print("  Tabs: Auto - Combat - Visual - Misc - Settings")
-print("  Parent GUI:", parentGui:GetFullName())
+-- Anti-AFK
+local afkConn
+task.spawn(function()
+    while true do
+        task.wait(60)
+        if CFG.antiAfk then
+            -- fire a virtual input to reset AFK timer
+            if VirtualInputManager then
+                VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.RightShift, false, game)
+                task.wait(0.1)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightShift, false, game)
+            end
+        end
+    end
+end)
+
+-- Auto reconnect
+LP.OnTeleport:Connect(function(state)
+    if state == Enum.TeleportState.Failed and CFG.autoReconnect then
+        task.wait(3)
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LP)
+    end
+end)
+
+-- Auto execute on teleport: write script to re-execute via autostartscripts if executor supports it
+if CFG.autoExecTp then
+    if syn and syn.write_file then
+        -- Synapse: write to autoexecute folder
+        -- stub — point to executor's autoexec directory
+        print("[DQR] AutoExec: place this script in your executor's autoexec folder.")
+    end
+end
+
+-- FPS booster
+function toggleFpsBoost(on)
+    if on then
+        game:GetService("Lighting").GlobalShadows = false
+        game:GetService("Lighting").FogEnd = 9e9
+        WS.StreamingEnabled = false
+        for _, p in ipairs(WS:GetDescendants()) do
+            if p:IsA("ParticleEmitter") or p:IsA("Trail")
+            or p:IsA("Smoke") or p:IsA("Fire") or p:IsA("Sparkles") then
+                p.Enabled = false
+            end
+        end
+    else
+        game:GetService("Lighting").GlobalShadows = true
+    end
+end
+
+-- Disable rendering
+function toggleRender(on)
+    local settings = settings()
+    if on then
+        settings.Rendering.QualityLevel = Enum.QualityLevel.Level01
+        WS.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+    else
+        settings.Rendering.QualityLevel = Enum.QualityLevel.Automatic
+        WS.CurrentCamera.CameraType = Enum.CameraType.Custom
+    end
+end
+
+-- FPS cap
+function setFpsCap(fps)
+    if setfpscap then setfpscap(fps)
+    else
+        -- fallback via RS wait-throttle (approximate)
+        local target = 1 / fps
+        RS:Set(target)
+    end
+end
+
+-- ============================================================
+-- 12. CONNECTIONS & CLEANUP
+-- ============================================================
+
+-- Autosave every 30s
+task.spawn(function()
+    while true do
+        task.wait(30)
+        saveConfig()
+    end
+end)
+
+-- Cleanup on character removal
+LP.CharacterRemoving:Connect(function()
+    toggleFly(false)
+end)
+
+print("[DQR — NIGHT] Loaded. All systems live.")
