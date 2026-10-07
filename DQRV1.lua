@@ -1,734 +1,145 @@
--- DQR v1.5 fixed | PART 1
-local P=game:GetService("Players")
-local LP=P.LocalPlayer
+local Players=game:GetService("Players")
 local UIS=game:GetService("UserInputService")
-local T=game:GetService("TweenService")
-local WS=game:GetService("Workspace")
-local RS=game:GetService("ReplicatedStorage")
-local VIM=game:GetService("VirtualInputManager")
-local PFS=game:GetService("PathfindingService")
-local Players=P
-local CG local okCG=pcall(function()CG=game:GetService("CoreGui")end)
+local TS=game:GetService("TweenService")
+local LP=Players.LocalPlayer
 local PG=LP:WaitForChild("PlayerGui")
-local parentGui=PG
-if gethui then pcall(function()parentGui=gethui()end)end
-if parentGui:FindFirstChild("DQR")then parentGui.DQR:Destroy()end
-if CG and CG:FindFirstChild("DQR")then CG.DQR:Destroy()end
 if PG:FindFirstChild("DQR")then PG.DQR:Destroy()end
-local Theme={bgWindow=Color3.fromRGB(30,30,32),bgSidebar=Color3.fromRGB(24,24,26),bgTitle=Color3.fromRGB(38,38,40),bgCard=Color3.fromRGB(44,44,46),bgTrack=Color3.fromRGB(28,28,30),textPri=Color3.fromRGB(245,245,247),textSec=Color3.fromRGB(150,150,155),textHead=Color3.fromRGB(120,120,125),accent=Color3.fromRGB(10,132,255),accentHov=Color3.fromRGB(16,137,230),green=Color3.fromRGB(48,209,88),red=Color3.fromRGB(255,69,58),yellow=Color3.fromRGB(255,214,10),toggleOff=Color3.fromRGB(72,72,74),knob=Color3.fromRGB(255,255,255),font=Enum.Font.Gotham,fontBold=Enum.Font.GothamBold,R=UDim.new(0,10),Rs=UDim.new(0,8),Rp=UDim.new(1,0)}
-local function corner(o,r)local c=Instance.new("UICorner")c.CornerRadius=r or Theme.R c.Parent=o return c end
-local function stroke(o,col,t)local s=Instance.new("UIStroke")s.Color=col or Color3.fromRGB(70,70,75)s.Thickness=t or 1 s.Transparency=0.5 s.Parent=o return s end
-local gui=Instance.new("ScreenGui")
-gui.Name="DQR"
-gui.ResetOnSpawn=false
-gui.IgnoreGuiInset=true
-gui.DisplayOrder=999
-gui.Parent=parentGui
-local vpSize=WS.CurrentCamera.ViewportSize
-local WIN_W=400
-local WIN_H=math.clamp(math.floor(vpSize.Y*0.85),420,620)
-local win=Instance.new("Frame")
-win.Size=UDim2.fromOffset(WIN_W,WIN_H)
-win.Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2)
-win.BackgroundColor3=Theme.bgWindow
-win.BorderSizePixel=0
-win.Active=true
-win.Parent=gui
-corner(win,Theme.R)
-stroke(win,Color3.fromRGB(60,60,65),1)
-print("[DQR] PART 1 OK")
--- DQR v1.5 fixed | PART 2
-local tb=Instance.new("Frame")
-tb.Size=UDim2.new(1,0,0,32)
-tb.BackgroundColor3=Theme.bgTitle
-tb.BorderSizePixel=0
-tb.Parent=win
-corner(tb,Theme.R)
-local tbFix=Instance.new("Frame")
-tbFix.Size=UDim2.new(1,0,0,12)
-tbFix.Position=UDim2.new(0,0,1,-12)
-tbFix.BackgroundColor3=Theme.bgTitle
-tbFix.BorderSizePixel=0
-tbFix.Parent=tb
-local function dot(x,col)local d=Instance.new("TextButton")d.Text=""d.Size=UDim2.fromOffset(10,10)d.Position=UDim2.fromOffset(x,11)d.BackgroundColor3=col d.BorderSizePixel=0 d.AutoButtonColor=false d.Parent=tb corner(d,Theme.Rp)return d end
-local redBtn=dot(12,Theme.red)
-local ylwBtn=dot(28,Theme.yellow)
-local grnBtn=dot(44,Theme.green)
-local titleLbl=Instance.new("TextLabel")
-titleLbl.Text="Dungeon Quest Reborn"
-titleLbl.Font=Theme.fontBold
-titleLbl.TextSize=12
-titleLbl.TextColor3=Theme.textPri
-titleLbl.BackgroundTransparency=1
-titleLbl.Size=UDim2.new(1,-80,1,0)
-titleLbl.Position=UDim2.fromOffset(60,0)
-titleLbl.TextXAlignment=Enum.TextXAlignment.Left
-titleLbl.Parent=tb
-local sidebar=Instance.new("Frame")
-sidebar.Size=UDim2.new(0,96,1,-32)
-sidebar.Position=UDim2.fromOffset(0,32)
-sidebar.BackgroundColor3=Theme.bgSidebar
-sidebar.BorderSizePixel=0
-sidebar.Parent=win
-local sbPad=Instance.new("UIPadding")
-sbPad.PaddingTop=UDim.new(0,10)
-sbPad.PaddingLeft=UDim.new(0,6)
-sbPad.PaddingRight=UDim.new(0,6)
-sbPad.Parent=sidebar
-local sbList=Instance.new("UIListLayout")
-sbList.Padding=UDim.new(0,4)
-sbList.SortOrder=Enum.SortOrder.LayoutOrder
-sbList.Parent=sidebar
-local verLbl=Instance.new("TextLabel")
-verLbl.Text="v1.5"
-verLbl.Font=Theme.font
-verLbl.TextSize=10
-verLbl.TextColor3=Theme.textSec
-verLbl.BackgroundTransparency=1
-verLbl.Size=UDim2.new(1,-12,0,20)
-verLbl.Position=UDim2.new(0,6,1,-26)
-verLbl.TextXAlignment=Enum.TextXAlignment.Left
-verLbl.Parent=sidebar
-local content=Instance.new("Frame")
-content.Size=UDim2.new(1,-96,1,-32)
-content.Position=UDim2.fromOffset(96,32)
-content.BackgroundTransparency=1
-content.Parent=win
-local tabs={}
-local pages={}
-local current=nil
-local function switchTab(name)
-    if current==name then return end
-    current=name
-    for n,page in pairs(pages)do page.Visible=(n==name)end
-    for n,t in pairs(tabs)do
-        local on=(n==name)
-        T:Create(t.bg,TweenInfo.new(0.2),{BackgroundColor3=on and Theme.accent or Theme.bgSidebar}):Play()
-        T:Create(t.lbl,TweenInfo.new(0.2),{TextColor3=on and Theme.textPri or Theme.textSec}):Play()
-    end
-end
-local function addTab(name,icon,order)
-    local btn=Instance.new("TextButton")
-    btn.Text=""
-    btn.Name=name
-    btn.Size=UDim2.new(1,0,0,32)
-    btn.BackgroundColor3=Theme.bgSidebar
-    btn.BorderSizePixel=0
-    btn.AutoButtonColor=false
-    btn.LayoutOrder=order
-    btn.Parent=sidebar
-    corner(btn,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=(icon and icon.."  " or "")..name
-    lbl.Font=Theme.fontBold
-    lbl.TextSize=11
-    lbl.TextColor3=Theme.textSec
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-8,1,0)
-    lbl.Position=UDim2.fromOffset(10,0)
-    lbl.Parent=btn
-    btn.Activated:Connect(function()switchTab(name)end)
-    tabs[name]={bg=btn,lbl=lbl}
-    local page=Instance.new("ScrollingFrame")
-    page.Size=UDim2.fromScale(1,1)
-    page.BackgroundTransparency=1
-    page.BorderSizePixel=0
-    page.ScrollBarThickness=3
-    page.ScrollBarImageColor3=Theme.textSec
-    page.CanvasSize=UDim2.new(0,0,0,0)
-    page.AutomaticCanvasSize=Enum.AutomaticSize.Y
-    page.Visible=false
-    page.Parent=content
-    local pad=Instance.new("UIPadding")
-    pad.PaddingTop=UDim.new(0,12)
-    pad.PaddingLeft=UDim.new(0,12)
-    pad.PaddingRight=UDim.new(0,12)
-    pad.PaddingBottom=UDim.new(0,12)
-    pad.Parent=page
-    local list=Instance.new("UIListLayout")
-    list.Padding=UDim.new(0,6)
-    list.SortOrder=Enum.SortOrder.LayoutOrder
-    list.Parent=page
-    pages[name]=page
-    return page
-end
-local order={}
-local function nextOrder(parent)order[parent]=(order[parent]or 0)+1 return order[parent]end
-local Comp={}
-function Comp.section(parent,text)
-    local s=Instance.new("TextLabel")
-    s.Text=string.upper(text)
-    s.Font=Theme.fontBold
-    s.TextSize=10
-    s.TextColor3=Theme.textHead
-    s.TextXAlignment=Enum.TextXAlignment.Left
-    s.BackgroundTransparency=1
-    s.Size=UDim2.new(1,0,0,18)
-    s.LayoutOrder=nextOrder(parent)
-    s.Parent=parent
-end
-print("[DQR] PART 2 OK")
--- DQR v1.5 fixed | PART 3
-function Comp.toggle(parent,name,key,default,callback)
-    local card=Instance.new("Frame")
-    card.Size=UDim2.new(1,-4,0,36)
-    card.BackgroundColor3=Theme.bgCard
-    card.BorderSizePixel=0
-    card.LayoutOrder=nextOrder(parent)
-    card.Parent=parent
-    corner(card,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=name
-    lbl.Font=Theme.font
-    lbl.TextSize=12
-    lbl.TextColor3=Theme.textPri
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-60,1,0)
-    lbl.Position=UDim2.fromOffset(12,0)
-    lbl.Parent=card
-    local track=Instance.new("TextButton")
-    track.Text=""
-    track.Size=UDim2.fromOffset(40,22)
-    track.Position=UDim2.new(1,-52,0.5,-11)
-    track.BackgroundColor3=default and Theme.green or Theme.toggleOff
-    track.BorderSizePixel=0
-    track.AutoButtonColor=false
-    track.Active=true
-    track.ZIndex=5
-    track.Parent=card
-    corner(track,Theme.Rp)
-    local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(18,18)
-    knob.Position=default and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)
-    knob.BackgroundColor3=Theme.knob
-    knob.BorderSizePixel=0
-    knob.ZIndex=6
-    knob.Parent=track
-    corner(knob,Theme.Rp)
-    local state=default or false
-    local lastClick=0
-    local function doToggle()
-        local now=tick()
-        if now-lastClick<0.2 then return end
-        lastClick=now
-        state=not state
-        T:Create(track,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{BackgroundColor3=state and Theme.green or Theme.toggleOff}):Play()
-        T:Create(knob,TweenInfo.new(0.25,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),{Position=state and UDim2.fromOffset(20,2)or UDim2.fromOffset(2,2)}):Play()
-        if callback then pcall(callback,state)end
-    end
-    track.InputBegan:Connect(function(input)if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then doToggle()end end)
-end
-function Comp.slider(parent,name,key,min,max,step,default,callback)
-    local card=Instance.new("Frame")
-    card.Size=UDim2.new(1,-4,0,48)
-    card.BackgroundColor3=Theme.bgCard
-    card.BorderSizePixel=0
-    card.LayoutOrder=nextOrder(parent)
-    card.Parent=parent
-    corner(card,Theme.Rs)
-    local lbl=Instance.new("TextLabel")
-    lbl.Text=name.."   "..default
-    lbl.Font=Theme.font
-    lbl.TextSize=11
-    lbl.TextColor3=Theme.textPri
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.BackgroundTransparency=1
-    lbl.Size=UDim2.new(1,-16,0,16)
-    lbl.Position=UDim2.fromOffset(12,6)
-    lbl.Parent=card
-    local track=Instance.new("TextButton")
-    track.Text=""
-    track.Size=UDim2.new(1,-24,0,8)
-    track.Position=UDim2.new(0,12,1,-18)
-    track.BackgroundColor3=Theme.bgTrack
-    track.BorderSizePixel=0
-    track.AutoButtonColor=false
-    track.Active=true
-    track.Parent=card
-    corner(track,Theme.Rp)
-    local ratio0=(default-min)/(max-min)
-    local fill=Instance.new("Frame")
-    fill.Size=UDim2.new(ratio0,0,1,0)
-    fill.BackgroundColor3=Theme.knob
-    fill.BorderSizePixel=0
-    fill.Parent=track
-    corner(fill,Theme.Rp)
-    local knob=Instance.new("Frame")
-    knob.Size=UDim2.fromOffset(16,16)
-    knob.AnchorPoint=Vector2.new(0.5,0.5)
-    knob.Position=UDim2.new(ratio0,0,0.5,0)
-    knob.BackgroundColor3=Theme.knob
-    knob.BorderSizePixel=0
-    knob.Parent=track
-    corner(knob,Theme.Rp)
-    local value=default
-    local dragging=false
-    local function update(absX)
-        local abs=track.AbsolutePosition.X
-        local w=track.AbsoluteSize.X
-        if w<=0 then return end
-        local r=math.clamp((absX-abs)/w,0,1)
-        local raw=min+r*(max-min)
-        local stepped=math.floor(raw/step+0.5)*step
-        stepped=math.clamp(stepped,min,max)
-        value=stepped
-        lbl.Text=name.."   "..stepped
-        local nr=(stepped-min)/(max-min)
-        fill.Size=UDim2.new(nr,0,1,0)
-        knob.Position=UDim2.new(nr,0,0.5,0)
-        if callback then pcall(callback,stepped)end
-    end
-    track.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true update(UIS:GetMouseLocation().X)end end)
-    UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then update(UIS:GetMouseLocation().X)end end)
-    UIS.InputEnded:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
-end
-local dragging,dragStart,startPos
-tb.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=true dragStart=i.Position startPos=win.Position end end)
-UIS.InputChanged:Connect(function(i)if dragging and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then local d=i.Position-dragStart win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)end end)
-UIS.InputEnded:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
+local Theme={bgWindow=Color3.fromRGB(30,30,32),bgSidebar=Color3.fromRGB(24,24,26),bgTitle=Color3.fromRGB(38,38,40),bgCard=Color3.fromRGB(44,44,46),bgTrack=Color3.fromRGB(28,28,30),textPri=Color3.fromRGB(245,245,247),textSec=Color3.fromRGB(150,150,155),textHead=Color3.fromRGB(120,120,125),accent=Color3.fromRGB(10,132,255),green=Color3.fromRGB(48,209,88),red=Color3.fromRGB(255,69,58),yellow=Color3.fromRGB(255,214,10),toggleOff=Color3.fromRGB(72,72,74),knob=Color3.fromRGB(255,255,255),font=Enum.Font.Gotham,fontBold=Enum.Font.GothamBold}
+local function corner(o,r)local c=Instance.new("UICorner")c.CornerRadius=UDim.new(0,r or 10)c.Parent=o end
+local gui=Instance.new("ScreenGui")gui.Name="DQR"gui.ResetOnSpawn=false gui.IgnoreGuiInset=true gui.DisplayOrder=999 gui.Parent=PG
+local intro=Instance.new("Frame")intro.Size=UDim2.fromScale(1,1)intro.BackgroundColor3=Color3.fromRGB(12,12,16)intro.BorderSizePixel=0 intro.Parent=gui
+local box=Instance.new("Frame")box.Size=UDim2.fromOffset(280,100)box.Position=UDim2.new(0.5,-140,0.5,-50)box.BackgroundColor3=Theme.bgWindow box.BorderSizePixel=0 box.Parent=intro corner(box,12)
+local lt=Instance.new("TextLabel")lt.Text="Pall Lua Loaded"lt.Font=Theme.fontBold lt.TextSize=17 lt.TextColor3=Theme.textPri lt.BackgroundTransparency=1 lt.Size=UDim2.new(1,-20,0,30)lt.Position=UDim2.fromOffset(10,14)lt.Parent=box
+local pct=Instance.new("TextLabel")pct.Text="0%"pct.Font=Theme.font pct.TextSize=12 pct.TextColor3=Theme.textSec pct.BackgroundTransparency=1 pct.Size=UDim2.new(1,-20,0,18)pct.Position=UDim2.fromOffset(10,46)pct.TextXAlignment=Enum.TextXAlignment.Right pct.Parent=box
+local tr=Instance.new("Frame")tr.Size=UDim2.new(1,-24,0,8)tr.Position=UDim2.fromOffset(12,74)tr.BackgroundColor3=Theme.bgTrack tr.BorderSizePixel=0 tr.Parent=box corner(tr,4)
+local fl=Instance.new("Frame")fl.Size=UDim2.new(0,0,1,0)fl.BackgroundColor3=Theme.accent fl.BorderSizePixel=0 fl.Parent=tr corner(fl,4)
+for i=1,100 do fl.Size=UDim2.new(i/100,0,1,0)pct.Text=i.."%" task.wait(0.08)end
+pct.Text="100%  Completed" task.wait(0.45)
+TS:Create(intro,TweenInfo.new(0.4),{BackgroundTransparency=1}):Play()
+TS:Create(box,TweenInfo.new(0.4),{BackgroundTransparency=1}):Play()
+task.wait(0.5)intro:Destroy()
+_G.DQR={gui=gui,Theme=Theme,corner=corner,TS=TS,UIS=UIS,LP=LP,PG=PG}
+print("[DQR] PART 1 OK · intro selesai")
+local D=_G.DQR if not D then warn("PART 1 dulu")return end
+local RS=game:GetService("ReplicatedStorage")
+local WS=game:GetService("Workspace")
+local RunService=game:GetService("RunService")
+local PFS=game:GetService("PathfindingService")
+local VIM=game:GetService("VirtualInputManager")
+local Players=game:GetService("Players")
+local CFG={autoFarm=false,autoSwing=false,walkFlow=false,noClip=false,autoDodge=false,autoSkill=false,autoDungeon=false,swingDelay=0.08,tweenSpeed=16,dodgeRange=12}
+D.CFG=CFG
 local char,hrp,hum
-local cur=nil
-local function refreshChar()char=LP.Character or LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
-refreshChar()
-LP.CharacterAdded:Connect(function()task.wait(1)refreshChar()end)
-local function inDungeon()local v=WS:FindFirstChild("dungeonStarted")return v and v:IsA("BoolValue")and v.Value end
-local function getWave()local v=WS:FindFirstChild("currentWave")return v and v.Value or 0 end
-local function isEnemy(m)
-    if not m or not m:IsA("Model")then return false end
-    if m==char then return false end
-    local h=m:FindFirstChildOfClass("Humanoid")
-    if not h or h.Health<=0 then return false end
-    if Players:GetPlayerFromCharacter(m)then return false end
-    if not m:FindFirstChild("HumanoidRootPart")then return false end
-    return true
-end
-local function getEnemies()
-    local l={}
-    for _,v in ipairs(WS:GetDescendants())do
-        if isEnemy(v)then
-            local hE=v:FindFirstChild("HumanoidRootPart")
-            if hE then table.insert(l,v)end
-        end
-    end
-    return l
-end
-local function getNearestEnemy()
-    if not hrp then return nil end
-    local best,dist=nil,math.huge
-    for _,e in ipairs(getEnemies())do
-        local hE=e:FindFirstChild("HumanoidRootPart")
-        if hE then
-            local d=(hE.Position-hrp.Position).Magnitude
-            if d<dist then dist=d best=e end
-        end
-    end
-    cur=best
-    return best
-end
-local function autoEquip()
-    if not char then return end
-    local h=char:FindFirstChildOfClass("Humanoid")
-    if not h then return end
-    for _,t in ipairs(char:GetChildren())do if t:IsA("Tool")then return end end
-    local bp=LP:FindFirstChild("Backpack")
-    if not bp then return end
-    for _,t in ipairs(bp:GetChildren())do
-        if t:IsA("Tool")then pcall(function()h:EquipTool(t)end)return end
-    end
-end
-local function isBossPhase()
-    local d=WS:FindFirstChild("dungeon")
-    if d then
-        local bR=d:FindFirstChild("bossRoom")
-        if bR then
-            local f=bR:FindFirstChild("fightingBoss")
-            if f and f:IsA("BoolValue")and f.Value then return true end
-        end
-    end
-    for _,e in ipairs(getEnemies())do
-        local n=string.lower(e.Name)
-        if string.find(n,"boss")or string.find(n,"giant")or string.find(n,"king")or string.find(n,"queen")then return true end
-    end
-    return false
-end
-print("[DQR] PART 3 OK")
--- DQR v1.5 fixed | PART 4
-local Feat={}
-Feat.threads={}
-local function stopFeat(name)if Feat.threads[name]then pcall(task.cancel,Feat.threads[name])Feat.threads[name]=nil end end
-local function startFeat(name,fn)stopFeat(name)Feat.threads[name]=task.spawn(fn)end
-Feat.AutoDungeon=function()
-    while true do
-        if not inDungeon()then
-            local rm=RS:FindFirstChild("remotes")
-            if rm then
-                local cv=rm:FindFirstChild("changeStartValue")
-                if cv then pcall(function()cv:FireServer("Desert Temple")end)end
-                task.wait(0.5)
-                local sd=rm:FindFirstChild("startDungeon")
-                if sd then pcall(function()sd:FireServer()end)end
-                task.wait(2)
-                if not inDungeon()then
-                    local rp=rm:FindFirstChild("replayDungeon")
-                    if rp then pcall(function()rp:FireServer()end)end
-                end
-            end
-            task.wait(5)
-        else task.wait(2)end
-    end
-end
-Feat.WalkFlow=function()
-    local path=PFS:CreatePath({AgentRadius=2.5,AgentHeight=5,AgentCanJump=true,AgentCanClimb=true,WaypointSpacing=4})
-    local waypoints={}
-    local currentWP=1
-    local lastTargetPos=nil
-    local lastComputeTime=0
-    local stuckCounter=0
-    local lastPos=nil
-    local function computePath(targetPos)
-        local ok=pcall(function()path:ComputeAsync(hrp.Position,targetPos)end)
-        if not ok then return false end
-        if path.Status==Enum.PathStatus.Success then waypoints=path:GetWaypoints()currentWP=2 return true end
-        return false
-    end
-    local RunService=game:GetService("RunService")
-    local lv=hrp:FindFirstChild("DQR_WalkLV")
-    if not lv then
-        lv=Instance.new("LinearVelocity")
-        lv.Name="DQR_WalkLV"
-        lv.MaxForce=math.huge
-        lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Line
-        lv.LineDirection=Vector3.new(1,0,0)
-        lv.LineVelocity=0
-        lv.Parent=hrp
-    end
-    local speed=20
-    local conn=RunService.Heartbeat:Connect(function()
-        if not hrp or not hrp.Parent then return end
-        local target=getNearestEnemy()
-        if not target then lv.LineVelocity=0 return end
-        local tHrp=target:FindFirstChild("HumanoidRootPart")
-        if not tHrp then lv.LineVelocity=0 return end
-        local targetPos=tHrp.Position
-        local dist=(targetPos-hrp.Position).Magnitude
-        local now=tick()
-        local needRecompute=(#waypoints==0)or(lastTargetPos and(targetPos-lastTargetPos).Magnitude>8)or(now-lastComputeTime>1.5)
-        if needRecompute and dist>5 then computePath(targetPos)lastTargetPos=targetPos lastComputeTime=now end
-        local goal
-        if #waypoints>0 and currentWP<=#waypoints then
-            local wp=waypoints[currentWP]
-            if wp.Action==Enum.PathWaypointAction.Jump then pcall(function()hum:ChangeState(Enum.HumanoidStateType.Jumping)end)end
-            goal=wp.Position
-            if (wp.Position-hrp.Position).Magnitude<3 then currentWP=currentWP+1 end
-        else
-            goal=targetPos
-        end
-        if not goal then lv.LineVelocity=0 return end
-        local dir=goal-hrp.Position
-        dir=Vector3.new(dir.X,0,dir.Z)
-        if dir.Magnitude<0.1 then lv.LineVelocity=0 return end
-        dir=dir.Unit
-        lv.LineDirection=dir
-        lv.LineVelocity=speed
-        if lastPos then
-            if (hrp.Position-lastPos).Magnitude<0.5 then
-                stuckCounter=stuckCounter+1
-                if stuckCounter>10 then waypoints={} currentWP=1 lastTargetPos=nil stuckCounter=0 end
-            else stuckCounter=0 end
-        end
-        lastPos=hrp.Position
-    end)
-    while true do task.wait(1)end
-end
-Feat.AutoSwing=function()
-    while true do
-        if char and hum and hum.Health>0 then
-            autoEquip()
-            for _,tool in ipairs(char:GetChildren())do
-                if tool:IsA("Tool")then pcall(function()tool:Activate()end)end
-            end
-            pcall(function()
-                local cam=WS.CurrentCamera
-                if not cam then return end
-                local cx=cam.ViewportSize.X/2
-                local cy=cam.ViewportSize.Y/2
-                VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)
-                task.wait(0.01)
-                VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)
-            end)
-            task.wait(_G.DQR_SwingDelay or 0.08)
-        else task.wait(0.5)end
-    end
-end
-Feat.AutoSkill=function()
-    local lastQ,lastE=0,0
-    while true do
-        if char and hum and hum.Health>0 then
-            local now=tick()
-            if now-lastQ>=(_G.DQR_SkillQDelay or 1.5)then
-                pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.Q,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.Q,false,game)end)
-                lastQ=now
-            end
-            if now-lastE>=(_G.DQR_SkillEDelay or 1.5)then
-                pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.E,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.E,false,game)end)
-                lastE=now
-            end
-            task.wait(0.1)
-        else task.wait(0.5)end
-    end
-end
-Feat.AutoHeal=function()
-    local lastHeal,lastHP,lastDamage=0,0,0
-    local lastChar=nil
-    while true do
-        if char\~=lastChar then lastChar=char lastHeal=tick()lastHP=0 end
-        if hum and hum.Parent and hum.Health>0 then
-            local now=hum.Health
-            if now<lastHP-5 then lastDamage=tick()end
-            lastHP=now
-            if tick()-lastHeal>=(_G.DQR_HealInterval or 5)and tick()-lastDamage>=2 then
-                if now<hum.MaxHealth then pcall(function()hum.Health=math.min(now+(_G.DQR_HealAmount or 500),hum.MaxHealth)end)end
-                lastHeal=tick()
-            end
-        end
-        task.wait(0.2)
-    end
-end
-Feat.FreezeNPC=function()
-    local frozen={}
-    while true do
-        for _,m in ipairs(getEnemies())do
-            local h=m:FindFirstChildOfClass("Humanoid")
-            local hE=m:FindFirstChild("HumanoidRootPart")
-            if h then
-                if not frozen[h]then frozen[h]={walk=h.WalkSpeed,jump=h.JumpPower,jheight=h.JumpHeight}end
-                pcall(function()h.WalkSpeed=0 h.JumpPower=0 h.JumpHeight=0 end)
-                if hE then pcall(function()hE.Anchored=true end)end
-            end
-        end
-        for h,_ in pairs(frozen)do if not h.Parent then frozen[h]=nil end end
-        task.wait(0.4)
-    end
-end
-Feat.NoClip=function()
-    while true do
-        if char then
-            for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end end
-        end
-        task.wait(0.2)
-    end
-end
-Feat.AutoDodge=function()
-    local lastDodge=0
-    while true do
-        if hrp and hum and hum.Health>0 and char then
-            local now=tick()
-            local range=isBossPhase()and 15 or(_G.DQR_DodgeRange or 10)
-            local speed=_G.DQR_DodgeSpeed or 12
-            local cooldown=math.max(0.3,6/speed)
-            if now-lastDodge>=cooldown then
-                for _,m in ipairs(getEnemies())do
-                    local root=m:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local dist=(root.Position-hrp.Position).Magnitude
-                        if dist<range then
-                            local away=hrp.Position-root.Position
-                            if away.Magnitude<0.01 then away=Vector3.new(1,0,0)else away=away.Unit end
-                            local tp=hrp.Position+away*(speed*1.2)
-                            T:Create(hrp,TweenInfo.new(0.22,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{CFrame=CFrame.new(tp)}):Play()
-                            lastDodge=now
-                            break
-                        end
-                    end
-                end
-            end
-        end
-        task.wait(0.05)
-    end
-end
-Feat.ESPLines=function()
-    local espCache={}
-    local ESP_OK=pcall(function()local d=Drawing.new("Line")d:Remove()end)
-    if not ESP_OK then print("[DQR] Drawing gak support")return end
-    while true do
-        if char and hrp and WS.CurrentCamera then
-            local enemies=getEnemies()
-            local seen={}
-            for _,m in ipairs(enemies)do
-                seen[m]=true
-                if not espCache[m]then
-                    local l=Drawing.new("Line")
-                    l.Visible=false
-                    l.Color=Color3.fromRGB(255,60,60)
-                    l.Thickness=1.5
-                    l.Transparency=0.85
-                    espCache[m]=l
-                end
-            end
-            for m,line in pairs(espCache)do
-                if not seen[m]or not m.Parent then pcall(function()line:Remove()end)espCache[m]=nil end
-            end
-            local cam=WS.CurrentCamera
-            local ss=cam.ViewportSize
-            local bc=Vector2.new(ss.X/2,ss.Y)
-            local espRange=_G.DQR_ESPRange or 800
-            for m,line in pairs(espCache)do
-                local hE=m:FindFirstChild("HumanoidRootPart")
-                if hE and hrp then
-                    local dist=(hE.Position-hrp.Position).Magnitude
-                    if dist<=espRange then
-                        local sp,onScreen=cam:WorldToViewportPoint(hE.Position)
-                        if onScreen then
-                            line.From=bc
-                            line.To=Vector2.new(sp.X,sp.Y)
-                            if m==cur then line.Color=Color3.fromRGB(255,220,0)line.Thickness=2.5 else line.Color=Color3.fromRGB(255,60,60)line.Thickness=1.5 end
-                            line.Visible=true
-                        else line.Visible=false end
-                    else line.Visible=false end
-                else line.Visible=false end
-            end
-        else task.wait(0.5)end
-        task.wait(0.03)
-    end
-end
-print("[DQR] PART 4 OK")
--- DQR v1.5 fixed | PART 5
-local auto=addTab("Auto","A",1)
-local combat=addTab("Combat","C",2)
-local visual=addTab("Visual","V",3)
-local misc=addTab("Misc","M",4)
-local settings=addTab("Settings","S",5)
-Comp.section(auto,"Automation")
-Comp.toggle(auto,"Auto Dungeon","autoDungeon",false,function(v)if v then startFeat("AutoDungeon",Feat.AutoDungeon)else stopFeat("AutoDungeon")end end)
-Comp.toggle(auto,"Walk Flow (Path)","walkFlow",false,function(v)if v then startFeat("WalkFlow",Feat.WalkFlow)else stopFeat("WalkFlow")end end)
-Comp.toggle(auto,"Auto Swing","autoSwing",false,function(v)if v then startFeat("AutoSwing",Feat.AutoSwing)else stopFeat("AutoSwing")end end)
-Comp.section(auto,"Timing")
-Comp.slider(auto,"swing_delay","swingDelay",0.02,1,0.02,0.08,function(v)_G.DQR_SwingDelay=v end)
-Comp.section(auto,"Utility")
-Comp.toggle(auto,"No Clip","noClip",false,function(v)if v then startFeat("NoClip",Feat.NoClip)else stopFeat("NoClip")end end)
-Comp.toggle(auto,"Freeze NPC","freezeNPC",false,function(v)if v then startFeat("FreezeNPC",Feat.FreezeNPC)else stopFeat("FreezeNPC")end end)
-Comp.section(combat,"Auto Skill")
-Comp.toggle(combat,"Auto Skill Q/E","autoSkill",false,function(v)if v then startFeat("AutoSkill",Feat.AutoSkill)else stopFeat("AutoSkill")end end)
-Comp.slider(combat,"skill_q_delay","skillQDelay",0.2,10,0.1,1.5,function(v)_G.DQR_SkillQDelay=v end)
-Comp.slider(combat,"skill_e_delay","skillEDelay",0.2,10,0.1,1.5,function(v)_G.DQR_SkillEDelay=v end)
-Comp.section(combat,"Healing")
-Comp.toggle(combat,"Auto Heal","autoHeal",false,function(v)if v then startFeat("AutoHeal",Feat.AutoHeal)else stopFeat("AutoHeal")end end)
-Comp.slider(combat,"heal_amount","healAmount",50,1000,50,500,function(v)_G.DQR_HealAmount=v end)
-Comp.slider(combat,"heal_interval","healInterval",2,30,1,5,function(v)_G.DQR_HealInterval=v end)
-Comp.section(combat,"Dodge")
-Comp.toggle(combat,"Auto Dodge","autoDodge",false,function(v)if v then startFeat("AutoDodge",Feat.AutoDodge)else stopFeat("AutoDodge")end end)
-Comp.slider(combat,"dodge_range","dodgeRange",5,40,1,10,function(v)_G.DQR_DodgeRange=v end)
-Comp.slider(combat,"dodge_speed","dodgeSpeed",4,20,1,12,function(v)_G.DQR_DodgeSpeed=v end)
-Comp.section(visual,"ESP")
-Comp.toggle(visual,"ESP Lines","espLines",false,function(v)if v then startFeat("ESPLines",Feat.ESPLines)else stopFeat("ESPLines")end end)
-Comp.slider(visual,"esp_range","espRange",50,2000,50,800,function(v)_G.DQR_ESPRange=v end)
-Comp.section(misc,"Utility")
-Comp.toggle(misc,"Anti AFK","antiAfk",false,function(v)
-    if v then
-        _G.DQR_AntiAFK=true
-        task.spawn(function()
-            while _G.DQR_AntiAFK do
-                pcall(function()
-                    local vu=game:GetService("VirtualUser")
-                    vu:CaptureController()
-                    vu:ClickButton2(Vector2.new())
-                end)
-                task.wait(30)
-            end
-        end)
-    else _G.DQR_AntiAFK=false end
+local function refresh()char=D.LP.Character or D.LP.CharacterAdded:Wait()hrp=char:WaitForChild("HumanoidRootPart",5)hum=char:WaitForChild("Humanoid",5)end
+refresh()D.LP.CharacterAdded:Connect(function()task.wait(0.6)refresh()end)
+local function isEnemy(m)if not m or not m:IsA("Model")or m==char then return false end local h=m:FindFirstChildOfClass("Humanoid")if not h or h.Health<=0 then return false end if Players:GetPlayerFromCharacter(m)then return false end if not m:FindFirstChild("HumanoidRootPart")then return false end return true end
+local function getEnemies()local t={}for _,v in ipairs(WS:GetDescendants())do if isEnemy(v)then table.insert(t,v)end end return t end
+local function getNearest()if not hrp then return nil end local best,dist=nil,math.huge for _,e in ipairs(getEnemies())do local r=e:FindFirstChild("HumanoidRootPart")if r then local d=(r.Position-hrp.Position).Magnitude if d<dist then dist=d best=e end end end return best end
+local function autoEquip()if not char or not hum then return end for _,t in ipairs(char:GetChildren())do if t:IsA("Tool")then return end end local bp=D.LP:FindFirstChild("Backpack")if not bp then return end for _,t in ipairs(bp:GetChildren())do if t:IsA("Tool")then pcall(function()hum:EquipTool(t)end)return end end end
+local threads={}
+local function stop(n)if threads[n]then pcall(task.cancel,threads[n])threads[n]=nil end end
+local function start(n,fn)stop(n)threads[n]=task.spawn(fn)end
+D.getNearest=getNearest D.autoEquip=autoEquip D.start=start D.stop=stop D.threads=threads
+D.FeatSwing=function()while true do if CFG.autoSwing and char and hum and hum.Health>0 then autoEquip()for _,tool in ipairs(char:GetChildren())do if tool:IsA("Tool")then pcall(function()tool:Activate()end)end end pcall(function()local cam=WS.CurrentCamera if not cam then return end local cx,cy=cam.ViewportSize.X/2,cam.ViewportSize.Y/2 VIM:SendMouseButtonEvent(cx,cy,0,true,game,1)task.wait(0.01)VIM:SendMouseButtonEvent(cx,cy,0,false,game,1)end)task.wait(CFG.swingDelay)else task.wait(0.4)end end end
+D.FeatFarm=function()while true do if CFG.autoFarm and hrp and hum and hum.Health>0 then local t=getNearest()if t then local r=t:FindFirstChild("HumanoidRootPart")if r then local goal=r.Position+(hrp.Position-r.Position).Unit*4 local dist=(hrp.Position-goal).Magnitude local dur=math.clamp(dist/CFG.tweenSpeed,0.12,3)local tw=D.TS:Create(hrp,TweenInfo.new(dur,Enum.EasingStyle.Linear),{CFrame=CFrame.new(goal)})tw:Play()tw.Completed:Wait()end end end task.wait(0.08)end end
+D.FeatNoClip=function()while true do if CFG.noClip and char then for _,p in ipairs(char:GetDescendants())do if p:IsA("BasePart")then pcall(function()p.CanCollide=false end)end end end task.wait(0.2)end end
+D.FeatDodge=function()local last=0 while true do if CFG.autoDodge and hrp and hum and hum.Health>0 and tick()-last>=0.9 then for _,m in ipairs(getEnemies())do local r=m:FindFirstChild("HumanoidRootPart")if r and(r.Position-hrp.Position).Magnitude<CFG.dodgeRange then local away=hrp.Position-r.Position if away.Magnitude<0.1 then away=Vector3.new(1,0,0)else away=away.Unit end D.TS:Create(hrp,TweenInfo.new(0.2,Enum.EasingStyle.Quad),{CFrame=CFrame.new(hrp.Position+away*14)}):Play()last=tick()break end end end task.wait(0.05)end end
+D.FeatSkill=function()local lQ,lE=0,0 while true do if CFG.autoSkill and char and hum and hum.Health>0 then local n=tick()if n-lQ>=1.5 then pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.Q,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.Q,false,game)end)lQ=n end if n-lE>=1.5 then pcall(function()VIM:SendKeyEvent(true,Enum.KeyCode.E,false,game)task.wait(0.05)VIM:SendKeyEvent(false,Enum.KeyCode.E,false,game)end)lE=n end end task.wait(0.12)end end
+D.FeatDungeon=function()while true do if CFG.autoDungeon then local rm=RS:FindFirstChild("remotes")if rm then local sd=rm:FindFirstChild("startDungeon")or rm:FindFirstChild("replayDungeon")if sd then pcall(function()sd:FireServer()end)end end end task.wait(4)end end
+D.FeatWalk=function()
+local path=PFS:CreatePath({AgentRadius=2.5,AgentHeight=5,AgentCanJump=true,AgentCanClimb=true,WaypointSpacing=4})
+local wps,cwp,lastT,lastC,stuck,lastP={},1,nil,0,0,nil
+local lv=hrp and hrp:FindFirstChild("DQR_LV")
+if hrp and not lv then lv=Instance.new("LinearVelocity")lv.Name="DQR_LV"lv.MaxForce=math.huge lv.VelocityConstraintMode=Enum.VelocityConstraintMode.Line lv.LineDirection=Vector3.new(1,0,0)lv.LineVelocity=0 lv.Parent=hrp end
+local conn=RunService.Heartbeat:Connect(function()
+if not CFG.walkFlow or not hrp or not hrp.Parent or not hum or hum.Health<=0 then if lv then lv.LineVelocity=0 end return end
+local t=getNearest()if not t then if lv then lv.LineVelocity=0 end return end
+local th=t:FindFirstChild("HumanoidRootPart")if not th then return end
+local tp=th.Position local dist=(tp-hrp.Position).Magnitude local now=tick()
+if (#wps==0 or(lastT and(tp-lastT).Magnitude>8)or now-lastC>1.5)and dist>5 then pcall(function()path:ComputeAsync(hrp.Position,tp)end)if path.Status==Enum.PathStatus.Success then wps=path:GetWaypoints()cwp=2 lastT=tp lastC=now end end
+local goal if #wps>0 and cwp<=#wps then local wp=wps[cwp]if wp.Action==Enum.PathWaypointAction.Jump then pcall(function()hum:ChangeState(Enum.HumanoidStateType.Jumping)end)end goal=wp.Position if(wp.Position-hrp.Position).Magnitude<3 then cwp=cwp+1 end else goal=tp end
+if not goal then if lv then lv.LineVelocity=0 end return end
+local dir=Vector3.new(goal.X-hrp.Position.X,0,goal.Z-hrp.Position.Z)if dir.Magnitude<0.15 then if lv then lv.LineVelocity=0 end return end
+dir=dir.Unit if lv then lv.LineDirection=dir lv.LineVelocity=CFG.tweenSpeed end
+if lastP then if(hrp.Position-lastP).Magnitude<0.4 then stuck=stuck+1 if stuck>12 then wps={}cwp=1 lastT=nil stuck=0 end else stuck=0 end end lastP=hrp.Position
 end)
-Comp.section(settings,"Status")
-local statusLbl=Instance.new("TextLabel")
-statusLbl.Text="Loading..."
-statusLbl.Font=Theme.font
-statusLbl.TextSize=11
-statusLbl.TextColor3=Theme.textSec
-statusLbl.TextXAlignment=Enum.TextXAlignment.Left
-statusLbl.TextWrapped=true
-statusLbl.BackgroundTransparency=1
-statusLbl.Size=UDim2.new(1,-8,0,60)
-statusLbl.LayoutOrder=nextOrder(settings)
-statusLbl.Parent=settings
-task.spawn(function()
-    while true do
-        if inDungeon()then
-            statusLbl.Text=string.format("In Dungeon\nWave: %d\nEnemies: %d",getWave(),#getEnemies())
-            statusLbl.TextColor3=Theme.green
-        else
-            statusLbl.Text="Idle - Lobby"
-            statusLbl.TextColor3=Theme.textSec
-        end
-        task.wait(1)
-    end
+while CFG.walkFlow do task.wait(0.5)end conn:Disconnect()if lv then lv.LineVelocity=0 end
+end
+start("farm",D.FeatFarm)start("noclip",D.FeatNoClip)start("dodge",D.FeatDodge)start("skill",D.FeatSkill)start("dungeon",D.FeatDungeon)
+print("[DQR] PART 2 OK · fitur siap")
+local D=_G.DQR if not D or not D.CFG then warn("PART 1+2 dulu")return end
+local Theme,corner,TS,UIS,CFG=D.Theme,D.corner,D.TS,D.UIS,D.CFG
+local gui=D.gui
+local fab=Instance.new("TextButton")fab.Text="DQ"fab.Font=Theme.fontBold fab.TextSize=14 fab.TextColor3=Theme.textPri fab.BackgroundColor3=Theme.accent fab.Size=UDim2.fromOffset(48,48)fab.Position=UDim2.new(0,14,0,88)fab.Parent=gui corner(fab,24)
+local W,H=300,440
+local win=Instance.new("Frame")win.Size=UDim2.fromOffset(W,H)win.Position=UDim2.new(0.5,-W/2,0.5,-H/2)win.BackgroundColor3=Theme.bgWindow win.BorderSizePixel=0 win.Visible=true win.Active=true win.Parent=gui corner(win,12)
+local tb=Instance.new("Frame")tb.Size=UDim2.new(1,0,0,32)tb.BackgroundColor3=Theme.bgTitle tb.BorderSizePixel=0 tb.Parent=win corner(tb,12)
+local function dot(x,col)local d=Instance.new("Frame")d.Size=UDim2.fromOffset(10,10)d.Position=UDim2.fromOffset(x,11)d.BackgroundColor3=col d.BorderSizePixel=0 d.Parent=tb corner(d,5)end
+dot(10,Theme.red)dot(24,Theme.yellow)dot(38,Theme.green)
+local title=Instance.new("TextLabel")title.Text="Dungeon Quest Reborn"title.Font=Theme.fontBold title.TextSize=11 title.TextColor3=Theme.textPri title.BackgroundTransparency=1 title.Size=UDim2.new(1,-70,1,0)title.Position=UDim2.fromOffset(54,0)title.TextXAlignment=Enum.TextXAlignment.Left title.Parent=tb
+local sidebar=Instance.new("Frame")sidebar.Size=UDim2.new(0,72,1,-32)sidebar.Position=UDim2.fromOffset(0,32)sidebar.BackgroundColor3=Theme.bgSidebar sidebar.BorderSizePixel=0 sidebar.Parent=win
+local content=Instance.new("ScrollingFrame")content.Size=UDim2.new(1,-72,1,-32)content.Position=UDim2.fromOffset(72,32)content.BackgroundTransparency=1 content.BorderSizePixel=0 content.ScrollBarThickness=2 content.CanvasSize=UDim2.new(0,0,0,0)content.AutomaticCanvasSize=Enum.AutomaticSize.Y content.Parent=win
+local lay=Instance.new("UIListLayout")lay.Padding=UDim.new(0,5)lay.SortOrder=Enum.SortOrder.LayoutOrder lay.Parent=content
+local pad=Instance.new("UIPadding")pad.PaddingTop=UDim.new(0,8)pad.PaddingLeft=UDim.new(0,8)pad.PaddingRight=UDim.new(0,8)pad.PaddingBottom=UDim.new(0,8)pad.Parent=content
+local order=0 local function nextO()order=order+1 return order end
+local function section(t)local s=Instance.new("TextLabel")s.Text=string.upper(t)s.Font=Theme.fontBold s.TextSize=9 s.TextColor3=Theme.textHead s.BackgroundTransparency=1 s.Size=UDim2.new(1,0,0,16)s.TextXAlignment=Enum.TextXAlignment.Left s.LayoutOrder=nextO()s.Parent=content end
+local function makeToggle(name,key,onE,onD)
+local card=Instance.new("Frame")card.Size=UDim2.new(1,0,0,32)card.BackgroundColor3=Theme.bgCard card.BorderSizePixel=0 card.LayoutOrder=nextO()card.Parent=content corner(card,7)
+local lbl=Instance.new("TextLabel")lbl.Text=name lbl.Font=Theme.font lbl.TextSize=11 lbl.TextColor3=Theme.textPri lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(1,-50,1,0)lbl.Position=UDim2.fromOffset(10,0)lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.Parent=card
+local tr=Instance.new("TextButton")tr.Text=""tr.Size=UDim2.fromOffset(36,20)tr.Position=UDim2.new(1,-44,0.5,-10)tr.BackgroundColor3=Theme.toggleOff tr.BorderSizePixel=0 tr.AutoButtonColor=false tr.Parent=card corner(tr,10)
+local kn=Instance.new("Frame")kn.Size=UDim2.fromOffset(16,16)kn.Position=UDim2.fromOffset(2,2)kn.BackgroundColor3=Theme.knob kn.BorderSizePixel=0 kn.Parent=tr corner(kn,8)
+local st=false
+tr.MouseButton1Click:Connect(function()
+st=not st CFG[key]=st
+TS:Create(tr,TweenInfo.new(0.2),{BackgroundColor3=st and Theme.green or Theme.toggleOff}):Play()
+TS:Create(kn,TweenInfo.new(0.2),{Position=st and UDim2.fromOffset(18,2)or UDim2.fromOffset(2,2)}):Play()
+if st and onE then onE()end if not st and onD then onD()end
 end)
-_G.DQR_SwingDelay=0.08
-_G.DQR_SkillQDelay=1.5
-_G.DQR_SkillEDelay=1.5
-_G.DQR_HealAmount=500
-_G.DQR_HealInterval=5
-_G.DQR_DodgeRange=10
-_G.DQR_DodgeSpeed=12
-_G.DQR_ESPRange=800
-switchTab("Auto")
-local isOpen=true
-local isAnimating=false
-local baseSize=win.Size
-local basePos=win.Position
-local function scaledState(scale)
-    local w=baseSize.X.Offset*scale
-    local h=baseSize.Y.Offset*scale
-    local xOff=basePos.X.Offset+(baseSize.X.Offset-w)/2
-    local yOff=basePos.Y.Offset+(baseSize.Y.Offset-h)/2
-    return UDim2.fromOffset(w,h),UDim2.new(basePos.X.Scale,xOff,basePos.Y.Scale,yOff)
 end
-local function openWindow()
-    if isAnimating or isOpen then return end
-    isAnimating=true isOpen=true
-    local sSize,sPos=scaledState(0.85)
-    win.Visible=true
-    win.Size=sSize win.Position=sPos
-    win.BackgroundTransparency=1
-    task.wait()
-    local t=T:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=baseSize,Position=basePos,BackgroundTransparency=0})
-    t:Play()
-    t.Completed:Connect(function()isAnimating=false end)
+local function makeSlider(name,key,minV,maxV,step,def)
+local card=Instance.new("Frame")card.Size=UDim2.new(1,0,0,46)card.BackgroundColor3=Theme.bgCard card.BorderSizePixel=0 card.LayoutOrder=nextO()card.Parent=content corner(card,7)
+local lbl=Instance.new("TextLabel")lbl.Text=name.."  "..def lbl.Font=Theme.font lbl.TextSize=10 lbl.TextColor3=Theme.textPri lbl.BackgroundTransparency=1 lbl.Size=UDim2.new(1,-14,0,16)lbl.Position=UDim2.fromOffset(10,5)lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.Parent=card
+local tr=Instance.new("TextButton")tr.Text=""tr.Size=UDim2.new(1,-20,0,7)tr.Position=UDim2.new(0,10,1,-16)tr.BackgroundColor3=Theme.bgTrack tr.BorderSizePixel=0 tr.AutoButtonColor=false tr.Parent=card corner(tr,4)
+local ratio=(def-minV)/(maxV-minV)
+local fl=Instance.new("Frame")fl.Size=UDim2.new(ratio,0,1,0)fl.BackgroundColor3=Theme.accent fl.BorderSizePixel=0 fl.Parent=tr corner(fl,4)
+local kn=Instance.new("Frame")kn.Size=UDim2.fromOffset(14,14)kn.AnchorPoint=Vector2.new(0.5,0.5)kn.Position=UDim2.new(ratio,0,0.5,0)kn.BackgroundColor3=Theme.knob kn.BorderSizePixel=0 kn.Parent=tr corner(kn,7)
+CFG[key]=def local drag=false
+local function upd(x)local a=tr.AbsolutePosition.X local w=tr.AbsoluteSize.X if w<=0 then return end local r=math.clamp((x-a)/w,0,1)local val=math.floor((minV+r*(maxV-minV))/step+0.5)*step val=math.clamp(val,minV,maxV)local nr=(val-minV)/(maxV-minV)fl.Size=UDim2.new(nr,0,1,0)kn.Position=UDim2.new(nr,0,0.5,0)lbl.Text=name.."  "..val CFG[key]=val end
+tr.InputBegan:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true upd(UIS:GetMouseLocation().X)end end)
+UIS.InputChanged:Connect(function(i)if drag and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then upd(UIS:GetMouseLocation().X)end end)
+UIS.InputEnded:Connect(function(i)if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end end)
 end
-local function closeWindow()
-    if isAnimating or not isOpen then return end
-    isAnimating=true isOpen=false
-    local sSize,sPos=scaledState(0.85)
-    local t=T:Create(win,TweenInfo.new(0.25,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Size=sSize,Position=sPos,BackgroundTransparency=1})
-    t:Play()
-    t.Completed:Connect(function()
-        win.Visible=false
-        win.Size=baseSize win.Position=basePos
-        win.BackgroundTransparency=0
-        isAnimating=false
-    end)
-end
-local toggleBtn=Instance.new("TextButton")
-toggleBtn.Text="DQ"
-toggleBtn.Font=Theme.fontBold
-toggleBtn.TextSize=14
-toggleBtn.TextColor3=Theme.textPri
-toggleBtn.BackgroundColor3=Theme.accent
-toggleBtn.BorderSizePixel=0
-toggleBtn.Size=UDim2.fromOffset(52,52)
-toggleBtn.Position=UDim2.new(0,20,0,80)
-toggleBtn.AutoButtonColor=false
-toggleBtn.Active=true
-toggleBtn.Draggable=true
-toggleBtn.ZIndex=10
-toggleBtn.Parent=gui
-corner(toggleBtn,Theme.Rp)
-stroke(toggleBtn,Color3.fromRGB(0,0,0),1)
-local function toggleUI()
-    if isOpen then closeWindow()toggleBtn.BackgroundColor3=Color3.fromRGB(60,60,60)else openWindow()toggleBtn.BackgroundColor3=Theme.accent end
-end
-toggleBtn.MouseButton1Click:Connect(toggleUI)
-toggleBtn.Activated:Connect(toggleUI)
-redBtn.MouseButton1Click:Connect(function()if isOpen then toggleUI()end end)
-print("[DQR] v1.5 fixed loaded · AutoSwing no longer fights WalkFlow")
+local function tab(t,y,on)local b=Instance.new("TextButton")b.Text=t b.Font=Theme.fontBold b.TextSize=10 b.TextColor3=on and Theme.textPri or Theme.textSec b.BackgroundColor3=on and Theme.accent or Theme.bgSidebar b.Size=UDim2.new(1,-10,0,26)b.Position=UDim2.fromOffset(5,y)b.BorderSizePixel=0 b.AutoButtonColor=false b.Parent=sidebar corner(b,7)end
+tab("Auto",10,true)tab("Combat",42,false)tab("Visual",74,false)tab("Misc",106,false)
+section("Automation")
+makeToggle("Auto Farm","autoFarm")
+makeToggle("Walk Flow","walkFlow",function()D.start("walk",D.FeatWalk)end,function()D.stop("walk")end)
+makeToggle("Auto Swing","autoSwing",function()D.start("swing",D.FeatSwing)end,function()D.stop("swing")end)
+makeToggle("Auto Dungeon","autoDungeon")
+section("Timing")
+makeSlider("Swing Delay","swingDelay",0.02,1,0.02,0.08)
+makeSlider("Tween Speed","tweenSpeed",8,40,1,16)
+section("Combat")
+makeToggle("Auto Skill Q/E","autoSkill")
+makeToggle("Auto Dodge","autoDodge")
+section("Utility")
+makeToggle("No Clip","noClip")
+D.win=win D.fab=fab D.tb=tb
+print("[DQR] PART 3 OK · UI muncul")
+local D=_G.DQR if not D or not D.win then warn("PART 1-3 dulu")return end
+local open=true
+D.fab.MouseButton1Click:Connect(function()
+open=not open D.win.Visible=open
+D.fab.BackgroundColor3=open and D.Theme.accent or Color3.fromRGB(60,60,60)
+end)
+local drag,ds,sp
+D.tb.InputBegan:Connect(function(i)
+if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+drag=true ds=i.Position sp=D.win.Position end end)
+D.UIS.InputChanged:Connect(function(i)
+if drag and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch)then
+local d=i.Position-ds
+D.win.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)end end)
+D.UIS.InputEnded:Connect(function(i)
+if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end end)
+print("[DQR] PART 4 OK · full siap")
