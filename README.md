@@ -1,1 +1,1 @@
-# PallScriptLuaMy Head Got Burn, Somebody help me for coding this gameeee fvvkkkkk!!
+My Head Got Burn, Somebody help me for coding this gameeee fvvkkkkk!!
