@@ -1,5 +1,5 @@
 -- ============================================================
--- DQR PROJECT v1.2 (Part 1/8)
+-- DQR PROJECT v1.4 (Part 1/8)
 -- ============================================================
 local P = game:GetService("Players")
 local LP = P.LocalPlayer
@@ -8,6 +8,7 @@ local T = game:GetService("TweenService")
 local WS = game:GetService("Workspace")
 local RS = game:GetService("ReplicatedStorage")
 local VIM = game:GetService("VirtualInputManager")
+local PathfindingService = game:GetService("PathfindingService")
 local Players = P
 local CG local okCG = pcall(function() CG = game:GetService("CoreGui") end)
 local PG = LP:WaitForChild("PlayerGui")
@@ -111,7 +112,7 @@ sbList.SortOrder = Enum.SortOrder.LayoutOrder
 sbList.Parent = sidebar
 
 local verLbl = Instance.new("TextLabel")
-verLbl.Text = "v1.2"
+verLbl.Text = "v1.4"
 verLbl.Font = Theme.font
 verLbl.TextSize = 10
 verLbl.TextColor3 = Theme.textSec
@@ -255,12 +256,10 @@ function Comp.toggle(parent, name, key, default, callback)
 
     local state = default or false
     local lastClick = 0
-
     local function doToggle()
         local now = tick()
         if now - lastClick < 0.2 then return end
         lastClick = now
-
         state = not state
         T:Create(track, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             BackgroundColor3 = state and Theme.green or Theme.toggleOff
@@ -268,29 +267,18 @@ function Comp.toggle(parent, name, key, default, callback)
         T:Create(knob, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             Position = state and UDim2.fromOffset(20,2) or UDim2.fromOffset(2,2)
         }):Play()
-
         print("[Toggle]", name, "→", state and "ON" or "OFF")
-
         if callback then
             local ok, err = pcall(callback, state)
             if not ok then warn("[Toggle] Error:", err) end
         end
     end
-
     track.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            doToggle()
-        end
+        or input.UserInputType == Enum.UserInputType.Touch then doToggle() end
     end)
-    track.MouseButton1Click:Connect(function()
-        task.wait(0.05)
-        doToggle()
-    end)
-    track.Activated:Connect(function()
-        task.wait(0.1)
-        doToggle()
-    end)
+    track.MouseButton1Click:Connect(function() task.wait(0.05) doToggle() end)
+    track.Activated:Connect(function() task.wait(0.1) doToggle() end)
 end
 
 function Comp.slider(parent, name, key, min, max, step, default, callback)
@@ -487,6 +475,7 @@ local function startFeat(name, fn)
     Feat.threads[name] = task.spawn(fn)
 end
 
+-- Auto Dungeon
 Feat.AutoDungeon = function()
     while true do
         if not inDungeon() then
@@ -508,26 +497,72 @@ Feat.AutoDungeon = function()
     end
 end
 
+-- Walk Flow (Pathfinding)
 Feat.WalkFlow = function()
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2.5, AgentHeight = 5,
+        AgentCanJump = true, AgentCanClimb = true, WaypointSpacing = 4,
+    })
+    local waypoints = {} local currentWP = 1
+    local lastTargetPos = nil local lastComputeTime = 0
+    local stuckCounter = 0 local lastPos = nil
+
+    local function computePath(targetPos)
+        local ok = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
+        if not ok then return false end
+        if path.Status == Enum.PathStatus.Success then
+            waypoints = path:GetWaypoints()
+            currentWP = 2
+            return true
+        end
+        return false
+    end
+
     while true do
         if hrp and hum and hum.Health > 0 then
-            local t = getNearestEnemy()
-            if t then
-                local hE = t:FindFirstChild("HumanoidRootPart")
-                if hE then
-                    local d = (hE.Position - hrp.Position).Magnitude
-                    if d > 8 then
-                        pcall(function() hum:MoveTo(Vector3.new(hE.Position.X, hrp.Position.Y, hE.Position.Z)) end)
-                    else
-                        pcall(function() hum:MoveTo(hrp.Position) end)
+            local target = getNearestEnemy()
+            if target then
+                local tHrp = target:FindFirstChild("HumanoidRootPart")
+                if tHrp then
+                    local targetPos = tHrp.Position
+                    local dist = (targetPos - hrp.Position).Magnitude
+                    local now = tick()
+                    local needRecompute = (#waypoints == 0)
+                        or (lastTargetPos and (targetPos - lastTargetPos).Magnitude > 8)
+                        or (now - lastComputeTime > 1.5)
+                    if needRecompute and dist > 5 then
+                        computePath(targetPos)
+                        lastTargetPos = targetPos
+                        lastComputeTime = now
                     end
+                    if #waypoints > 0 and currentWP <= #waypoints then
+                        local wp = waypoints[currentWP]
+                        if wp.Action == Enum.PathWaypointAction.Jump then
+                            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                        end
+                        pcall(function() hum:MoveTo(wp.Position) end)
+                        if (wp.Position - hrp.Position).Magnitude < 3 then currentWP = currentWP + 1 end
+                    else
+                        pcall(function() hum:MoveTo(targetPos) end)
+                    end
+                    if lastPos then
+                        if (hrp.Position - lastPos).Magnitude < 0.5 then
+                            stuckCounter = stuckCounter + 1
+                            if stuckCounter > 10 then
+                                waypoints = {} currentWP = 1
+                                lastTargetPos = nil stuckCounter = 0
+                            end
+                        else stuckCounter = 0 end
+                    end
+                    lastPos = hrp.Position
                 end
-            end
+            else waypoints = {} currentWP = 1 lastTargetPos = nil end
             task.wait(0.1)
         else task.wait(0.5) end
     end
 end
 
+-- Auto Swing
 Feat.AutoSwing = function()
     while true do
         if char and hum and hum.Health > 0 then
@@ -558,25 +593,34 @@ Feat.AutoSwing = function()
     end
 end
 
+-- Auto Skill Q/E
 Feat.AutoSkill = function()
+    local lastQ = 0 local lastE = 0
     while true do
         if char and hum and hum.Health > 0 then
-            pcall(function()
-                VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-                task.wait(0.05)
-                VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-            end)
-            task.wait(_G.DQR_SkillQDelay or 1.5)
-            pcall(function()
-                VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.05)
-                VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-            end)
-            task.wait(_G.DQR_SkillEDelay or 1.5)
+            local now = tick()
+            if now - lastQ >= (_G.DQR_SkillQDelay or 1.5) then
+                pcall(function()
+                    VIM:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                    task.wait(0.05)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                end)
+                lastQ = now
+            end
+            if now - lastE >= (_G.DQR_SkillEDelay or 1.5) then
+                pcall(function()
+                    VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.05)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                end)
+                lastE = now
+            end
+            task.wait(0.1)
         else task.wait(0.5) end
     end
 end
 
+-- Auto Heal
 Feat.AutoHeal = function()
     local lastHeal = 0 local lastHP = 0 local lastDamage = 0 local lastChar = nil
     while true do
@@ -596,6 +640,7 @@ Feat.AutoHeal = function()
     end
 end
 
+-- Freeze NPC
 Feat.FreezeNPC = function()
     local frozen = {}
     while true do
@@ -613,6 +658,7 @@ Feat.FreezeNPC = function()
     end
 end
 
+-- No Clip
 Feat.NoClip = function()
     while true do
         if char then
@@ -624,6 +670,7 @@ Feat.NoClip = function()
     end
 end
 
+-- Auto Dodge
 Feat.AutoDodge = function()
     local lastDodge = 0
     while true do
@@ -655,6 +702,7 @@ Feat.AutoDodge = function()
     end
 end
 
+-- ESP Lines
 Feat.ESPLines = function()
     local espCache = {}
     local ESP_OK = pcall(function() local d = Drawing.new("Line") d:Remove() end)
@@ -708,36 +756,41 @@ Feat.ESPLines = function()
         task.wait(0.03)
     end
 end
-local farm = addTab("Farm", "📁", 1)
+-- 5 TABS
+local auto = addTab("Auto", "🤖", 1)
 local combat = addTab("Combat", "⚔", 2)
 local visual = addTab("Visual", "👁", 3)
-local settings = addTab("Settings", "⚙", 4)
+local misc = addTab("Misc", "🔧", 4)
+local settings = addTab("Settings", "⚙", 5)
 
--- FARM
-Comp.section(farm, "Automation")
-Comp.toggle(farm, "Auto Dungeon", "autoDungeon", false, function(v)
+-- ============ TAB AUTO ============
+Comp.section(auto, "Automation")
+Comp.toggle(auto, "Auto Dungeon", "autoDungeon", false, function(v)
     if v then startFeat("AutoDungeon", Feat.AutoDungeon) else stopFeat("AutoDungeon") end
 end)
-Comp.toggle(farm, "Walk Flow", "walkFlow", false, function(v)
+Comp.toggle(auto, "Walk Flow (Path)", "walkFlow", false, function(v)
     if v then startFeat("WalkFlow", Feat.WalkFlow) else stopFeat("WalkFlow") end
 end)
-Comp.toggle(farm, "Auto Swing", "autoSwing", false, function(v)
+Comp.toggle(auto, "Auto Swing", "autoSwing", false, function(v)
     if v then startFeat("AutoSwing", Feat.AutoSwing) else stopFeat("AutoSwing") end
 end)
-Comp.slider(farm, "swing_delay", "swingDelay", 0.02, 1, 0.02, 0.08, function(v)
+Comp.toggle(auto, "Auto Collect", "autoCollect", false, function(v) end)
+
+Comp.section(auto, "Timing")
+Comp.slider(auto, "swing_delay", "swingDelay", 0.02, 1, 0.02, 0.08, function(v)
     _G.DQR_SwingDelay = v
 end)
 
-Comp.section(farm, "Utility")
-Comp.toggle(farm, "No Clip", "noClip", false, function(v)
+Comp.section(auto, "Utility")
+Comp.toggle(auto, "No Clip", "noClip", false, function(v)
     if v then startFeat("NoClip", Feat.NoClip) else stopFeat("NoClip") end
 end)
-Comp.toggle(farm, "Freeze NPC", "freezeNPC", false, function(v)
+Comp.toggle(auto, "Freeze NPC", "freezeNPC", false, function(v)
     if v then startFeat("FreezeNPC", Feat.FreezeNPC) else stopFeat("FreezeNPC") end
 end)
 
--- COMBAT
-Comp.section(combat, "Skills")
+-- ============ TAB COMBAT ============
+Comp.section(combat, "Auto Skill")
 Comp.toggle(combat, "Auto Skill Q/E", "autoSkill", false, function(v)
     if v then startFeat("AutoSkill", Feat.AutoSkill) else stopFeat("AutoSkill") end
 end)
@@ -770,7 +823,7 @@ Comp.slider(combat, "dodge_speed", "dodgeSpeed", 4, 20, 1, 12, function(v)
     _G.DQR_DodgeSpeed = v
 end)
 
--- VISUAL
+-- ============ TAB VISUAL ============
 Comp.section(visual, "ESP")
 Comp.toggle(visual, "ESP Lines", "espLines", false, function(v)
     if v then startFeat("ESPLines", Feat.ESPLines) else stopFeat("ESPLines") end
@@ -779,16 +832,58 @@ Comp.slider(visual, "esp_range", "espRange", 50, 2000, 50, 800, function(v)
     _G.DQR_ESPRange = v
 end)
 
-_G.DQR_SwingDelay = 0.08
-_G.DQR_SkillQDelay = 1.5
-_G.DQR_SkillEDelay = 1.5
-_G.DQR_HealAmount = 500
-_G.DQR_HealInterval = 5
-_G.DQR_DodgeRange = 10
-_G.DQR_DodgeSpeed = 12
-_G.DQR_ESPRange = 800
+local vInfo = Instance.new("TextLabel")
+vInfo.Text = "More visual features coming soon."
+vInfo.Font = Theme.font
+vInfo.TextSize = 11
+vInfo.TextColor3 = Theme.textSec
+vInfo.TextXAlignment = Enum.TextXAlignment.Left
+vInfo.TextWrapped = true
+vInfo.BackgroundTransparency = 1
+vInfo.Size = UDim2.new(1,-8,0,40)
+vInfo.Position = UDim2.fromOffset(6,0)
+vInfo.LayoutOrder = nextOrder(visual)
+vInfo.Parent = visual
 
--- SETTINGS
+-- ============ TAB MISC ============
+Comp.section(misc, "Utility")
+Comp.toggle(misc, "Anti AFK", "antiAfk", false, function(v)
+    if v then
+        task.spawn(function()
+            while _G.DQR_AntiAFK do
+                pcall(function()
+                    local vu = game:GetService("VirtualUser")
+                    vu:CaptureController()
+                    vu:ClickButton2(Vector2.new())
+                end)
+                task.wait(30)
+            end
+        end)
+        _G.DQR_AntiAFK = true
+    else
+        _G.DQR_AntiAFK = false
+    end
+end)
+Comp.toggle(misc, "Auto Rejoin", "autoRejoin", false, function(v) end)
+
+Comp.section(misc, "Hitbox")
+Comp.slider(misc, "hitbox_size", "hitboxSize", 1, 10, 0.5, 2.5, function(v) end)
+
+Comp.section(misc, "Info")
+local mInfo = Instance.new("TextLabel")
+mInfo.Text = "Misc features mostly experimental."
+mInfo.Font = Theme.font
+mInfo.TextSize = 11
+mInfo.TextColor3 = Theme.textSec
+mInfo.TextXAlignment = Enum.TextXAlignment.Left
+mInfo.TextWrapped = true
+mInfo.BackgroundTransparency = 1
+mInfo.Size = UDim2.new(1,-8,0,40)
+mInfo.Position = UDim2.fromOffset(6,0)
+mInfo.LayoutOrder = nextOrder(misc)
+mInfo.Parent = misc
+
+-- ============ TAB SETTINGS ============
 Comp.section(settings, "Status")
 local statusLbl = Instance.new("TextLabel")
 statusLbl.Text = "Loading..."
@@ -816,7 +911,17 @@ task.spawn(function()
     end
 end)
 
-switchTab("Farm")
+-- Defaults
+_G.DQR_SwingDelay = 0.08
+_G.DQR_SkillQDelay = 1.5
+_G.DQR_SkillEDelay = 1.5
+_G.DQR_HealAmount = 500
+_G.DQR_HealInterval = 5
+_G.DQR_DodgeRange = 10
+_G.DQR_DodgeSpeed = 12
+_G.DQR_ESPRange = 800
+
+switchTab("Auto")
 local isOpen = true
 local isAnimating = false
 local baseSize = win.Size
@@ -921,6 +1026,6 @@ grnBtn.MouseButton1Click:Connect(function()
     t.Completed:Connect(function() isAnimating = false end)
 end)
 
-print("[DQR] v1.2 loaded")
-print("  Toggle: InputBegan fallback active")
+print("[DQR] v1.4 loaded")
+print("  Tabs: Auto · Combat · Visual · Misc · Settings")
 print("  Fitur: 9 aktif")
