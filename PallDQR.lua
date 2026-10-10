@@ -2,9 +2,9 @@
     ═══════════════════════════════════════════════════════════
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v5.4.0 — Skills Tab Fix
-    Notes   : Tab Skills dipindah ke atas. Variable di-rename
-              biar tidak bentrok. Icon diganti.
+    Version : v5.4.1 — Indicator Shape Detection
+    Notes   : Deteksi warning indicator (beam/circle/AOE) pakai
+              shape + material. Escape mode lari keluar zona.
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -41,9 +41,12 @@ local State = {
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2, DodgeWalkSpeed = 20,
 
     DodgeBossSkill = true,
-    DangerRadius = 20,
-    AvoidStrength = 1.5,
-    DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius",
+    DangerRadius = 25,
+    AvoidStrength = 2.5,
+    EscapeMode = true,
+    EscapeSpeed = 45,
+    DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius,warning,telegraph,laser,line,aoe,cone,pulse,sigil",
+    ShowDebugNames = false,
 
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
 
@@ -58,6 +61,7 @@ local State = {
     _dodgeTarget = nil,
     _dangerAvoid = Vector3.zero,
     _dangerCount = 0,
+    _dangerEscape = false,
 
     Noclip = false, InfJump = false, AntiAFK = true,
 }
@@ -171,7 +175,7 @@ local function walkWithPath(targetPos, timeout)
 end
 
 --============================================================
--- DANGER SCANNER
+-- DANGER SCANNER v2 — SHAPE + MATERIAL DETECTION
 --============================================================
 local dangerKeywordList = {}
 local function refreshKeywords()
@@ -183,51 +187,154 @@ local function refreshKeywords()
 end
 refreshKeywords()
 
+-- Cek apakah part ini descendant dari karakter player (apapun)
+local function isPlayerOwned(part)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and part:IsDescendantOf(plr.Character) then return true end
+    end
+    return false
+end
+
+-- Cek nama di kedalaman parent (boss cast effect sering ada di folder)
+local function isInsideBoss(part)
+    local parent = part.Parent
+    local depth = 0
+    while parent and parent ~= workspace and depth < 4 do
+        if isBossModel(parent) then return true end
+        parent = parent.Parent
+        depth = depth + 1
+    end
+    return false
+end
+
+-- Deteksi part berbahaya pakai bentuk + material
 local function isDangerousPart(part)
     if not part:IsA("BasePart") then return false end
-    if LP.Character and part:IsDescendantOf(LP.Character) then return false end
-    if part.Transparency > 0.98 and part.Material ~= Enum.Material.Neon then return false end
+    if isPlayerOwned(part) then return false end
 
     local name = part.Name:lower()
+    local mat = part.Material
+    local transp = part.Transparency
+    local size = part.Size
+
+    -- Keyword explicit dulu (paling akurat)
     for _, kw in ipairs(dangerKeywordList) do
         if name:find(kw, 1, true) then return true end
     end
 
-    local parent = part.Parent
-    if parent and isBossModel(parent) then return true end
+    -- Filter: part dengan ukuran raksasa kemungkinan map, bukan hazard
+    if size.X > 400 or size.Y > 300 or size.Z > 400 then return false end
+
+    -- Material detection
+    local isNeon = (mat == Enum.Material.Neon)
+    local isForceField = (mat == Enum.Material.ForceField)
+    local isGlass = (mat == Enum.Material.Glass)
+    local isGlowing = (mat == Enum.Material.Neon or mat == Enum.Material.ForceField)
+    local isTransparent = (transp >= 0.15 and transp <= 0.95)
+    local isSemiTransparent = (transp >= 0.3 and transp <= 0.85)
+
+    -- Shape heuristic (indikator skill di lantai)
+    local flatCylinder = false
+    local thinBeam = false
+
+    -- Flat cylinder / circle (AOE zone): tebal tipis, radius agak lebar
+    if size.Y <= 1.5 and math.max(size.X, size.Z) >= 4 then
+        flatCylinder = true
+    end
+
+    -- Thin long beam: satu axis panjang, dua axis tipis
+    local maxXZ = math.max(size.X, size.Z)
+    local minXZ = math.min(size.X, size.Z)
+    if maxXZ >= 10 and minXZ <= 2.5 then
+        thinBeam = true
+    end
+
+    -- Konfigurasi deteksi:
+    -- A) Flat cylinder + (Neon / transparan) = AOE zone indicator
+    if flatCylinder and (isGlowing or isTransparent) then return true end
+
+    -- B) Thin beam + (Neon / transparan) = laser / line indicator
+    if thinBeam and (isGlowing or isTransparent) then return true end
+
+    -- C) Neon / ForceField dengan transparansi sedang, ukuran wajar = effect
+    if isGlowing and isSemiTransparent and size.Y < 80 then return true end
+
+    -- D) Bagian dari boss model (child / descendant depth 3)
+    if isInsideBoss(part) and (isGlowing or isTransparent) then return true end
+
+    -- E) Part besar yang di Workspace langsung tapi transparan Neon = cast effect
+    if part.Parent == workspace and isNeon and isTransparent then return true end
 
     return false
 end
 
+-- Debug: log nama part kalau user mau
+local loggedParts = {}
 task.spawn(function()
-    while task.wait(0.2) do
+    while task.wait(0.3) do
+        if State.ShowDebugNames then
+            local hrp = getHRP()
+            if hrp then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and not loggedParts[obj] then
+                        local d = (obj.Position - hrp.Position).Magnitude
+                        if d <= State.DangerRadius + 10 and isDangerousPart(obj) then
+                            loggedParts[obj] = true
+                            print("[PALL-HUB][Indicator] " .. obj.Name ..
+                                " | class=" .. obj.ClassName ..
+                                " | mat=" .. tostring(obj.Material) ..
+                                " | transp=" .. string.format("%.2f", obj.Transparency) ..
+                                " | size=" .. tostring(obj.Size))
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Scanner loop
+task.spawn(function()
+    while task.wait(0.15) do
         if State.AutoDodge and State.DodgeBossSkill then
             local hrp = getHRP()
             if hrp then
                 local avoid = Vector3.zero
                 local count = 0
                 local radius = State.DangerRadius
+                local escapeThreat = false
+
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if isDangerousPart(obj) then
                         local d = (obj.Position - hrp.Position).Magnitude
                         if d <= radius and d > 0.5 then
                             local strength = (radius - d) / radius
+                            -- Kalau objek ukuran besar (AOE), paksa escape
+                            local sz = obj.Size
+                            local maxSize = math.max(sz.X, sz.Y, sz.Z)
+                            if maxSize >= 8 or (obj.Material == Enum.Material.Neon and obj.Transparency < 0.7) then
+                                escapeThreat = true
+                            end
                             avoid = avoid + (hrp.Position - obj.Position).Unit * strength
                             count = count + 1
                         end
                     end
                 end
+
                 if count > 0 then
                     State._dangerAvoid = (avoid / count) * State.AvoidStrength
                     State._dangerCount = count
+                    State._dangerEscape = escapeThreat or State.EscapeMode
                 else
                     State._dangerAvoid = Vector3.zero
                     State._dangerCount = 0
+                    State._dangerEscape = false
                 end
             end
         else
             State._dangerAvoid = Vector3.zero
             State._dangerCount = 0
+            State._dangerEscape = false
         end
     end
 end)
@@ -298,7 +405,7 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv540",
+    Folder = "pallhubv541",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -311,58 +418,34 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.4.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
--- TAB 1: SKILLS (dipindah ke paling atas biar keliatan)
+-- TAB: SKILLS
 --============================================================
 local TabSkills = Window:Tab({
-    Title = "Skills",
-    Desc = "Auto Skill Q lalu E",
-    Icon = "solar:star-bold",
-    IconColor = Yellow,
-    IconShape = "Square",
-    Border = true,
+    Title = "Skills", Desc = "Auto Skill Q lalu E",
+    Icon = "solar:star-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
-
 do
-    local autoSkillSection = TabSkills:Section({
-        Title = "Auto Skill",
-        Box = true, BoxBorder = true, Opened = true,
-    })
-
-    autoSkillSection:Toggle({
-        Title = "Auto Skill",
-        Desc = "Otomatis tekan Q lalu E berulang",
-        Value = false,
-        Callback = function(v) State.AutoSkill = v end,
-    })
-    autoSkillSection:Space()
-
-    autoSkillSection:Slider({
-        Title = "Q ke E Delay", Step = 0.1,
+    local sec = TabSkills:Section({ Title = "Auto Skill", Box = true, BoxBorder = true, Opened = true })
+    sec:Toggle({ Title = "Auto Skill", Desc = "Otomatis tekan Q lalu E berulang",
+        Value = false, Callback = function(v) State.AutoSkill = v end })
+    sec:Space()
+    sec:Slider({ Title = "Q ke E Delay", Step = 0.1,
         Value = { Min = 0.1, Max = 3, Default = 0.4 },
-        Callback = function(v) State.SkillQDelay = v end,
-    })
-    autoSkillSection:Space()
-
-    autoSkillSection:Slider({
-        Title = "E ke Q Delay", Step = 0.1,
+        Callback = function(v) State.SkillQDelay = v end })
+    sec:Space()
+    sec:Slider({ Title = "E ke Q Delay", Step = 0.1,
         Value = { Min = 0.1, Max = 5, Default = 0.8 },
-        Callback = function(v) State.SkillEDelay = v end,
-    })
-    autoSkillSection:Space()
-
-    autoSkillSection:Toggle({
-        Title = "Use Remote Fallback",
-        Desc = "Pakai abilityEvent kalau key-sim gagal",
-        Value = true,
-        Callback = function(v) State.UseRemoteFallback = v end,
-    })
+        Callback = function(v) State.SkillEDelay = v end })
+    sec:Space()
+    sec:Toggle({ Title = "Use Remote Fallback", Value = true,
+        Callback = function(v) State.UseRemoteFallback = v end })
 end
 
 --============================================================
--- TAB 2: COMBAT
+-- TAB: COMBAT
 --============================================================
 local TabCombat = Window:Tab({
     Title = "Combat", Desc = "Attack dan Aggro",
@@ -392,7 +475,7 @@ do
 end
 
 --============================================================
--- TAB 3: DODGE
+-- TAB: DODGE
 --============================================================
 local TabDodge = Window:Tab({
     Title = "Dodge", Desc = "Orbit plus Boss Skill Avoidance",
@@ -400,8 +483,7 @@ local TabDodge = Window:Tab({
 })
 do
     local dodgeSection = TabDodge:Section({ Title = "Auto Dodge Orbit", Box = true, BoxBorder = true, Opened = true })
-    dodgeSection:Toggle({ Title = "Auto Dodge", Desc = "Karakter muter sambil hadap NPC",
-        Value = false, Callback = function(v) State.AutoDodge = v end })
+    dodgeSection:Toggle({ Title = "Auto Dodge", Value = false, Callback = function(v) State.AutoDodge = v end })
     dodgeSection:Space()
     dodgeSection:Slider({ Title = "Detect Range", Step = 1,
         Value = { Min = 10, Max = 100, Default = 40 },
@@ -420,16 +502,23 @@ do
         Callback = function(v) State.DodgeWalkSpeed = v end })
 
     local bossAvoidSection = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
-    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox AOE projectile boss",
+    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox / AOE / beam indicator",
         Value = true, Callback = function(v) State.DodgeBossSkill = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Slider({ Title = "Danger Radius", Step = 1,
-        Value = { Min = 5, Max = 60, Default = 20 },
+        Value = { Min = 10, Max = 80, Default = 25 },
         Callback = function(v) State.DangerRadius = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Slider({ Title = "Avoid Strength", Step = 0.1,
-        Value = { Min = 0.5, Max = 5, Default = 1.5 },
+        Value = { Min = 0.5, Max = 6, Default = 2.5 },
         Callback = function(v) State.AvoidStrength = v end })
+    bossAvoidSection:Space()
+    bossAvoidSection:Toggle({ Title = "Escape Mode", Desc = "Langsung lari keluar zona saat ada threat besar",
+        Value = true, Callback = function(v) State.EscapeMode = v end })
+    bossAvoidSection:Space()
+    bossAvoidSection:Slider({ Title = "Escape Speed", Step = 1,
+        Value = { Min = 30, Max = 80, Default = 45 },
+        Callback = function(v) State.EscapeSpeed = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Input({
         Title = "Custom Keywords",
@@ -440,10 +529,20 @@ do
             refreshKeywords()
         end,
     })
+    bossAvoidSection:Space()
+    bossAvoidSection:Toggle({
+        Title = "Debug: Log Indicator Names",
+        Desc = "Print nama part yang ke-detect ke console. Berguna buat report.",
+        Value = false,
+        Callback = function(v)
+            State.ShowDebugNames = v
+            if v then loggedParts = {} end
+        end,
+    })
 end
 
 --============================================================
--- TAB 4: CAMERA
+-- TAB: CAMERA
 --============================================================
 local TabCamera = Window:Tab({
     Title = "Camera", Desc = "Anti nunduk dan follow rotation",
@@ -488,8 +587,9 @@ do
     fixSection:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
+
 --============================================================
--- TAB 5: FACE TARGET
+-- TAB: FACE TARGET
 --============================================================
 local TabFace = Window:Tab({
     Title = "Face Target", Desc = "Rotasi karakter",
@@ -521,7 +621,7 @@ do
 end
 
 --============================================================
--- TAB 6: PLAYER
+-- TAB: PLAYER
 --============================================================
 local TabPlayer = Window:Tab({
     Title = "Player", Desc = "Noclip jump anti-afk",
@@ -603,9 +703,8 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
--- AUTO DODGE
+-- AUTO DODGE — orbit + face-lock + boss skill escape
 --============================================================
 local orbitAngle = 0
 local faceAlign = nil
@@ -656,13 +755,31 @@ task.spawn(function()
                         math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
 
+                    -- Kalau ada danger, prioritize escape
                     if State.DodgeBossSkill and State._dangerCount > 0 then
-                        orbitPos = orbitPos + State._dangerAvoid
+                        if State._dangerEscape and State.EscapeMode then
+                            -- Escape mode: lari keluar zona secepat mungkin
+                            hum.WalkSpeed = State.EscapeSpeed
+                            local escapeDir = State._dangerAvoid
+                            if escapeDir.Magnitude < 0.1 then
+                                -- Fallback: hindari dari boss
+                                local bhrp = mhrp.Position
+                                escapeDir = (hrp.Position - bhrp).Unit * 5
+                            end
+                            local escapeTarget = hrp.Position + escapeDir.Unit * 12
+                            hum:MoveTo(escapeTarget)
+                        else
+                            -- Blend mode (avoid lembut)
+                            orbitPos = orbitPos + State._dangerAvoid
+                            hum.WalkSpeed = State.DodgeWalkSpeed
+                            hum:MoveTo(orbitPos)
+                        end
+                    else
+                        hum.WalkSpeed = State.DodgeWalkSpeed
+                        hum:MoveTo(orbitPos)
                     end
 
                     hum.AutoRotate = false
-                    hum.WalkSpeed = State.DodgeWalkSpeed
-                    hum:MoveTo(orbitPos)
 
                     if faceAlign then
                         local dir = mhrp.Position - hrp.Position
@@ -727,7 +844,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- CAMERA + FACE TARGET
 --============================================================
@@ -813,9 +929,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.4.0",
-    Content = "Tab Skills dipindah ke paling atas. Cek sekarang.",
+    Title = "Pall Hub v5.4.1",
+    Content = "Indicator shape detection + Escape mode aktif.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.4.0 loaded. Skills tab at top.")
+print("[PALL-HUB] v5.4.1 loaded. Indicator detection v2.")
