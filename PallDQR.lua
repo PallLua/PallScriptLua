@@ -1,13 +1,9 @@
 --[[
-    PALL HUB — v5.1.0
-    Author : ENI (for Pall)
-    Camera Fix: lookAt ke Head, Y-clamp, collision raycast,
-                Follow Character Rotation saat orbit.
+    PALL HUB — v5.2.0
+    Fix   : Auto Dodge face-lock ke NPC (karakter muter sambil hadap)
+            Camera anti-nunduk (lookAt leveled + Y-clamp post-raycast)
 --]]
 
---============================================================
--- SERVICES
---============================================================
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local RunService          = game:GetService("RunService")
@@ -18,9 +14,6 @@ local PathfindingService  = game:GetService("PathfindingService")
 
 local LP = Players.LocalPlayer
 
---============================================================
--- LOAD WINDUI
---============================================================
 local WindUI
 local ok, result = pcall(function()
     return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
@@ -31,7 +24,6 @@ local Green  = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
 local Purple = Color3.fromHex("#7775F2")
 local Blue   = Color3.fromHex("#257AF7")
-local Red    = Color3.fromHex("#EF4F1D")
 local Grey   = Color3.fromHex("#83889E")
 
 --============================================================
@@ -48,13 +40,11 @@ local State = {
 
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
     CameraDistance = 8, CameraHeight = 3, CameraSmoothness = 0.25,
-    CameraMinHeight = 1.5,               -- clamp minimum di atas karakter
-    CameraFollowChar = false,            -- ikut muter bareng karakter
-    CameraCollision = true,              -- anti tembus dinding
+    CameraMinHeight = 1.5, CameraFollowChar = false, CameraCollision = true,
     CameraRestoreOnDeath = true,
 
     FaceMode = "Both", FacePriority = "Camera Target",
-    FaceRotationSpeed = 0.3, FaceOnlyWhenMoving = false,
+    FaceRotationSpeed = 0.35, FaceOnlyWhenMoving = false,
 
     _dodgeTarget = nil,
 
@@ -127,7 +117,6 @@ local function walkWithPath(targetPos, timeout)
     timeout = timeout or 8
     local hrp, hum = getHRP(), getHum()
     if not hrp or not hum then return end
-
     local path = PathfindingService:CreatePath({
         AgentRadius = 2, AgentHeight = 5, AgentCanJump = true,
         AgentCanClimb = false, WaypointSpacing = 4,
@@ -138,7 +127,6 @@ local function walkWithPath(targetPos, timeout)
         hum:MoveTo(targetPos)
         return
     end
-
     local waypoints = path:GetWaypoints()
     local t0 = tick()
     for _, wp in ipairs(waypoints) do
@@ -177,7 +165,6 @@ local function restoreCamera()
     if hum then hum.AutoRotate = CameraState._originalAutoRotate end
 end
 
--- Rotasi halus Y-only
 local function smoothFaceY(targetPos, speed)
     local hrp = getHRP(); if not hrp then return end
     local pos = hrp.Position
@@ -207,9 +194,9 @@ local function pickFaceTarget()
     end
 end
 
--- Anti-collision raycast (kamera nggak tembus dinding / tanah)
+-- Raycast — cuma ambil titik atas dari hit, biar kamera nggak nyemplung ke tanah
 local function getSafeCameraPos(hrp, desiredPos)
-    local rayOrigin = hrp.Position + Vector3.new(0, 1.5, 0)
+    local rayOrigin = hrp.Position + Vector3.new(0, 2, 0)
     local rayDir = desiredPos - rayOrigin
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
@@ -217,7 +204,7 @@ local function getSafeCameraPos(hrp, desiredPos)
     params.IgnoreWater = true
     local hit = workspace:Raycast(rayOrigin, rayDir, params)
     if hit then
-        local dist = math.max((hit.Position - rayOrigin).Magnitude - 0.5, 1)
+        local dist = math.max((hit.Position - rayOrigin).Magnitude - 0.8, 1)
         return rayOrigin + rayDir.Unit * dist
     end
     return desiredPos
@@ -227,21 +214,20 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall × DUNGEON QUEST REBORN",
-    Folder = "pallhubv51",
+    Folder = "pallhubv52",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
     OpenButton = {
         Title = "Open Pall Hub",
-        CornerRadius = UDim.new(1, 0),
-        StrokeThickness = 3,
+        CornerRadius = UDim.new(1, 0), StrokeThickness = 3,
         Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
         Color = ColorSequence.new(Color3.fromHex("#30FF6A"), Color3.fromHex("#e7ff2f")),
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.1.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.2.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: COMBAT
@@ -250,7 +236,6 @@ local CombatTab = Window:Tab({
     Title = "Combat", Desc = "Attack & Aggro",
     Icon = "solar:sword-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
-
 do
     local AtkSec = CombatTab:Section({ Title = "Auto Attack", Box = true, BoxBorder = true, Opened = true })
     AtkSec:Toggle({ Title = "Auto Attack", Value = false, Callback = function(v) State.AutoAttack = v end })
@@ -267,8 +252,7 @@ do
         end })
 
     local AggroSec = CombatTab:Section({ Title = "Auto Aggro", Box = true, BoxBorder = true, Opened = true })
-    AggroSec:Toggle({ Title = "Auto Aggro All", Desc = "Pathfinding — hindari wall",
-        Value = false, Callback = function(v) State.AutoAggro = v end })
+    AggroSec:Toggle({ Title = "Auto Aggro All", Value = false, Callback = function(v) State.AutoAggro = v end })
     AggroSec:Space()
     AggroSec:Slider({ Title = "Aggro Range", Step = 10,
         Value = { Min = 50, Max = 800, Default = 300 },
@@ -279,13 +263,13 @@ end
 -- TAB: DODGE
 --============================================================
 local DodgeTab = Window:Tab({
-    Title = "Dodge", Desc = "Orbit walk around NPC",
+    Title = "Dodge", Desc = "Orbit + hadap NPC",
     Icon = "solar:shield-check-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
-
 do
-    local DodgeSec = DodgeTab:Section({ Title = "Auto Dodge (Orbit)", Box = true, BoxBorder = true, Opened = true })
-    DodgeSec:Toggle({ Title = "Auto Dodge", Value = false, Callback = function(v) State.AutoDodge = v end })
+    local DodgeSec = DodgeTab:Section({ Title = "Auto Dodge (Orbit + Face)", Box = true, BoxBorder = true, Opened = true })
+    DodgeSec:Toggle({ Title = "Auto Dodge", Desc = "Karakter muter sambil hadap NPC",
+        Value = false, Callback = function(v) State.AutoDodge = v end })
     DodgeSec:Space()
     DodgeSec:Slider({ Title = "Detect Range", Step = 1,
         Value = { Min = 10, Max = 100, Default = 40 },
@@ -303,6 +287,7 @@ do
         Value = { Min = 16, Max = 60, Default = 20 },
         Callback = function(v) State.DodgeWalkSpeed = v end })
 end
+
 --============================================================
 -- TAB: SKILLS
 --============================================================
@@ -310,7 +295,6 @@ local SkillTab = Window:Tab({
     Title = "Skills", Desc = "Q dulu, lalu E",
     Icon = "solar:bolt-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
-
 do
     local SkillSec = SkillTab:Section({ Title = "Auto Skill", Box = true, BoxBorder = true, Opened = true })
     SkillSec:Toggle({ Title = "Auto Skill", Value = false, Callback = function(v) State.AutoSkill = v end })
@@ -331,10 +315,9 @@ end
 -- TAB: CAMERA
 --============================================================
 local CameraTab = Window:Tab({
-    Title = "Camera", Desc = "Kamera + anti-tembus tanah",
+    Title = "Camera", Desc = "Anti-nunduk + follow rotation",
     Icon = "solar:videocamera-record-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
-
 do
     local CamSec = CameraTab:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
     CamSec:Toggle({ Title = "Lock Camera to Target", Value = false,
@@ -360,18 +343,18 @@ do
         Value = { Min = 0.05, Max = 1, Default = 0.25 },
         Callback = function(v) State.CameraSmoothness = v end })
 
-    local FixSec = CameraTab:Section({ Title = "Anti-Kebawah Tanah", Box = true, BoxBorder = true, Opened = true })
+    local FixSec = CameraTab:Section({ Title = "Anti-Nunduk / Tanah", Box = true, BoxBorder = true, Opened = true })
     FixSec:Slider({ Title = "Min Height (clamp Y)", Step = 0.5,
-        Desc = "Kamera nggak akan lebih rendah dari ini",
-        Value = { Min = 0, Max = 8, Default = 1.5 },
+        Desc = "Naikin ke 3-4 kalau masih ke bawah",
+        Value = { Min = 0, Max = 8, Default = 2 },
         Callback = function(v) State.CameraMinHeight = v end })
     FixSec:Space()
-    FixSec:Toggle({ Title = "Anti Tembus Dinding", Desc = "Raycast biar kamera nggak nembus",
-        Value = true, Callback = function(v) State.CameraCollision = v end })
+    FixSec:Toggle({ Title = "Anti Tembus Dinding", Value = true,
+        Callback = function(v) State.CameraCollision = v end })
     FixSec:Space()
     FixSec:Toggle({ Title = "Follow Character Rotation",
-        Desc = "Kamera ikut muter bareng karakter saat orbit — matiin kalau mau kamera tetap ngunci ke NPC",
-        Value = false,
+        Desc = "Kamera ikut muter bareng karakter saat orbit",
+        Value = true,
         Callback = function(v) State.CameraFollowChar = v end })
     FixSec:Space()
     FixSec:Toggle({ Title = "Restore on Death", Value = true,
@@ -385,7 +368,6 @@ local FaceTab = Window:Tab({
     Title = "Face Target", Desc = "Rotasi karakter",
     Icon = "solar:user-speak-rounded-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
-
 do
     local FSec = FaceTab:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
     FSec:Dropdown({ Title = "Face Mode",
@@ -404,17 +386,13 @@ do
         Callback = function(v) State.FacePriority = v end })
     FSec:Space()
     FSec:Slider({ Title = "Rotasi Speed (1 = snap)", Step = 0.05,
-        Value = { Min = 0.05, Max = 1, Default = 0.3 },
+        Value = { Min = 0.05, Max = 1, Default = 0.35 },
         Callback = function(v) State.FaceRotationSpeed = v end })
     FSec:Space()
     FSec:Toggle({ Title = "Face Only When Moving", Value = false,
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
-    FSec:Space()
-    FSec:Section({
-        Title = "• Auto Dodge ON → Follow Char: ON, Priority: Dodge Target\n• Auto Aggro ON → Follow Char: OFF, Priority: Camera Target\n• Kamera normal (nggak ke bawah) → Min Height ≥ 1.5, Anti Tembus: ON",
-        TextSize = 12, TextTransparency = 0.35,
-    })
 end
+
 --============================================================
 -- TAB: PLAYER
 --============================================================
@@ -422,7 +400,6 @@ local PlayerTab = Window:Tab({
     Title = "Player", Desc = "Noclip, jump, anti-afk",
     Icon = "solar:user-bold", IconColor = Grey, IconShape = "Square", Border = true,
 })
-
 do
     local PSec = PlayerTab:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
     PSec:Toggle({ Title = "Noclip", Value = false, Callback = function(v) State.Noclip = v end })
@@ -431,10 +408,10 @@ do
     PSec:Space()
     PSec:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
+
 --============================================================
 -- LOOPS
 --============================================================
-
 task.spawn(function()
     while task.wait(60) do
         if State.AntiAFK then
@@ -446,7 +423,6 @@ task.spawn(function()
     end
 end)
 
--- Auto Attack
 local function clickOnce()
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
@@ -472,7 +448,6 @@ task.spawn(function()
     end
 end)
 
--- Auto Aggro
 task.spawn(function()
     while task.wait(0.6) do
         if State.AutoAggro then
@@ -502,10 +477,10 @@ task.spawn(function()
     end
 end)
 
--- Auto Dodge (orbit)
+-- AUTO DODGE — orbit + face-lock (Face di-handle RenderStepped utama)
 local orbitAngle = 0
 task.spawn(function()
-    while task.wait(0.08) do
+    while task.wait(0.05) do
         if State.AutoDodge then
             local mob = getNearestEnemy(State.DodgeRange)
             if mob then
@@ -513,25 +488,24 @@ task.spawn(function()
                 local mhrp = mob:FindFirstChild("HumanoidRootPart")
                 local hum = getHum()
                 if mhrp and hum then
-                    orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.08
+                    orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.05
                     local targetPos = mhrp.Position + Vector3.new(
                         math.cos(orbitAngle) * State.DodgeOrbitRadius, 0,
                         math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
+                    hum.AutoRotate = false
                     hum.WalkSpeed = State.DodgeWalkSpeed
                     hum:MoveTo(targetPos)
                 end
             else
                 State._dodgeTarget = nil
-                orbitAngle = orbitAngle + 0.5 * 0.08
+                orbitAngle = orbitAngle + 0.5 * 0.05
             end
-        else
-            State._dodgeTarget = nil
         end
     end
 end)
 
--- Auto Skill (Q → E)
+-- AUTO SKILL
 local abilityFolder = ReplicatedStorage:FindFirstChild("abilities")
 local allAbilityEvents = {}
 if abilityFolder then
@@ -574,62 +548,73 @@ task.spawn(function()
     end
 end)
 --============================================================
--- CAMERA v2 + FACE TARGET (unified)
+-- CAMERA + FACE TARGET (unified)
 --============================================================
 RunService.RenderStepped:Connect(function()
     local hrp = getHRP(); if not hrp then return end
-    local target = pickFaceTarget(); if not target then return end
+    local target = pickFaceTarget()
+    if not target then return end
     local tHRP = target:FindFirstChild("HumanoidRootPart")
-    local tHead = target:FindFirstChild("Head") or tHRP
-    if not tHRP or not tHead then return end
+    if not tHRP then return end
 
-    -- 1) LOOK AT — pakai Head, bukan kaki
-    local lookAt = tHead.Position
+    local npcPos = tHRP.Position
 
-    -- 2) Basis arah
+    -- Base direction — selalu horizontal (Y dibuang)
     local baseDir
     if State.CameraFollowChar then
         local look = hrp.CFrame.LookVector
         baseDir = Vector3.new(look.X, 0, look.Z)
-        if baseDir.Magnitude < 0.05 then baseDir = Vector3.new(0, 0, -1) end
-        baseDir = baseDir.Unit
     else
-        local diff = lookAt - hrp.Position
+        local diff = npcPos - hrp.Position
         baseDir = Vector3.new(diff.X, 0, diff.Z)
-        if baseDir.Magnitude < 0.05 then baseDir = Vector3.new(0, 0, -1) end
-        baseDir = baseDir.Unit
     end
+    if baseDir.Magnitude < 0.05 then baseDir = Vector3.new(0, 0, -1) end
+    baseDir = baseDir.Unit
 
-    -- 3) Desired camera position
+    -- Desired camera pos
     local desiredPos = hrp.Position - baseDir * State.CameraDistance
         + Vector3.new(0, State.CameraHeight, 0)
 
-    -- 4) CLAMP Y MINIMUM — ini yang bikin nggak ke bawah tanah
-    local minY = hrp.Position.Y + State.CameraMinHeight
-    desiredPos = Vector3.new(desiredPos.X, math.max(desiredPos.Y, minY), desiredPos.Z)
-
-    -- 5) Anti-collision raycast
+    -- Anti-collision
     if State.CameraCollision then
         desiredPos = getSafeCameraPos(hrp, desiredPos)
     end
 
-    -- 6) Apply camera
+    -- Y clamp TERAKHIR (setelah raycast)
+    local minY = hrp.Position.Y + State.CameraMinHeight
+    desiredPos = Vector3.new(desiredPos.X, math.max(desiredPos.Y, minY), desiredPos.Z)
+
+    -- Apply camera
     if State.CameraLock then
         local cam = workspace.CurrentCamera
         cam.CameraType = Enum.CameraType.Scriptable
-        local desiredCF = CFrame.lookAt(desiredPos, lookAt)
+        -- LookAt LEVELED — Y sama dengan camera, biar nggak nunduk
+        local lookAtLeveled = Vector3.new(npcPos.X, desiredPos.Y, npcPos.Z)
+        local desiredCF = CFrame.lookAt(desiredPos, lookAtLeveled)
         cam.CFrame = cam.CFrame:Lerp(desiredCF, State.CameraSmoothness)
     end
 
-    -- 7) Face Target
-    if State.FaceMode == "Both" or State.FaceMode == "Character Only" then
+    -- FACE TARGET
+    -- Kalau Auto Dodge ON, prioritas face ke NPC yang lagi di-orbit (dodge target)
+    local faceModeActive = (State.FaceMode == "Both" or State.FaceMode == "Character Only")
+    if State.AutoDodge and State._dodgeTarget then
+        -- Auto Dodge handle face sendiri — face lock ke NPC orbit
+        local mhrp = State._dodgeTarget:FindFirstChild("HumanoidRootPart")
+        if mhrp then
+            local hum = getHum()
+            if hum then hum.AutoRotate = false end
+            local flatLook = Vector3.new(mhrp.Position.X, hrp.Position.Y, mhrp.Position.Z)
+            local desiredCF = CFrame.new(hrp.Position, flatLook)
+            hrp.CFrame = hrp.CFrame:Lerp(desiredCF, 0.6)
+        end
+    elseif faceModeActive then
         if State.FaceOnlyWhenMoving then
             local hum = getHum()
             if hum and hum.MoveDirection.Magnitude < 0.1 then return end
         end
         local hum = getHum()
         if hum then hum.AutoRotate = false end
-        smoothFaceY(lookAt, State.FaceRotationSpeed)
+        smoothFaceY(npcPos, State.FaceRotationSpeed)
     end
 end)
 
@@ -664,14 +649,10 @@ LP.CharacterAdded:Connect(function(char)
     hum.WalkSpeed = State.WalkSpeed
 end)
 
---============================================================
--- NOTIF
---============================================================
 WindUI:Notify({
-    Title = "Pall Hub v5.1.0",
-    Content = "Kamera fix: anti-tembus tanah + follow rotation.",
-    Icon = "solar:bell-bold",
-    Duration = 6,
+    Title = "Pall Hub v5.2.0",
+    Content = "Auto Dodge face-lock + Camera anti-nunduk.",
+    Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.1.0 loaded. Camera fixed.")
+print("[PALL-HUB] v5.2.0 loaded.")
