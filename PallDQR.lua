@@ -2,7 +2,9 @@
     ═══════════════════════════════════════════════════════════
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v5.3.0 — Auto Dodge + Boss Skill Avoidance
+    Version : v5.4.0 — Skills Tab Fix
+    Notes   : Tab Skills dipindah ke atas. Variable di-rename
+              biar tidak bentrok. Icon diganti.
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -38,11 +40,10 @@ local State = {
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2, DodgeWalkSpeed = 20,
 
-    -- NEW: Boss skill avoidance
     DodgeBossSkill = true,
     DangerRadius = 20,
     AvoidStrength = 1.5,
-    DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,trap,circle,area,indicator,marker,shockwave",
+    DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius",
 
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
 
@@ -60,6 +61,25 @@ local State = {
 
     Noclip = false, InfJump = false, AntiAFK = true,
 }
+
+--============================================================
+-- BOSS KEYWORDS
+--============================================================
+local BOSS_KEYWORDS = {
+    "boss", "lord", "king", "queen", "giant", "titan", "elemental",
+    "reaper", "demon", "guardian", "warden", "champion", "warlord",
+    "dragon", "golem", "kraken", "hydra", "void", "phantom",
+}
+
+local function isBossModel(model)
+    if not model then return false end
+    local n = model.Name:lower()
+    for _, kw in ipairs(BOSS_KEYWORDS) do
+        if n:find(kw, 1, true) then return true end
+    end
+    return false
+end
+
 --============================================================
 -- UTILITY
 --============================================================
@@ -81,13 +101,6 @@ local function isEnemy(model)
     if getPlayerChars()[model] then return false end
     if model == LP.Character then return false end
     return true
-end
-
-local function isBossModel(model)
-    if not model then return false end
-    local n = model.Name:lower()
-    return n:find("boss") or n:find("lord") or n:find("king")
-        or n:find("queen") or n:find("giant")
 end
 
 local function getNearestEnemy(maxDist)
@@ -119,6 +132,7 @@ local function getNearestBoss(maxDist)
     end
     return closest
 end
+
 --============================================================
 -- PATHFINDING
 --============================================================
@@ -157,51 +171,34 @@ local function walkWithPath(targetPos, timeout)
 end
 
 --============================================================
--- DANGER SCANNER (Boss Skill Avoidance)
+-- DANGER SCANNER
 --============================================================
 local dangerKeywordList = {}
-do
-    for k in State.DangerKeywords:gmatch("[^,]+") do
-        local trimmed = k:match("^%s*(.-)%s*$"):lower()
-        if #trimmed > 0 then
-            table.insert(dangerKeywordList, trimmed)
-        end
-    end
-end
-
 local function refreshKeywords()
     dangerKeywordList = {}
     for k in State.DangerKeywords:gmatch("[^,]+") do
         local trimmed = k:match("^%s*(.-)%s*$"):lower()
-        if #trimmed > 0 then
-            table.insert(dangerKeywordList, trimmed)
-        end
+        if #trimmed > 0 then table.insert(dangerKeywordList, trimmed) end
     end
 end
+refreshKeywords()
 
 local function isDangerousPart(part)
     if not part:IsA("BasePart") then return false end
     if LP.Character and part:IsDescendantOf(LP.Character) then return false end
-
-    -- Skip part yang sangat transparan (decoration)
     if part.Transparency > 0.98 and part.Material ~= Enum.Material.Neon then return false end
 
     local name = part.Name:lower()
-
-    -- Cek keyword
     for _, kw in ipairs(dangerKeywordList) do
         if name:find(kw, 1, true) then return true end
     end
 
-    -- Auto: part yang jadi anak langsung boss (kemungkinan attack effect)
     local parent = part.Parent
     if parent and isBossModel(parent) then return true end
 
     return false
 end
 
--- Scan berkala (bukan tiap frame) untuk perf
-local lastDangerScan = 0
 task.spawn(function()
     while task.wait(0.2) do
         if State.AutoDodge and State.DodgeBossSkill then
@@ -295,12 +292,13 @@ local function getSafeCameraPos(hrp, desiredPos)
     end
     return desiredPos
 end
+
 --============================================================
 -- WINDOW
 --============================================================
 local Window = WindUI:CreateWindow({
-    Title = "Pall × DUNGEON QUEST REBORN",
-    Folder = "pallhubv530",
+    Title = "Pall x DUNGEON QUEST REBORN",
+    Folder = "pallhubv540",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -313,150 +311,193 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.3.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
--- TAB: COMBAT
+-- TAB 1: SKILLS (dipindah ke paling atas biar keliatan)
 --============================================================
-local CombatTab = Window:Tab({
-    Title = "Combat", Desc = "Attack & Aggro",
+local TabSkills = Window:Tab({
+    Title = "Skills",
+    Desc = "Auto Skill Q lalu E",
+    Icon = "solar:star-bold",
+    IconColor = Yellow,
+    IconShape = "Square",
+    Border = true,
+})
+
+do
+    local autoSkillSection = TabSkills:Section({
+        Title = "Auto Skill",
+        Box = true, BoxBorder = true, Opened = true,
+    })
+
+    autoSkillSection:Toggle({
+        Title = "Auto Skill",
+        Desc = "Otomatis tekan Q lalu E berulang",
+        Value = false,
+        Callback = function(v) State.AutoSkill = v end,
+    })
+    autoSkillSection:Space()
+
+    autoSkillSection:Slider({
+        Title = "Q ke E Delay", Step = 0.1,
+        Value = { Min = 0.1, Max = 3, Default = 0.4 },
+        Callback = function(v) State.SkillQDelay = v end,
+    })
+    autoSkillSection:Space()
+
+    autoSkillSection:Slider({
+        Title = "E ke Q Delay", Step = 0.1,
+        Value = { Min = 0.1, Max = 5, Default = 0.8 },
+        Callback = function(v) State.SkillEDelay = v end,
+    })
+    autoSkillSection:Space()
+
+    autoSkillSection:Toggle({
+        Title = "Use Remote Fallback",
+        Desc = "Pakai abilityEvent kalau key-sim gagal",
+        Value = true,
+        Callback = function(v) State.UseRemoteFallback = v end,
+    })
+end
+
+--============================================================
+-- TAB 2: COMBAT
+--============================================================
+local TabCombat = Window:Tab({
+    Title = "Combat", Desc = "Attack dan Aggro",
     Icon = "solar:sword-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
-    local AtkSec = CombatTab:Section({ Title = "Auto Attack", Box = true, BoxBorder = true, Opened = true })
-    AtkSec:Toggle({ Title = "Auto Attack", Value = false, Callback = function(v) State.AutoAttack = v end })
-    AtkSec:Space()
-    AtkSec:Slider({ Title = "Attack Range", Step = 1,
+    local atkSection = TabCombat:Section({ Title = "Auto Attack", Box = true, BoxBorder = true, Opened = true })
+    atkSection:Toggle({ Title = "Auto Attack", Value = false, Callback = function(v) State.AutoAttack = v end })
+    atkSection:Space()
+    atkSection:Slider({ Title = "Attack Range", Step = 1,
         Value = { Min = 5, Max = 60, Default = 25 },
         Callback = function(v) State.AttackRange = v end })
-    AtkSec:Space()
-    AtkSec:Slider({ Title = "WalkSpeed", Step = 1,
+    atkSection:Space()
+    atkSection:Slider({ Title = "WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 60, Default = 16 },
         Callback = function(v)
             State.WalkSpeed = v
             local hum = getHum(); if hum then hum.WalkSpeed = v end
         end })
 
-    local AggroSec = CombatTab:Section({ Title = "Auto Aggro", Box = true, BoxBorder = true, Opened = true })
-    AggroSec:Toggle({ Title = "Auto Aggro All", Value = false, Callback = function(v) State.AutoAggro = v end })
-    AggroSec:Space()
-    AggroSec:Slider({ Title = "Aggro Range", Step = 10,
+    local aggroSection = TabCombat:Section({ Title = "Auto Aggro", Box = true, BoxBorder = true, Opened = true })
+    aggroSection:Toggle({ Title = "Auto Aggro All", Value = false, Callback = function(v) State.AutoAggro = v end })
+    aggroSection:Space()
+    aggroSection:Slider({ Title = "Aggro Range", Step = 10,
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
 
 --============================================================
--- TAB: DODGE
+-- TAB 3: DODGE
 --============================================================
-local DodgeTab = Window:Tab({
-    Title = "Dodge", Desc = "Orbit + Boss Skill Avoidance",
+local TabDodge = Window:Tab({
+    Title = "Dodge", Desc = "Orbit plus Boss Skill Avoidance",
     Icon = "solar:shield-check-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
-    local DodgeSec = DodgeTab:Section({ Title = "Auto Dodge (Orbit + Face)", Box = true, BoxBorder = true, Opened = true })
-    DodgeSec:Toggle({ Title = "Auto Dodge", Desc = "Karakter muter sambil hadap NPC",
+    local dodgeSection = TabDodge:Section({ Title = "Auto Dodge Orbit", Box = true, BoxBorder = true, Opened = true })
+    dodgeSection:Toggle({ Title = "Auto Dodge", Desc = "Karakter muter sambil hadap NPC",
         Value = false, Callback = function(v) State.AutoDodge = v end })
-    DodgeSec:Space()
-    DodgeSec:Slider({ Title = "Detect Range", Step = 1,
+    dodgeSection:Space()
+    dodgeSection:Slider({ Title = "Detect Range", Step = 1,
         Value = { Min = 10, Max = 100, Default = 40 },
         Callback = function(v) State.DodgeRange = v end })
-    DodgeSec:Space()
-    DodgeSec:Slider({ Title = "Orbit Radius", Step = 1,
+    dodgeSection:Space()
+    dodgeSection:Slider({ Title = "Orbit Radius", Step = 1,
         Value = { Min = 3, Max = 50, Default = 10 },
         Callback = function(v) State.DodgeOrbitRadius = v end })
-    DodgeSec:Space()
-    DodgeSec:Slider({ Title = "Orbit Speed", Step = 0.5,
+    dodgeSection:Space()
+    dodgeSection:Slider({ Title = "Orbit Speed", Step = 0.5,
         Value = { Min = 0.5, Max = 10, Default = 2 },
         Callback = function(v) State.DodgeOrbitSpeed = v end })
-    DodgeSec:Space()
-    DodgeSec:Slider({ Title = "Dodge WalkSpeed", Step = 1,
+    dodgeSection:Space()
+    dodgeSection:Slider({ Title = "Dodge WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 60, Default = 20 },
         Callback = function(v) State.DodgeWalkSpeed = v end })
 
-    local SkillSec = DodgeTab:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
-    SkillSec:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox / aoe / projectile boss",
+    local bossAvoidSection = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
+    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox AOE projectile boss",
         Value = true, Callback = function(v) State.DodgeBossSkill = v end })
-    SkillSec:Space()
-    SkillSec:Slider({ Title = "Danger Radius (jarak deteksi)", Step = 1,
+    bossAvoidSection:Space()
+    bossAvoidSection:Slider({ Title = "Danger Radius", Step = 1,
         Value = { Min = 5, Max = 60, Default = 20 },
         Callback = function(v) State.DangerRadius = v end })
-    SkillSec:Space()
-    SkillSec:Slider({ Title = "Avoid Strength (kekuatan hindar)", Step = 0.1,
+    bossAvoidSection:Space()
+    bossAvoidSection:Slider({ Title = "Avoid Strength", Step = 0.1,
         Value = { Min = 0.5, Max = 5, Default = 1.5 },
         Callback = function(v) State.AvoidStrength = v end })
-    SkillSec:Space()
-    SkillSec:Input({
+    bossAvoidSection:Space()
+    bossAvoidSection:Input({
         Title = "Custom Keywords",
-        Desc = "Pisah pakai koma. Tambahkan nama hitbox boss kalau ke-detect miss.",
+        Desc = "Pisah pakai koma",
         Value = State.DangerKeywords,
         Callback = function(v)
             State.DangerKeywords = v
             refreshKeywords()
         end,
     })
-    SkillSec:Space()
-    SkillSec:Section({
-        Title = "Tips:\n• Kalau kena skill terus → naikin Danger Radius & Avoid Strength\n• Kalau ke-detect berlebihan (mutar-mutar aneh) → turunin Avoid Strength\n• Kalau boss pakai nama hitbox unik → isi di Custom Keywords",
-        TextSize = 12, TextTransparency = 0.35,
-    })
 end
+
 --============================================================
--- TAB: CAMERA
+-- TAB 4: CAMERA
 --============================================================
-local CameraTab = Window:Tab({
-    Title = "Camera", Desc = "Anti-nunduk + follow rotation",
+local TabCamera = Window:Tab({
+    Title = "Camera", Desc = "Anti nunduk dan follow rotation",
     Icon = "solar:videocamera-record-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local CamSec = CameraTab:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
-    CamSec:Toggle({ Title = "Lock Camera to Target", Value = false,
+    local camSection = TabCamera:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
+    camSection:Toggle({ Title = "Lock Camera to Target", Value = false,
         Callback = function(v)
             State.CameraLock = v
             if v then saveOriginalCameraState() else restoreCamera() end
         end })
-    CamSec:Space()
-    CamSec:Dropdown({ Title = "Target Mode",
+    camSection:Space()
+    camSection:Dropdown({ Title = "Target Mode",
         Values = { "Nearest Enemy", "Nearest Boss" },
         Value = "Nearest Enemy",
         Callback = function(v) State.CameraTargetMode = v end })
-    CamSec:Space()
-    CamSec:Slider({ Title = "Camera Distance", Step = 0.5,
+    camSection:Space()
+    camSection:Slider({ Title = "Camera Distance", Step = 0.5,
         Value = { Min = 3, Max = 25, Default = 8 },
         Callback = function(v) State.CameraDistance = v end })
-    CamSec:Space()
-    CamSec:Slider({ Title = "Camera Height", Step = 0.5,
+    camSection:Space()
+    camSection:Slider({ Title = "Camera Height", Step = 0.5,
         Value = { Min = 0, Max = 15, Default = 3 },
         Callback = function(v) State.CameraHeight = v end })
-    CamSec:Space()
-    CamSec:Slider({ Title = "Smoothness", Step = 0.05,
+    camSection:Space()
+    camSection:Slider({ Title = "Smoothness", Step = 0.05,
         Value = { Min = 0.05, Max = 1, Default = 0.25 },
         Callback = function(v) State.CameraSmoothness = v end })
 
-    local FixSec = CameraTab:Section({ Title = "Anti-Nunduk / Tanah", Box = true, BoxBorder = true, Opened = true })
-    FixSec:Slider({ Title = "Min Height (clamp Y)", Step = 0.5,
+    local fixSection = TabCamera:Section({ Title = "Anti Nunduk Tanah", Box = true, BoxBorder = true, Opened = true })
+    fixSection:Slider({ Title = "Min Height clamp Y", Step = 0.5,
         Value = { Min = 0, Max = 8, Default = 2 },
         Callback = function(v) State.CameraMinHeight = v end })
-    FixSec:Space()
-    FixSec:Toggle({ Title = "Anti Tembus Dinding", Value = true,
+    fixSection:Space()
+    fixSection:Toggle({ Title = "Anti Tembus Dinding", Value = true,
         Callback = function(v) State.CameraCollision = v end })
-    FixSec:Space()
-    FixSec:Toggle({ Title = "Follow Character Rotation", Value = true,
+    fixSection:Space()
+    fixSection:Toggle({ Title = "Follow Character Rotation", Value = true,
         Callback = function(v) State.CameraFollowChar = v end })
-    FixSec:Space()
-    FixSec:Toggle({ Title = "Restore on Death", Value = true,
+    fixSection:Space()
+    fixSection:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
-
 --============================================================
--- TAB: FACE TARGET
+-- TAB 5: FACE TARGET
 --============================================================
-local FaceTab = Window:Tab({
+local TabFace = Window:Tab({
     Title = "Face Target", Desc = "Rotasi karakter",
     Icon = "solar:user-speak-rounded-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local FSec = FaceTab:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
-    FSec:Dropdown({ Title = "Face Mode",
+    local faceSection = TabFace:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
+    faceSection:Dropdown({ Title = "Face Mode",
         Values = { "Both", "Camera Only", "Character Only", "Off" },
         Value = "Both",
         Callback = function(v)
@@ -465,35 +506,36 @@ do
                 local hum = getHum(); if hum then hum.AutoRotate = true end
             end
         end })
-    FSec:Space()
-    FSec:Dropdown({ Title = "Target Priority",
+    faceSection:Space()
+    faceSection:Dropdown({ Title = "Target Priority",
         Values = { "Camera Target", "Nearest Enemy", "Nearest Boss", "Dodge Target" },
         Value = "Camera Target",
         Callback = function(v) State.FacePriority = v end })
-    FSec:Space()
-    FSec:Slider({ Title = "Rotasi Speed (1 = snap)", Step = 0.05,
+    faceSection:Space()
+    faceSection:Slider({ Title = "Rotasi Speed", Step = 0.05,
         Value = { Min = 0.05, Max = 1, Default = 0.35 },
         Callback = function(v) State.FaceRotationSpeed = v end })
-    FSec:Space()
-    FSec:Toggle({ Title = "Face Only When Moving", Value = false,
+    faceSection:Space()
+    faceSection:Toggle({ Title = "Face Only When Moving", Value = false,
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
 
 --============================================================
--- TAB: PLAYER
+-- TAB 6: PLAYER
 --============================================================
-local PlayerTab = Window:Tab({
-    Title = "Player", Desc = "Noclip, jump, anti-afk",
+local TabPlayer = Window:Tab({
+    Title = "Player", Desc = "Noclip jump anti-afk",
     Icon = "solar:user-bold", IconColor = Grey, IconShape = "Square", Border = true,
 })
 do
-    local PSec = PlayerTab:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
-    PSec:Toggle({ Title = "Noclip", Value = false, Callback = function(v) State.Noclip = v end })
-    PSec:Space()
-    PSec:Toggle({ Title = "Infinite Jump", Value = false, Callback = function(v) State.InfJump = v end })
-    PSec:Space()
-    PSec:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
+    local pSection = TabPlayer:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
+    pSection:Toggle({ Title = "Noclip", Value = false, Callback = function(v) State.Noclip = v end })
+    pSection:Space()
+    pSection:Toggle({ Title = "Infinite Jump", Value = false, Callback = function(v) State.InfJump = v end })
+    pSection:Space()
+    pSection:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
+
 --============================================================
 -- LOOPS
 --============================================================
@@ -563,15 +605,14 @@ task.spawn(function()
 end)
 
 --============================================================
--- AUTO DODGE — orbit + face-lock + boss skill avoidance
+-- AUTO DODGE
 --============================================================
 local orbitAngle = 0
 local faceAlign = nil
 local faceAttach = nil
 
 local function ensureAlign()
-    local hrp = getHRP()
-    if not hrp then return end
+    local hrp = getHRP(); if not hrp then return end
     if faceAlign and faceAlign.Parent == hrp then return end
     if faceAlign and faceAlign.Parent then faceAlign:Destroy() end
     if faceAttach and faceAttach.Parent then faceAttach:Destroy() end
@@ -610,13 +651,11 @@ task.spawn(function()
                     ensureAlign()
                     orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.05
 
-                    -- Posisi orbit normal
                     local orbitPos = mhrp.Position + Vector3.new(
                         math.cos(orbitAngle) * State.DodgeOrbitRadius, 0,
                         math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
 
-                    -- Blend dengan danger avoidance (kalau ada hazard)
                     if State.DodgeBossSkill and State._dangerCount > 0 then
                         orbitPos = orbitPos + State._dangerAvoid
                     end
@@ -643,6 +682,7 @@ task.spawn(function()
         end
     end
 end)
+
 --============================================================
 -- AUTO SKILL
 --============================================================
@@ -773,9 +813,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.3.0",
-    Content = "Boss Skill Avoidance aktif. Orbit tetap, hindar hazard.",
+    Title = "Pall Hub v5.4.0",
+    Content = "Tab Skills dipindah ke paling atas. Cek sekarang.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.3.0 loaded.")
+print("[PALL-HUB] v5.4.0 loaded. Skills tab at top.")
