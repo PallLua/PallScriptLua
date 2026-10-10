@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v5.2.1 — Auto Dodge AlignOrientation Fix
+    Version : v5.3.0 — Auto Dodge + Boss Skill Avoidance
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -38,6 +38,12 @@ local State = {
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2, DodgeWalkSpeed = 20,
 
+    -- NEW: Boss skill avoidance
+    DodgeBossSkill = true,
+    DangerRadius = 20,
+    AvoidStrength = 1.5,
+    DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,trap,circle,area,indicator,marker,shockwave",
+
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
 
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
@@ -49,10 +55,11 @@ local State = {
     FaceRotationSpeed = 0.35, FaceOnlyWhenMoving = false,
 
     _dodgeTarget = nil,
+    _dangerAvoid = Vector3.zero,
+    _dangerCount = 0,
 
     Noclip = false, InfJump = false, AntiAFK = true,
 }
-
 --============================================================
 -- UTILITY
 --============================================================
@@ -150,6 +157,84 @@ local function walkWithPath(targetPos, timeout)
 end
 
 --============================================================
+-- DANGER SCANNER (Boss Skill Avoidance)
+--============================================================
+local dangerKeywordList = {}
+do
+    for k in State.DangerKeywords:gmatch("[^,]+") do
+        local trimmed = k:match("^%s*(.-)%s*$"):lower()
+        if #trimmed > 0 then
+            table.insert(dangerKeywordList, trimmed)
+        end
+    end
+end
+
+local function refreshKeywords()
+    dangerKeywordList = {}
+    for k in State.DangerKeywords:gmatch("[^,]+") do
+        local trimmed = k:match("^%s*(.-)%s*$"):lower()
+        if #trimmed > 0 then
+            table.insert(dangerKeywordList, trimmed)
+        end
+    end
+end
+
+local function isDangerousPart(part)
+    if not part:IsA("BasePart") then return false end
+    if LP.Character and part:IsDescendantOf(LP.Character) then return false end
+
+    -- Skip part yang sangat transparan (decoration)
+    if part.Transparency > 0.98 and part.Material ~= Enum.Material.Neon then return false end
+
+    local name = part.Name:lower()
+
+    -- Cek keyword
+    for _, kw in ipairs(dangerKeywordList) do
+        if name:find(kw, 1, true) then return true end
+    end
+
+    -- Auto: part yang jadi anak langsung boss (kemungkinan attack effect)
+    local parent = part.Parent
+    if parent and isBossModel(parent) then return true end
+
+    return false
+end
+
+-- Scan berkala (bukan tiap frame) untuk perf
+local lastDangerScan = 0
+task.spawn(function()
+    while task.wait(0.2) do
+        if State.AutoDodge and State.DodgeBossSkill then
+            local hrp = getHRP()
+            if hrp then
+                local avoid = Vector3.zero
+                local count = 0
+                local radius = State.DangerRadius
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if isDangerousPart(obj) then
+                        local d = (obj.Position - hrp.Position).Magnitude
+                        if d <= radius and d > 0.5 then
+                            local strength = (radius - d) / radius
+                            avoid = avoid + (hrp.Position - obj.Position).Unit * strength
+                            count = count + 1
+                        end
+                    end
+                end
+                if count > 0 then
+                    State._dangerAvoid = (avoid / count) * State.AvoidStrength
+                    State._dangerCount = count
+                else
+                    State._dangerAvoid = Vector3.zero
+                    State._dangerCount = 0
+                end
+            end
+        else
+            State._dangerAvoid = Vector3.zero
+            State._dangerCount = 0
+        end
+    end
+end)
+--============================================================
 -- CAMERA HELPERS
 --============================================================
 local CameraState = { _originalType = nil, _originalAutoRotate = true }
@@ -215,7 +300,7 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall × DUNGEON QUEST REBORN",
-    Folder = "pallhubv521",
+    Folder = "pallhubv530",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -228,7 +313,7 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.2.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.3.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: COMBAT
@@ -264,7 +349,7 @@ end
 -- TAB: DODGE
 --============================================================
 local DodgeTab = Window:Tab({
-    Title = "Dodge", Desc = "Orbit + hadap NPC",
+    Title = "Dodge", Desc = "Orbit + Boss Skill Avoidance",
     Icon = "solar:shield-check-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
@@ -287,31 +372,34 @@ do
     DodgeSec:Slider({ Title = "Dodge WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 60, Default = 20 },
         Callback = function(v) State.DodgeWalkSpeed = v end })
-end
 
---============================================================
--- TAB: SKILLS
---============================================================
-local SkillTab = Window:Tab({
-    Title = "Skills", Desc = "Q dulu, lalu E",
-    Icon = "solar:bolt-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local SkillSec = SkillTab:Section({ Title = "Auto Skill", Box = true, BoxBorder = true, Opened = true })
-    SkillSec:Toggle({ Title = "Auto Skill", Value = false, Callback = function(v) State.AutoSkill = v end })
+    local SkillSec = DodgeTab:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
+    SkillSec:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox / aoe / projectile boss",
+        Value = true, Callback = function(v) State.DodgeBossSkill = v end })
     SkillSec:Space()
-    SkillSec:Slider({ Title = "Q → E Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 3, Default = 0.4 },
-        Callback = function(v) State.SkillQDelay = v end })
+    SkillSec:Slider({ Title = "Danger Radius (jarak deteksi)", Step = 1,
+        Value = { Min = 5, Max = 60, Default = 20 },
+        Callback = function(v) State.DangerRadius = v end })
     SkillSec:Space()
-    SkillSec:Slider({ Title = "E → Q Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 5, Default = 0.8 },
-        Callback = function(v) State.SkillEDelay = v end })
+    SkillSec:Slider({ Title = "Avoid Strength (kekuatan hindar)", Step = 0.1,
+        Value = { Min = 0.5, Max = 5, Default = 1.5 },
+        Callback = function(v) State.AvoidStrength = v end })
     SkillSec:Space()
-    SkillSec:Toggle({ Title = "Use Remote Fallback", Value = true,
-        Callback = function(v) State.UseRemoteFallback = v end })
+    SkillSec:Input({
+        Title = "Custom Keywords",
+        Desc = "Pisah pakai koma. Tambahkan nama hitbox boss kalau ke-detect miss.",
+        Value = State.DangerKeywords,
+        Callback = function(v)
+            State.DangerKeywords = v
+            refreshKeywords()
+        end,
+    })
+    SkillSec:Space()
+    SkillSec:Section({
+        Title = "Tips:\n• Kalau kena skill terus → naikin Danger Radius & Avoid Strength\n• Kalau ke-detect berlebihan (mutar-mutar aneh) → turunin Avoid Strength\n• Kalau boss pakai nama hitbox unik → isi di Custom Keywords",
+        TextSize = 12, TextTransparency = 0.35,
+    })
 end
-
 --============================================================
 -- TAB: CAMERA
 --============================================================
@@ -358,6 +446,7 @@ do
     FixSec:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
+
 --============================================================
 -- TAB: FACE TARGET
 --============================================================
@@ -405,7 +494,6 @@ do
     PSec:Space()
     PSec:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
-
 --============================================================
 -- LOOPS
 --============================================================
@@ -473,8 +561,9 @@ task.spawn(function()
         end
     end
 end)
+
 --============================================================
--- AUTO DODGE — orbit + face-lock via AlignOrientation
+-- AUTO DODGE — orbit + face-lock + boss skill avoidance
 --============================================================
 local orbitAngle = 0
 local faceAlign = nil
@@ -520,13 +609,21 @@ task.spawn(function()
                 if mhrp and hum and hrp then
                     ensureAlign()
                     orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.05
-                    local targetPos = mhrp.Position + Vector3.new(
+
+                    -- Posisi orbit normal
+                    local orbitPos = mhrp.Position + Vector3.new(
                         math.cos(orbitAngle) * State.DodgeOrbitRadius, 0,
                         math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
+
+                    -- Blend dengan danger avoidance (kalau ada hazard)
+                    if State.DodgeBossSkill and State._dangerCount > 0 then
+                        orbitPos = orbitPos + State._dangerAvoid
+                    end
+
                     hum.AutoRotate = false
                     hum.WalkSpeed = State.DodgeWalkSpeed
-                    hum:MoveTo(targetPos)
+                    hum:MoveTo(orbitPos)
 
                     if faceAlign then
                         local dir = mhrp.Position - hrp.Position
@@ -632,7 +729,6 @@ RunService.RenderStepped:Connect(function()
         cam.CFrame = cam.CFrame:Lerp(desiredCF, State.CameraSmoothness)
     end
 
-    -- FACE TARGET (Auto Dodge di-handle AlignOrientation, jadi skip kalau Auto Dodge ON)
     local faceModeActive = (State.FaceMode == "Both" or State.FaceMode == "Character Only")
     if not State.AutoDodge and faceModeActive then
         if State.FaceOnlyWhenMoving then
@@ -677,9 +773,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.2.1",
-    Content = "Auto Dodge orbit + face-lock via AlignOrientation.",
+    Title = "Pall Hub v5.3.0",
+    Content = "Boss Skill Avoidance aktif. Orbit tetap, hindar hazard.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.2.1 loaded.")
+print("[PALL-HUB] v5.3.0 loaded.")
