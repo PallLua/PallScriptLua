@@ -1,7 +1,9 @@
 --[[
-    PALL HUB — v5.2.0
-    Fix   : Auto Dodge face-lock ke NPC (karakter muter sambil hadap)
-            Camera anti-nunduk (lookAt leveled + Y-clamp post-raycast)
+    ═══════════════════════════════════════════════════════════
+    PALL HUB — DUNGEON QUEST REBORN
+    Author  : ENI (for Pall)
+    Version : v5.2.1 — Auto Dodge AlignOrientation Fix
+    ═══════════════════════════════════════════════════════════
 --]]
 
 local Players             = game:GetService("Players")
@@ -40,7 +42,7 @@ local State = {
 
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
     CameraDistance = 8, CameraHeight = 3, CameraSmoothness = 0.25,
-    CameraMinHeight = 1.5, CameraFollowChar = false, CameraCollision = true,
+    CameraMinHeight = 2, CameraFollowChar = true, CameraCollision = true,
     CameraRestoreOnDeath = true,
 
     FaceMode = "Both", FacePriority = "Camera Target",
@@ -194,7 +196,6 @@ local function pickFaceTarget()
     end
 end
 
--- Raycast — cuma ambil titik atas dari hit, biar kamera nggak nyemplung ke tanah
 local function getSafeCameraPos(hrp, desiredPos)
     local rayOrigin = hrp.Position + Vector3.new(0, 2, 0)
     local rayDir = desiredPos - rayOrigin
@@ -214,7 +215,7 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall × DUNGEON QUEST REBORN",
-    Folder = "pallhubv52",
+    Folder = "pallhubv521",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -227,7 +228,7 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.2.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.2.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: COMBAT
@@ -345,22 +346,18 @@ do
 
     local FixSec = CameraTab:Section({ Title = "Anti-Nunduk / Tanah", Box = true, BoxBorder = true, Opened = true })
     FixSec:Slider({ Title = "Min Height (clamp Y)", Step = 0.5,
-        Desc = "Naikin ke 3-4 kalau masih ke bawah",
         Value = { Min = 0, Max = 8, Default = 2 },
         Callback = function(v) State.CameraMinHeight = v end })
     FixSec:Space()
     FixSec:Toggle({ Title = "Anti Tembus Dinding", Value = true,
         Callback = function(v) State.CameraCollision = v end })
     FixSec:Space()
-    FixSec:Toggle({ Title = "Follow Character Rotation",
-        Desc = "Kamera ikut muter bareng karakter saat orbit",
-        Value = true,
+    FixSec:Toggle({ Title = "Follow Character Rotation", Value = true,
         Callback = function(v) State.CameraFollowChar = v end })
     FixSec:Space()
     FixSec:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
-
 --============================================================
 -- TAB: FACE TARGET
 --============================================================
@@ -476,9 +473,41 @@ task.spawn(function()
         end
     end
 end)
-
--- AUTO DODGE — orbit + face-lock (Face di-handle RenderStepped utama)
+--============================================================
+-- AUTO DODGE — orbit + face-lock via AlignOrientation
+--============================================================
 local orbitAngle = 0
+local faceAlign = nil
+local faceAttach = nil
+
+local function ensureAlign()
+    local hrp = getHRP()
+    if not hrp then return end
+    if faceAlign and faceAlign.Parent == hrp then return end
+    if faceAlign and faceAlign.Parent then faceAlign:Destroy() end
+    if faceAttach and faceAttach.Parent then faceAttach:Destroy() end
+
+    faceAttach = Instance.new("Attachment")
+    faceAttach.Name = "PallFaceAttach"
+    faceAttach.Parent = hrp
+
+    faceAlign = Instance.new("AlignOrientation")
+    faceAlign.Name = "PallFaceAlign"
+    faceAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
+    faceAlign.Attachment0 = faceAttach
+    faceAlign.MaxTorque = 1e6
+    faceAlign.MaxAngularVelocity = math.huge
+    faceAlign.Responsiveness = 60
+    faceAlign.RigidityEnabled = false
+    faceAlign.Parent = hrp
+end
+
+local function clearAlign()
+    if faceAlign and faceAlign.Parent then faceAlign:Destroy() end
+    if faceAttach and faceAttach.Parent then faceAttach:Destroy() end
+    faceAlign, faceAttach = nil, nil
+end
+
 task.spawn(function()
     while task.wait(0.05) do
         if State.AutoDodge then
@@ -487,7 +516,9 @@ task.spawn(function()
                 State._dodgeTarget = mob
                 local mhrp = mob:FindFirstChild("HumanoidRootPart")
                 local hum = getHum()
-                if mhrp and hum then
+                local hrp = getHRP()
+                if mhrp and hum and hrp then
+                    ensureAlign()
                     orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.05
                     local targetPos = mhrp.Position + Vector3.new(
                         math.cos(orbitAngle) * State.DodgeOrbitRadius, 0,
@@ -496,16 +527,28 @@ task.spawn(function()
                     hum.AutoRotate = false
                     hum.WalkSpeed = State.DodgeWalkSpeed
                     hum:MoveTo(targetPos)
+
+                    if faceAlign then
+                        local dir = mhrp.Position - hrp.Position
+                        local flatDir = Vector3.new(dir.X, 0, dir.Z)
+                        if flatDir.Magnitude > 0.1 then
+                            faceAlign.CFrame = CFrame.lookAt(Vector3.zero, flatDir.Unit)
+                        end
+                    end
                 end
             else
                 State._dodgeTarget = nil
+                clearAlign()
                 orbitAngle = orbitAngle + 0.5 * 0.05
             end
+        else
+            clearAlign()
         end
     end
 end)
-
+--============================================================
 -- AUTO SKILL
+--============================================================
 local abilityFolder = ReplicatedStorage:FindFirstChild("abilities")
 local allAbilityEvents = {}
 if abilityFolder then
@@ -547,8 +590,9 @@ task.spawn(function()
         end
     end
 end)
+
 --============================================================
--- CAMERA + FACE TARGET (unified)
+-- CAMERA + FACE TARGET
 --============================================================
 RunService.RenderStepped:Connect(function()
     local hrp = getHRP(); if not hrp then return end
@@ -559,7 +603,6 @@ RunService.RenderStepped:Connect(function()
 
     local npcPos = tHRP.Position
 
-    -- Base direction — selalu horizontal (Y dibuang)
     local baseDir
     if State.CameraFollowChar then
         local look = hrp.CFrame.LookVector
@@ -571,43 +614,27 @@ RunService.RenderStepped:Connect(function()
     if baseDir.Magnitude < 0.05 then baseDir = Vector3.new(0, 0, -1) end
     baseDir = baseDir.Unit
 
-    -- Desired camera pos
     local desiredPos = hrp.Position - baseDir * State.CameraDistance
         + Vector3.new(0, State.CameraHeight, 0)
 
-    -- Anti-collision
     if State.CameraCollision then
         desiredPos = getSafeCameraPos(hrp, desiredPos)
     end
 
-    -- Y clamp TERAKHIR (setelah raycast)
     local minY = hrp.Position.Y + State.CameraMinHeight
     desiredPos = Vector3.new(desiredPos.X, math.max(desiredPos.Y, minY), desiredPos.Z)
 
-    -- Apply camera
     if State.CameraLock then
         local cam = workspace.CurrentCamera
         cam.CameraType = Enum.CameraType.Scriptable
-        -- LookAt LEVELED — Y sama dengan camera, biar nggak nunduk
         local lookAtLeveled = Vector3.new(npcPos.X, desiredPos.Y, npcPos.Z)
         local desiredCF = CFrame.lookAt(desiredPos, lookAtLeveled)
         cam.CFrame = cam.CFrame:Lerp(desiredCF, State.CameraSmoothness)
     end
 
-    -- FACE TARGET
-    -- Kalau Auto Dodge ON, prioritas face ke NPC yang lagi di-orbit (dodge target)
+    -- FACE TARGET (Auto Dodge di-handle AlignOrientation, jadi skip kalau Auto Dodge ON)
     local faceModeActive = (State.FaceMode == "Both" or State.FaceMode == "Character Only")
-    if State.AutoDodge and State._dodgeTarget then
-        -- Auto Dodge handle face sendiri — face lock ke NPC orbit
-        local mhrp = State._dodgeTarget:FindFirstChild("HumanoidRootPart")
-        if mhrp then
-            local hum = getHum()
-            if hum then hum.AutoRotate = false end
-            local flatLook = Vector3.new(mhrp.Position.X, hrp.Position.Y, mhrp.Position.Z)
-            local desiredCF = CFrame.new(hrp.Position, flatLook)
-            hrp.CFrame = hrp.CFrame:Lerp(desiredCF, 0.6)
-        end
-    elseif faceModeActive then
+    if not State.AutoDodge and faceModeActive then
         if State.FaceOnlyWhenMoving then
             local hum = getHum()
             if hum and hum.MoveDirection.Magnitude < 0.1 then return end
@@ -650,9 +677,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.2.0",
-    Content = "Auto Dodge face-lock + Camera anti-nunduk.",
+    Title = "Pall Hub v5.2.1",
+    Content = "Auto Dodge orbit + face-lock via AlignOrientation.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.2.0 loaded.")
+print("[PALL-HUB] v5.2.1 loaded.")
