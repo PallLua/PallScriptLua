@@ -730,25 +730,13 @@ do
     })
     s2:Space()
     s2:Button({
-        Title = "Start Now (via GUI)", Justify = "Center",
-        Callback = function()
-            local pg = LP:FindFirstChild("PlayerGui")
-            if pg then
-                local qg = pg:FindFirstChild("queueGui")
-                if qg then
-                    local startBtn = qg:FindFirstChild("startButton", true)
-                    if startBtn and startBtn:IsA("TextButton") then
-                        pcall(function()
-                            for _, conn in ipairs(getconnections(startBtn.MouseButton1Click)) do
-                                conn:Fire()
-                            end
-                        end)
-                    end
-                end
-            end
-            fire(R.StartDungeon)
-        end,
-    })
+    Title = "Start Now (via GUI)", Justify = "Center",
+    Callback = function()
+        if _G.PallStartDungeon then
+            _G.PallStartDungeon(State.SelectedDungeon, State.SelectedDifficulty, State.HardcoreMode)
+        end
+    end,
+})
     s2:Space()
     s2:Button({
         Title = "Replay Now", Justify = "Center",
