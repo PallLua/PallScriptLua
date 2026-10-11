@@ -1,11 +1,12 @@
 --[[
-    ═══════════════════════════════════════════════════════════
-    PALL HUB — DUNGEON QUEST REBORN
-    Author  : ENI (for Pall)
-    Version : v5.5.0 — v5.4.2 base + Gear/Progression/Lobby/Config
-    ═══════════════════════════════════════════════════════════
+    PALL HUB — v6.0.0
+    Changes:
+      - Lobby tab DIHAPUS
+      - Progression: 15 dungeon + 6 difficulty + Auto Best
+      - Gear: Auto Sell / Upgrade / Equip Best beneran baca stats
+    Author : ENI (for Pall)
 --]]
-print("[PALL-DEBUG] Script mulai load...")
+
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local RunService          = game:GetService("RunService")
@@ -21,101 +22,78 @@ local WindUI
 local ok, result = pcall(function()
     return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 end)
-if ok then WindUI = result else error("[PALL-HUB] Gagal load WindUI.") end
+if not ok then error("[PALL-HUB] Gagal load WindUI.") end
+WindUI = result
 
 local Green  = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
 local Purple = Color3.fromHex("#7775F2")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
-local Red    = Color3.fromHex("#EF4F1D")
 
 --============================================================
 -- STATE
 --============================================================
 local State = {
-    -- Combat
     AutoAttack = false, AutoAggro = false,
     AttackRange = 25, AggroRange = 300, WalkSpeed = 16,
 
-    -- Dodge
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
     DodgeWalkSpeed = 16, MaxDodgeWalkSpeed = 16,
-
-    DodgeBossSkill = true,
-    DangerRadius = 25, AvoidStrength = 2.5, EscapeMode = true,
+    DodgeBossSkill = true, DangerRadius = 25, AvoidStrength = 2.5,
+    EscapeMode = true,
     DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius,warning,telegraph,laser,line,cone,pulse,sigil",
     ShowDebugNames = false,
 
-    -- Skill
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
 
-    -- Camera
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
     CameraDistance = 8, CameraHeight = 3, CameraSmoothness = 0.25,
     CameraMinHeight = 2, CameraFollowChar = true, CameraCollision = true,
     CameraRestoreOnDeath = true,
 
-    -- Face
     FaceMode = "Both", FacePriority = "Camera Target",
     FaceRotationSpeed = 0.35, FaceOnlyWhenMoving = false,
 
     -- GEAR
-    AutoUpgrade = false, UpgradeDelay = 1.5, UpgradeFilter = "All",
-    AutoSell = false, SellRarity = "All", SellCategory = "All",
-    KeepEquipped = true, ConfirmDialog = true, SellDelay = 0.3,
-    AutoEquipBest = false,
+    AutoSell = false, SellRarity = "common", SellType = "ability",
+    SellIncludeEquipped = false, SellDelay = 0.3, SellMaxPrice = 99999,
+    KeepEquipped = true,
+    AutoUpgrade = false, UpgradeTarget = "Item", UpgradeDelay = 2,
+    AutoEquipBest = false, EquipBestType = "ability",
 
     -- PROGRESSION
-    AutoStart = false, AutoReplay = false,
-    AutoLobbyReturn = false, ReplayDelay = 3,
-
-    -- LOBBY
-    AutoCreateLobby = false, AutoStartLobby = false,
+    AutoStart = false, AutoReplay = false, ReplayDelay = 3,
     AutoBestDungeon = false, AutoBestDifficulty = false,
-    Hardcore = false, PrivateLobby = false, AutoReady = false,
-    StartOnlyOwner = false, DeleteLobbyOnJoin = false,
+    SelectedDungeon = "Northern Lands", SelectedDifficulty = "Nightmare",
+    HardcoreMode = false,
 
-    -- Misc
     Noclip = false, InfJump = false, AntiAFK = true,
 
-    -- Runtime
     _dodgeTarget = nil, _dangerAvoid = Vector3.zero,
     _dangerCount = 0, _dangerEscape = false,
 }
-
 --============================================================
--- REMOTES (dari scan Pall)
+-- REMOTES
 --============================================================
 local R = {
-    StartDungeon     = "startDungeon",
-    ReplayDungeon    = "replayDungeon",
-    JoinDungeon      = "joinDungeon",
-    HostAutoReplay   = "hostSetAutoReplay",
-    StartBossRaid    = "startBossRaid",
-    ShowStartButton  = "showStartButton",
-    ChangeStartValue = "changeStartValue",
-    ReloadInvy       = "reloadInvy",
-    EquipItem        = "equipItem",
-    UnequipItem      = "unequipItem",
-    EquipSet         = "equipSet",
-    SellItem         = "sellItemEvent",
-    OpenSellShop     = "openSellShop",
-    UpgradeItem      = "upgradeItem",
-    UpgradeKey       = "upgradeKey",
-    AbilityUsed      = "abilityUsed",
-    AbilityCast      = "abilityCast",
-    LeaveGame        = "leaveGame",
-    LeaveBossLobby   = "leaveBossLobby",
+    StartDungeon = "startDungeon", ReplayDungeon = "replayDungeon",
+    HostAutoReplay = "hostSetAutoReplay",
+    ReloadInventory = "reloadInventory", ReloadInvy = "reloadInvy",
+    EquipItem = "equipItem", UnequipItem = "unequipItem", EquipSet = "equipSet",
+    SellItem = "sellItemEvent", OpenSellShop = "openSellShop",
+    UpgradeItem = "upgradeItem", UpgradeKey = "upgradeKey",
+    MoveItemToInventory = "moveItemToInventory",
+    SwapEquippedToInvy = "swapEquippedToInvy",
 }
 
 local remoteCache = {}
 local function resolveRemote(name)
     if remoteCache[name] then return remoteCache[name] end
-    local remotesFolder = ReplicatedStorage:FindFirstChild("remotes")
-    if remotesFolder then
-        local ev = remotesFolder:FindFirstChild(name)
+    local folder = ReplicatedStorage:FindFirstChild("remotes")
+    if folder then
+        local ev = folder:FindFirstChild(name)
         if ev then remoteCache[name] = ev; return ev end
     end
     local ev = ReplicatedStorage:FindFirstChild(name)
@@ -125,30 +103,56 @@ end
 
 local function fire(name, ...)
     local ev = resolveRemote(name)
-    if ev and ev:IsA("RemoteEvent") then
+    if ev and (ev:IsA("RemoteEvent") or ev:IsA("RemoteFunction")) then
         local args = {...}
-        pcall(function() ev:FireServer(table.unpack(args)) end)
+        pcall(function()
+            if ev:IsA("RemoteEvent") then
+                ev:FireServer(table.unpack(args))
+            else
+                ev:InvokeServer(table.unpack(args))
+            end
+        end)
     end
 end
-
-local function invoke(name, ...)
-    local ev = resolveRemote(name)
-    if ev and ev:IsA("RemoteFunction") then
-        local args = {...}
-        local ok2, res = pcall(function() return ev:InvokeServer(table.unpack(args)) end)
-        if ok2 then return res end
-    end
-    return nil
-end
 --============================================================
--- BOSS KEYWORDS
+-- DUNGEON DATA
 --============================================================
-local BOSS_KEYWORDS = {
-    "boss", "lord", "king", "queen", "giant", "titan", "elemental",
-    "reaper", "demon", "guardian", "warden", "champion", "warlord",
-    "dragon", "golem", "kraken", "hydra", "void", "phantom",
+local DUNGEONS = {
+    { Name = "Pumpkin King", Level = 1 },
+    { Name = "Desert Temple", Level = 1 },
+    { Name = "Winter Outpost", Level = 33 },
+    { Name = "Pirate Island", Level = 65 },
+    { Name = "King's Castle", Level = 75 },
+    { Name = "The Underworld", Level = 85 },
+    { Name = "Samurai Palace", Level = 95 },
+    { Name = "The Canals", Level = 105 },
+    { Name = "Ghastly Harbor", Level = 115 },
+    { Name = "Steampunk Sewers", Level = 125 },
+    { Name = "Orbital Outpost", Level = 145 },
+    { Name = "Volcanic Chambers", Level = 155 },
+    { Name = "Aquatic Temple", Level = 165 },
+    { Name = "Enchanted Forest", Level = 175 },
+    { Name = "Northern Lands", Level = 185 },
 }
 
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local function getPlayerLevel()
+    local ls = LP:FindFirstChild("leaderstats") or LP:FindFirstChild("Leaderstats")
+    if ls then
+        local lvl = ls:FindFirstChild("Level")
+        if lvl then return lvl.Value end
+    end
+    return 1
+end
+--============================================================
+-- BOSS + UTILITY
+--============================================================
+local BOSS_KEYWORDS = {
+    "boss","lord","king","queen","giant","titan","elemental",
+    "reaper","demon","guardian","warden","champion","warlord",
+    "dragon","golem","kraken","hydra","void","phantom",
+}
 local function isBossModel(model)
     if not model then return false end
     local n = model.Name:lower()
@@ -158,9 +162,6 @@ local function isBossModel(model)
     return false
 end
 
---============================================================
--- UTILITY
---============================================================
 local function getHRP() local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum() local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
 
@@ -184,12 +185,12 @@ end
 local function getNearestEnemy(maxDist)
     local hrp = getHRP(); if not hrp then return nil end
     local closest, dist = nil, maxDist or math.huge
-    for _, model in ipairs(workspace:GetDescendants()) do
-        if isEnemy(model) then
-            local mhrp = model:FindFirstChild("HumanoidRootPart")
+    for _, m in ipairs(workspace:GetDescendants()) do
+        if isEnemy(m) then
+            local mhrp = m:FindFirstChild("HumanoidRootPart")
             if mhrp then
                 local d = (mhrp.Position - hrp.Position).Magnitude
-                if d < dist then closest, dist = model, d end
+                if d < dist then closest, dist = m, d end
             end
         end
     end
@@ -199,20 +200,18 @@ end
 local function getNearestBoss(maxDist)
     local hrp = getHRP(); if not hrp then return nil end
     local closest, dist = nil, maxDist or math.huge
-    for _, model in ipairs(workspace:GetDescendants()) do
-        if isEnemy(model) and isBossModel(model) then
-            local mhrp = model:FindFirstChild("HumanoidRootPart")
+    for _, m in ipairs(workspace:GetDescendants()) do
+        if isEnemy(m) and isBossModel(m) then
+            local mhrp = m:FindFirstChild("HumanoidRootPart")
             if mhrp then
                 local d = (mhrp.Position - hrp.Position).Magnitude
-                if d < dist then closest, dist = model, d end
+                if d < dist then closest, dist = m, d end
             end
         end
     end
     return closest
 end
---============================================================
--- PATHFINDING
---============================================================
+
 local function walkWithPath(targetPos, timeout)
     timeout = timeout or 8
     local hrp, hum = getHRP(), getHum()
@@ -221,25 +220,21 @@ local function walkWithPath(targetPos, timeout)
         AgentRadius = 2, AgentHeight = 5, AgentCanJump = true,
         AgentCanClimb = false, WaypointSpacing = 4,
     })
-    local okCompute = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
-    if not okCompute or path.Status ~= Enum.PathStatus.Success then
+    local okC = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
+    if not okC or path.Status ~= Enum.PathStatus.Success then
         hum.WalkSpeed = State.WalkSpeed
         hum:MoveTo(targetPos)
         return
     end
-    local waypoints = path:GetWaypoints()
-    local t0 = tick()
-    for _, wp in ipairs(waypoints) do
-        if tick() - t0 > timeout then break end
+    for _, wp in ipairs(path:GetWaypoints()) do
+        local cur = getHRP(); if not cur then break end
         if wp.Action == Enum.PathWaypointAction.Jump then
             pcall(function() hum.Jump = true end)
         end
-        local cur = getHRP(); if not cur then break end
         hum.WalkSpeed = State.WalkSpeed
         hum:MoveTo(wp.Position)
-        local wt0 = tick()
-        while tick() - wt0 < 3 do
-            if tick() - t0 > timeout then break end
+        local t0 = tick()
+        while tick() - t0 < 3 do
             local c2 = getHRP(); if not c2 then break end
             if (c2.Position - wp.Position).Magnitude <= 4 then break end
             task.wait(0.08)
@@ -253,8 +248,8 @@ local dangerKeywordList = {}
 local function refreshKeywords()
     dangerKeywordList = {}
     for k in State.DangerKeywords:gmatch("[^,]+") do
-        local trimmed = k:match("^%s*(.-)%s*$"):lower()
-        if #trimmed > 0 then table.insert(dangerKeywordList, trimmed) end
+        local t = k:match("^%s*(.-)%s*$"):lower()
+        if #t > 0 then table.insert(dangerKeywordList, t) end
     end
 end
 refreshKeywords()
@@ -281,29 +276,23 @@ local function isDangerousPart(part)
     if not part:IsA("BasePart") then return false end
     if isPlayerOwned(part) then return false end
     local name = part.Name:lower()
-    local mat = part.Material
-    local transp = part.Transparency
-    local size = part.Size
+    local mat, transp, size = part.Material, part.Transparency, part.Size
     for _, kw in ipairs(dangerKeywordList) do
         if name:find(kw, 1, true) then return true end
     end
     if size.X > 400 or size.Y > 300 or size.Z > 400 then return false end
     local isNeon = (mat == Enum.Material.Neon)
-    local isForceField = (mat == Enum.Material.ForceField)
-    local isGlowing = isNeon or isForceField
-    local isTransparent = (transp >= 0.15 and transp <= 0.95)
-    local isSemiTransparent = (transp >= 0.3 and transp <= 0.85)
-    local flatCylinder = false
-    local thinBeam = false
-    if size.Y <= 1.5 and math.max(size.X, size.Z) >= 4 then flatCylinder = true end
-    local maxXZ = math.max(size.X, size.Z)
-    local minXZ = math.min(size.X, size.Z)
-    if maxXZ >= 10 and minXZ <= 2.5 then thinBeam = true end
-    if flatCylinder and (isGlowing or isTransparent) then return true end
-    if thinBeam and (isGlowing or isTransparent) then return true end
-    if isGlowing and isSemiTransparent and size.Y < 80 then return true end
-    if isInsideBoss(part) and (isGlowing or isTransparent) then return true end
-    if part.Parent == workspace and isNeon and isTransparent then return true end
+    local isFF = (mat == Enum.Material.ForceField)
+    local isGlow = isNeon or isFF
+    local isTrans = (transp >= 0.15 and transp <= 0.95)
+    local isSemi = (transp >= 0.3 and transp <= 0.85)
+    local flatCyl = (size.Y <= 1.5 and math.max(size.X, size.Z) >= 4)
+    local thinBeam = (math.max(size.X, size.Z) >= 10 and math.min(size.X, size.Z) <= 2.5)
+    if flatCyl and (isGlow or isTrans) then return true end
+    if thinBeam and (isGlow or isTrans) then return true end
+    if isGlow and isSemi and size.Y < 80 then return true end
+    if isInsideBoss(part) and (isGlow or isTrans) then return true end
+    if part.Parent == workspace and isNeon and isTrans then return true end
     return false
 end
 
@@ -319,7 +308,6 @@ task.spawn(function()
                         if d <= State.DangerRadius + 10 and isDangerousPart(obj) then
                             loggedParts[obj] = true
                             print("[PALL-HUB][Indicator] " .. obj.Name ..
-                                " | class=" .. obj.ClassName ..
                                 " | mat=" .. tostring(obj.Material) ..
                                 " | transp=" .. string.format("%.2f", obj.Transparency) ..
                                 " | size=" .. tostring(obj.Size))
@@ -345,8 +333,7 @@ task.spawn(function()
                         local d = (obj.Position - hrp.Position).Magnitude
                         if d <= radius and d > 0.5 then
                             local strength = (radius - d) / radius
-                            local sz = obj.Size
-                            local maxSize = math.max(sz.X, sz.Y, sz.Z)
+                            local maxSize = math.max(obj.Size.X, obj.Size.Y, obj.Size.Z)
                             if maxSize >= 8 or (obj.Material == Enum.Material.Neon and obj.Transparency < 0.7) then
                                 escapeThreat = true
                             end
@@ -373,11 +360,70 @@ task.spawn(function()
     end
 end)
 --============================================================
+-- CAMERA HELPERS
+--============================================================
+local CameraState = { _originalType = nil, _originalAutoRotate = true }
+local function saveCamState()
+    CameraState._originalType = workspace.CurrentCamera.CameraType
+    local hum = getHum()
+    if hum then CameraState._originalAutoRotate = hum.AutoRotate end
+end
+local function restoreCamera()
+    local cam = workspace.CurrentCamera
+    cam.CameraType = CameraState._originalType or Enum.CameraType.Custom
+    local hum = getHum()
+    if hum then hum.AutoRotate = CameraState._originalAutoRotate end
+end
+
+local function smoothFaceY(targetPos, speed)
+    local hrp = getHRP(); if not hrp then return end
+    local pos = hrp.Position
+    local dirXZ = Vector3.new(targetPos.X - pos.X, 0, targetPos.Z - pos.Z)
+    if dirXZ.Magnitude < 0.1 then return end
+    local desiredY = math.atan2(-dirXZ.X, -dirXZ.Z)
+    local _, curY, _ = hrp.CFrame:ToEulerAnglesYXZ()
+    local diff = desiredY - curY
+    while diff > math.pi do diff = diff - math.pi * 2 end
+    while diff < -math.pi do diff = diff + math.pi * 2 end
+    local newY = curY + diff * math.clamp(speed, 0.05, 1)
+    hrp.CFrame = CFrame.new(pos) * CFrame.Angles(0, newY, 0)
+end
+
+local function pickFaceTarget()
+    if State.FacePriority == "Dodge Target" and State._dodgeTarget and State._dodgeTarget.Parent then
+        return State._dodgeTarget
+    elseif State.FacePriority == "Nearest Boss" then
+        return getNearestBoss(500)
+    elseif State.FacePriority == "Nearest Enemy" then
+        return getNearestEnemy(500)
+    end
+    if State.CameraTargetMode == "Nearest Boss" then
+        return getNearestBoss(500)
+    end
+    return getNearestEnemy(500)
+end
+
+local function getSafeCameraPos(hrp, desiredPos)
+    local origin = hrp.Position + Vector3.new(0, 2, 0)
+    local dir = desiredPos - origin
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LP.Character}
+    params.IgnoreWater = true
+    local hit = workspace:Raycast(origin, dir, params)
+    if hit then
+        local d = math.max((hit.Position - origin).Magnitude - 0.8, 1)
+        return origin + dir.Unit * d
+    end
+    return desiredPos
+end
+
+--============================================================
 -- WINDOW
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv550",
+    Folder = "pallhubv600",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -389,13 +435,13 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
+Window:Tag({ Title = "v6.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
-Window:Tag({ Title = "v5.5.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 --============================================================
 -- TAB: SKILLS
 --============================================================
 local TabSkills = Window:Tab({
-    Title = "Skills", Desc = "Auto Skill Q lalu E",
+    Title = "Skills", Desc = "Auto Skill",
     Icon = "solar:star-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
@@ -417,329 +463,347 @@ end
 -- TAB: COMBAT
 --============================================================
 local TabCombat = Window:Tab({
-    Title = "Combat", Desc = "Attack dan Aggro",
+    Title = "Combat", Desc = "Attack, Aggro",
     Icon = "solar:sword-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
-    local atkSection = TabCombat:Section({ Title = "Auto Attack", Box = true, BoxBorder = true, Opened = true })
-    atkSection:Toggle({ Title = "Auto Attack", Value = false, Callback = function(v) State.AutoAttack = v end })
-    atkSection:Space()
-    atkSection:Slider({ Title = "Attack Range", Step = 1,
+    local s1 = TabCombat:Section({ Title = "Auto Attack", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Auto Attack", Value = false, Callback = function(v) State.AutoAttack = v end })
+    s1:Space()
+    s1:Slider({ Title = "Attack Range", Step = 1,
         Value = { Min = 5, Max = 60, Default = 25 },
         Callback = function(v) State.AttackRange = v end })
-    atkSection:Space()
-    atkSection:Slider({ Title = "WalkSpeed", Step = 1,
+    s1:Space()
+    s1:Slider({ Title = "WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 60, Default = 16 },
         Callback = function(v)
             State.WalkSpeed = v
             local hum = getHum(); if hum then hum.WalkSpeed = v end
         end })
 
-    local aggroSection = TabCombat:Section({ Title = "Auto Aggro", Box = true, BoxBorder = true, Opened = true })
-    aggroSection:Toggle({ Title = "Auto Aggro All", Value = false, Callback = function(v) State.AutoAggro = v end })
-    aggroSection:Space()
-    aggroSection:Slider({ Title = "Aggro Range", Step = 10,
+    local s2 = TabCombat:Section({ Title = "Auto Aggro", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({ Title = "Auto Aggro All", Value = false, Callback = function(v) State.AutoAggro = v end })
+    s2:Space()
+    s2:Slider({ Title = "Aggro Range", Step = 10,
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
+
 --============================================================
 -- TAB: DODGE
 --============================================================
 local TabDodge = Window:Tab({
-    Title = "Dodge", Desc = "Orbit plus Boss Skill Avoidance",
+    Title = "Dodge", Desc = "Orbit + Boss Avoidance",
     Icon = "solar:shield-check-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
-    local dodgeSection = TabDodge:Section({ Title = "Auto Dodge Orbit", Box = true, BoxBorder = true, Opened = true })
-    dodgeSection:Toggle({ Title = "Auto Dodge", Value = false, Callback = function(v) State.AutoDodge = v end })
-    dodgeSection:Space()
-    dodgeSection:Slider({ Title = "Detect Range", Step = 1,
+    local s1 = TabDodge:Section({ Title = "Auto Dodge Orbit", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Auto Dodge", Value = false, Callback = function(v) State.AutoDodge = v end })
+    s1:Space()
+    s1:Slider({ Title = "Detect Range", Step = 1,
         Value = { Min = 10, Max = 100, Default = 40 },
         Callback = function(v) State.DodgeRange = v end })
-    dodgeSection:Space()
-    dodgeSection:Slider({ Title = "Orbit Radius", Step = 1,
+    s1:Space()
+    s1:Slider({ Title = "Orbit Radius", Step = 1,
         Value = { Min = 3, Max = 50, Default = 10 },
         Callback = function(v) State.DodgeOrbitRadius = v end })
-    dodgeSection:Space()
-    dodgeSection:Slider({ Title = "Orbit Speed", Step = 0.5,
+    s1:Space()
+    s1:Slider({ Title = "Orbit Speed", Step = 0.5,
         Value = { Min = 0.5, Max = 10, Default = 2 },
         Callback = function(v) State.DodgeOrbitSpeed = v end })
-    dodgeSection:Space()
-    dodgeSection:Slider({ Title = "Dodge WalkSpeed", Step = 1,
+    s1:Space()
+    s1:Slider({ Title = "Dodge WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 40, Default = 16 },
         Callback = function(v)
             State.DodgeWalkSpeed = v
             State.MaxDodgeWalkSpeed = v
         end })
 
-    local bossAvoidSection = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
-    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Value = true, Callback = function(v) State.DodgeBossSkill = v end })
-    bossAvoidSection:Space()
-    bossAvoidSection:Slider({ Title = "Danger Radius", Step = 1,
+    local s2 = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({ Title = "Dodge Boss Skill", Value = true, Callback = function(v) State.DodgeBossSkill = v end })
+    s2:Space()
+    s2:Slider({ Title = "Danger Radius", Step = 1,
         Value = { Min = 10, Max = 80, Default = 25 },
         Callback = function(v) State.DangerRadius = v end })
-    bossAvoidSection:Space()
-    bossAvoidSection:Slider({ Title = "Avoid Strength", Step = 0.1,
+    s2:Space()
+    s2:Slider({ Title = "Avoid Strength", Step = 0.1,
         Value = { Min = 0.5, Max = 6, Default = 2.5 },
         Callback = function(v) State.AvoidStrength = v end })
-    bossAvoidSection:Space()
-    bossAvoidSection:Toggle({ Title = "Escape Mode", Value = true,
-        Callback = function(v) State.EscapeMode = v end })
-    bossAvoidSection:Space()
-    bossAvoidSection:Input({
+    s2:Space()
+    s2:Toggle({ Title = "Escape Mode", Value = true, Callback = function(v) State.EscapeMode = v end })
+    s2:Space()
+    s2:Input({
         Title = "Custom Keywords",
         Value = State.DangerKeywords,
-        Callback = function(v)
-            State.DangerKeywords = v
-            refreshKeywords()
-        end,
-    })
-    bossAvoidSection:Space()
-    bossAvoidSection:Toggle({
-        Title = "Debug: Log Indicator Names",
-        Value = false,
-        Callback = function(v)
-            State.ShowDebugNames = v
-            if v then loggedParts = {} end
-        end,
+        Callback = function(v) State.DangerKeywords = v; refreshKeywords() end,
     })
 end
 --============================================================
--- TAB: GEAR
+-- TAB: GEAR (REBUILT)
 --============================================================
 local TabGear = Window:Tab({
-    Title = "Gear", Desc = "Upgrade, Sell, Equip",
+    Title = "Gear", Desc = "Sell, Upgrade, Equip",
     Icon = "solar:bag-4-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
-    local upgradeSec = TabGear:Section({ Title = "Auto Upgrade", Box = true, BoxBorder = true, Opened = true })
-    upgradeSec:Toggle({
-        Title = "Auto Upgrade",
-        Desc = "Upgrade gear / key otomatis",
-        Value = false,
-        Callback = function(v) State.AutoUpgrade = v end,
-    })
-    upgradeSec:Space()
-    upgradeSec:Slider({
-        Title = "Upgrade Delay", Step = 0.5,
-        Value = { Min = 0.5, Max = 10, Default = 1.5 },
-        Callback = function(v) State.UpgradeDelay = v end,
-    })
-    upgradeSec:Space()
-    upgradeSec:Dropdown({
-        Title = "Upgrade Target",
-        Values = { "All", "Item", "Key" },
-        Value = "All",
-        Callback = function(v) State.UpgradeFilter = v end,
-    })
-    upgradeSec:Space()
-    upgradeSec:Button({
-        Title = "Upgrade Now",
-        Justify = "Center",
-        Callback = function()
-            fire(R.UpgradeItem)
-            WindUI:Notify({ Title = "Upgrade", Content = "Mengirim permintaan upgrade..." })
-        end,
-    })
-    upgradeSec:Space()
-    upgradeSec:Button({
-        Title = "Upgrade Key Now",
-        Justify = "Center",
-        Callback = function()
-            fire(R.UpgradeKey)
-            WindUI:Notify({ Title = "Upgrade Key", Content = "Mengirim permintaan upgrade key..." })
-        end,
-    })
+    -- Fungsi baca stats tool
+    local function getToolStat(tool, statName)
+        local child = tool:FindFirstChild(statName)
+        if child and child:IsA("ValueBase") then return child.Value end
+        return nil
+    end
 
-    local sellSec = TabGear:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
-    sellSec:Toggle({
+    -- AUTO SELL
+    local s1 = TabGear:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({
         Title = "Auto Sell",
-        Desc = "Jual gear otomatis sesuai filter",
-        Value = false,
-        Callback = function(v) State.AutoSell = v end,
+        Desc = "Jual tool sesuai rarity & type",
+        Value = false, Callback = function(v) State.AutoSell = v end,
     })
-    sellSec:Space()
-    sellSec:Dropdown({
+    s1:Space()
+    s1:Dropdown({
         Title = "Sell Rarity",
-        Values = { "All", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" },
-        Value = "All",
+        Values = { "Any", "common", "uncommon", "rare", "epic", "legendary", "mythic", "ultimate" },
+        Value = "common",
         Callback = function(v) State.SellRarity = v end,
     })
-    sellSec:Space()
-    sellSec:Dropdown({
-        Title = "Sell Category",
-        Values = { "All", "Spell", "Weapon", "Armor", "Accessory", "Material" },
-        Value = "All",
-        Callback = function(v) State.SellCategory = v end,
+    s1:Space()
+    s1:Dropdown({
+        Title = "Sell Type",
+        Values = { "Any", "ability", "weapon", "armor", "accessory" },
+        Value = "ability",
+        Callback = function(v) State.SellType = v end,
     })
-    sellSec:Space()
-    sellSec:Slider({
+    s1:Space()
+    s1:Slider({
         Title = "Sell Delay", Step = 0.1,
         Value = { Min = 0.1, Max = 3, Default = 0.3 },
         Callback = function(v) State.SellDelay = v end,
     })
-    sellSec:Space()
-    sellSec:Toggle({
+    s1:Space()
+    s1:Toggle({
         Title = "Keep Equipped",
-        Desc = "Jangan jual gear yang sedang dipakai",
-        Value = true,
-        Callback = function(v) State.KeepEquipped = v end,
+        Value = true, Callback = function(v) State.KeepEquipped = v end,
     })
-    sellSec:Space()
-    sellSec:Toggle({
-        Title = "Confirm Dialog",
-        Value = true,
-        Callback = function(v) State.ConfirmDialog = v end,
-    })
-    sellSec:Space()
-    sellSec:Button({
-        Title = "Sell Now",
-        Justify = "Center",
+    s1:Space()
+    s1:Button({
+        Title = "Sell Now", Justify = "Center",
         Callback = function()
-            fire(R.SellItem, "all")
-            WindUI:Notify({ Title = "Sell", Content = "Mengirim permintaan jual..." })
+            local bp = LP:FindFirstChild("Backpack")
+            if not bp then return end
+            local count = 0
+            for _, tool in ipairs(bp:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local rarity = getToolStat(tool, "rarity") or ""
+                    local typ = getToolStat(tool, "type") or ""
+                    local matchR = (State.SellRarity == "Any") or (rarity == State.SellRarity)
+                    local matchT = (State.SellType == "Any") or (typ == State.SellType)
+                    if matchR and matchT then
+                        fire(R.SellItem, tool)
+                        count = count + 1
+                        task.wait(State.SellDelay)
+                    end
+                end
+            end
+            WindUI:Notify({ Title = "Sell Now", Content = "Mencoba jual " .. count .. " item." })
         end,
     })
-    sellSec:Space()
-    sellSec:Button({
-        Title = "Open Sell Shop",
-        Justify = "Center",
-        Callback = function()
-            fire(R.OpenSellShop)
-        end,
+    s1:Space()
+    s1:Button({
+        Title = "Open Sell Shop", Justify = "Center",
+        Callback = function() fire(R.OpenSellShop) end,
     })
 
-    local equipSec = TabGear:Section({ Title = "Auto Equip", Box = true, BoxBorder = true, Opened = true })
-    equipSec:Toggle({
-        Title = "Auto Equip Best",
-        Desc = "Equip gear terbaik otomatis",
-        Value = false,
-        Callback = function(v) State.AutoEquipBest = v end,
+    -- AUTO UPGRADE
+    local s2 = TabGear:Section({ Title = "Auto Upgrade", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({
+        Title = "Auto Upgrade",
+        Desc = "Upgrade item / key otomatis",
+        Value = false, Callback = function(v) State.AutoUpgrade = v end,
     })
-    equipSec:Space()
-    equipSec:Button({
-        Title = "Refresh Inventory",
-        Justify = "Center",
+    s2:Space()
+    s2:Dropdown({
+        Title = "Upgrade Target",
+        Values = { "Item", "Key", "Both" },
+        Value = "Item",
+        Callback = function(v) State.UpgradeTarget = v end,
+    })
+    s2:Space()
+    s2:Slider({
+        Title = "Upgrade Delay", Step = 0.5,
+        Value = { Min = 1, Max = 15, Default = 2 },
+        Callback = function(v) State.UpgradeDelay = v end,
+    })
+    s2:Space()
+    s2:Button({
+        Title = "Upgrade Item Now", Justify = "Center",
+        Callback = function() fire(R.UpgradeItem) end,
+    })
+    s2:Space()
+    s2:Button({
+        Title = "Upgrade Key Now", Justify = "Center",
+        Callback = function() fire(R.UpgradeKey) end,
+    })
+
+    -- AUTO EQUIP BEST
+    local s3 = TabGear:Section({ Title = "Auto Equip Best", Box = true, BoxBorder = true, Opened = true })
+    s3:Toggle({
+        Title = "Auto Equip Best",
+        Desc = "Equip tool dengan damage tertinggi",
+        Value = false, Callback = function(v) State.AutoEquipBest = v end,
+    })
+    s3:Space()
+    s3:Dropdown({
+        Title = "Type Priority",
+        Values = { "Any", "ability", "weapon" },
+        Value = "Any",
+        Callback = function(v) State.EquipBestType = v end,
+    })
+    s3:Space()
+    s3:Button({
+        Title = "Refresh Inventory", Justify = "Center",
         Callback = function()
+            fire(R.ReloadInventory)
             fire(R.ReloadInvy)
-            WindUI:Notify({ Title = "Inventory", Content = "Refreshing..." })
+            WindUI:Notify({ Title = "Refresh", Content = "Request sent." })
         end,
     })
 end
 --============================================================
--- TAB: PROGRESSION
+-- TAB: PROGRESSION (REBUILT)
 --============================================================
 local TabProgression = Window:Tab({
-    Title = "Progression", Desc = "Auto start, replay",
+    Title = "Progression", Desc = "Dungeon auto start",
     Icon = "solar:chart-2-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local flowSec = TabProgression:Section({ Title = "Dungeon Flow", Box = true, BoxBorder = true, Opened = true })
-    flowSec:Toggle({ Title = "Auto Start", Value = false, Callback = function(v) State.AutoStart = v end })
-    flowSec:Space()
-    flowSec:Toggle({ Title = "Auto Replay", Value = false, Callback = function(v) State.AutoReplay = v end })
-    flowSec:Space()
-    flowSec:Toggle({ Title = "Auto Return to Lobby", Value = false, Callback = function(v) State.AutoLobbyReturn = v end })
-    flowSec:Space()
-    flowSec:Slider({ Title = "Replay Delay", Step = 0.5,
-        Value = { Min = 0.5, Max = 15, Default = 3 },
-        Callback = function(v) State.ReplayDelay = v end })
-    flowSec:Space()
-    flowSec:Button({
-        Title = "Start Dungeon Now",
-        Justify = "Center",
-        Callback = function() fire(R.StartDungeon) end,
+    -- Dropdown pilih dungeon
+    local dungeonNames = {}
+    for _, d in ipairs(DUNGEONS) do table.insert(dungeonNames, d.Name) end
+
+    local s1 = TabProgression:Section({ Title = "Dungeon Selection", Box = true, BoxBorder = true, Opened = true })
+    s1:Dropdown({
+        Title = "Dungeon",
+        Values = dungeonNames,
+        Value = "Northern Lands",
+        Callback = function(v) State.SelectedDungeon = v end,
     })
-    flowSec:Space()
-    flowSec:Button({
-        Title = "Replay Dungeon Now",
-        Justify = "Center",
-        Callback = function() fire(R.ReplayDungeon) end,
+    s1:Space()
+    s1:Dropdown({
+        Title = "Difficulty",
+        Values = DIFFICULTIES,
+        Value = "Nightmare",
+        Callback = function(v) State.SelectedDifficulty = v end,
     })
-    flowSec:Space()
-    flowSec:Button({
-        Title = "Set Auto Replay Host",
-        Justify = "Center",
-        Callback = function() fire(R.HostAutoReplay, true) end,
+    s1:Space()
+    s1:Toggle({
+        Title = "Hardcore Mode",
+        Value = false, Callback = function(v) State.HardcoreMode = v end,
     })
-end
---============================================================
--- TAB: LOBBY
---============================================================
-local TabLobby = Window:Tab({
-    Title = "Lobby", Desc = "Auto create, start, ready",
-    Icon = "solar:users-group-rounded-bold", IconColor = Green, IconShape = "Square", Border = true,
-})
-do
-    local lobbySec = TabLobby:Section({ Title = "Lobby Automation", Box = true, BoxBorder = true, Opened = true })
-    lobbySec:Toggle({ Title = "Auto Create Lobby", Value = false, Callback = function(v) State.AutoCreateLobby = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Auto Start Lobby", Value = false, Callback = function(v) State.AutoStartLobby = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Auto Best Dungeon", Value = false, Callback = function(v) State.AutoBestDungeon = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Auto Best Difficulty", Value = false, Callback = function(v) State.AutoBestDifficulty = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Hardcore", Value = false, Callback = function(v) State.Hardcore = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Private", Value = false, Callback = function(v) State.PrivateLobby = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Auto Ready", Value = false, Callback = function(v) State.AutoReady = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Start Only If Owner", Value = false, Callback = function(v) State.StartOnlyOwner = v end })
-    lobbySec:Space()
-    lobbySec:Toggle({ Title = "Delete Lobby On Join", Value = false, Callback = function(v) State.DeleteLobbyOnJoin = v end })
-    lobbySec:Space()
-    lobbySec:Button({
-        Title = "Leave Lobby Now",
-        Justify = "Center",
-        Callback = function() fire(R.LeaveGame) end,
+
+    local s2 = TabProgression:Section({ Title = "Auto Flow", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({
+        Title = "Auto Best Dungeon",
+        Desc = "Pilih dungeon tertinggi yang kamu bisa masuk",
+        Value = false, Callback = function(v) State.AutoBestDungeon = v end,
+    })
+    s2:Space()
+    s2:Toggle({
+        Title = "Auto Best Difficulty",
+        Value = false, Callback = function(v) State.AutoBestDifficulty = v end,
+    })
+    s2:Space()
+    s2:Toggle({
+        Title = "Auto Start",
+        Value = false, Callback = function(v) State.AutoStart = v end,
+    })
+    s2:Space()
+    s2:Toggle({
+        Title = "Auto Replay",
+        Value = false, Callback = function(v) State.AutoReplay = v end,
+    })
+    s2:Space()
+    s2:Slider({
+        Title = "Replay Delay", Step = 0.5,
+        Value = { Min = 1, Max = 15, Default = 3 },
+        Callback = function(v) State.ReplayDelay = v end,
+    })
+    s2:Space()
+    s2:Button({
+        Title = "Start Now (via GUI)", Justify = "Center",
+        Callback = function()
+            local pg = LP:FindFirstChild("PlayerGui")
+            if pg then
+                local qg = pg:FindFirstChild("queueGui")
+                if qg then
+                    local startBtn = qg:FindFirstChild("startButton", true)
+                    if startBtn and startBtn:IsA("TextButton") then
+                        pcall(function()
+                            for _, conn in ipairs(getconnections(startBtn.MouseButton1Click)) do
+                                conn:Fire()
+                            end
+                        end)
+                    end
+                end
+            end
+            fire(R.StartDungeon)
+        end,
+    })
+    s2:Space()
+    s2:Button({
+        Title = "Replay Now", Justify = "Center",
+        Callback = function()
+            fire(R.ReplayDungeon)
+            fire(R.HostAutoReplay, true)
+        end,
     })
 end
 --============================================================
 -- TAB: CAMERA
 --============================================================
 local TabCamera = Window:Tab({
-    Title = "Camera", Desc = "Anti nunduk dan follow rotation",
+    Title = "Camera", Desc = "Lock camera",
     Icon = "solar:videocamera-record-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local camSection = TabCamera:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
-    camSection:Toggle({ Title = "Lock Camera to Target", Value = false,
+    local s1 = TabCamera:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({
+        Title = "Lock Camera to Target", Value = false,
         Callback = function(v)
             State.CameraLock = v
-            if v then saveOriginalCameraState() else restoreCamera() end
-        end })
-    camSection:Space()
-    camSection:Dropdown({ Title = "Target Mode",
+            if v then saveCamState() else restoreCamera() end
+        end,
+    })
+    s1:Space()
+    s1:Dropdown({ Title = "Target Mode",
         Values = { "Nearest Enemy", "Nearest Boss" },
         Value = "Nearest Enemy",
         Callback = function(v) State.CameraTargetMode = v end })
-    camSection:Space()
-    camSection:Slider({ Title = "Camera Distance", Step = 0.5,
+    s1:Space()
+    s1:Slider({ Title = "Camera Distance", Step = 0.5,
         Value = { Min = 3, Max = 25, Default = 8 },
         Callback = function(v) State.CameraDistance = v end })
-    camSection:Space()
-    camSection:Slider({ Title = "Camera Height", Step = 0.5,
+    s1:Space()
+    s1:Slider({ Title = "Camera Height", Step = 0.5,
         Value = { Min = 0, Max = 15, Default = 3 },
         Callback = function(v) State.CameraHeight = v end })
-    camSection:Space()
-    camSection:Slider({ Title = "Smoothness", Step = 0.05,
+    s1:Space()
+    s1:Slider({ Title = "Smoothness", Step = 0.05,
         Value = { Min = 0.05, Max = 1, Default = 0.25 },
         Callback = function(v) State.CameraSmoothness = v end })
 
-    local fixSection = TabCamera:Section({ Title = "Anti Nunduk Tanah", Box = true, BoxBorder = true, Opened = true })
-    fixSection:Slider({ Title = "Min Height clamp Y", Step = 0.5,
+    local s2 = TabCamera:Section({ Title = "Anti Nunduk", Box = true, BoxBorder = true, Opened = true })
+    s2:Slider({ Title = "Min Height Y", Step = 0.5,
         Value = { Min = 0, Max = 8, Default = 2 },
         Callback = function(v) State.CameraMinHeight = v end })
-    fixSection:Space()
-    fixSection:Toggle({ Title = "Anti Tembus Dinding", Value = true,
+    s2:Space()
+    s2:Toggle({ Title = "Anti Tembus Dinding", Value = true,
         Callback = function(v) State.CameraCollision = v end })
-    fixSection:Space()
-    fixSection:Toggle({ Title = "Follow Character Rotation", Value = true,
+    s2:Space()
+    s2:Toggle({ Title = "Follow Character Rotation", Value = true,
         Callback = function(v) State.CameraFollowChar = v end })
-    fixSection:Space()
-    fixSection:Toggle({ Title = "Restore on Death", Value = true,
+    s2:Space()
+    s2:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
 --============================================================
@@ -750,27 +814,22 @@ local TabFace = Window:Tab({
     Icon = "solar:user-speak-rounded-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local faceSection = TabFace:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
-    faceSection:Dropdown({ Title = "Face Mode",
+    local s = TabFace:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
+    s:Dropdown({ Title = "Face Mode",
         Values = { "Both", "Camera Only", "Character Only", "Off" },
         Value = "Both",
-        Callback = function(v)
-            State.FaceMode = v
-            if v == "Off" or v == "Camera Only" then
-                local hum = getHum(); if hum then hum.AutoRotate = true end
-            end
-        end })
-    faceSection:Space()
-    faceSection:Dropdown({ Title = "Target Priority",
+        Callback = function(v) State.FaceMode = v end })
+    s:Space()
+    s:Dropdown({ Title = "Target Priority",
         Values = { "Camera Target", "Nearest Enemy", "Nearest Boss", "Dodge Target" },
         Value = "Camera Target",
         Callback = function(v) State.FacePriority = v end })
-    faceSection:Space()
-    faceSection:Slider({ Title = "Rotasi Speed", Step = 0.05,
+    s:Space()
+    s:Slider({ Title = "Rotasi Speed", Step = 0.05,
         Value = { Min = 0.05, Max = 1, Default = 0.35 },
         Callback = function(v) State.FaceRotationSpeed = v end })
-    faceSection:Space()
-    faceSection:Toggle({ Title = "Face Only When Moving", Value = false,
+    s:Space()
+    s:Toggle({ Title = "Face Only When Moving", Value = false,
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
 --============================================================
@@ -782,84 +841,53 @@ local TabConfig = Window:Tab({
 })
 do
     local presets = {
-        Physical = {
-            FarmDistance = 10, DodgeOrbitRadius = 8, DodgeOrbitSpeed = 3,
-            AttackRange = 20, SkillQDelay = 0.3, SkillEDelay = 0.6,
-        },
-        DesertTemple = {
-            DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5,
-            AttackRange = 25, DangerRadius = 30,
-        },
-        WinterOutpost = {
-            DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
-            DangerRadius = 30, AvoidStrength = 3,
-        },
-        PirateIsland = {
-            DodgeOrbitRadius = 14, DodgeOrbitSpeed = 2,
-            AttackRange = 30, DangerRadius = 25,
-        },
-        KingsCastle = {
-            DodgeOrbitRadius = 10, DodgeOrbitSpeed = 3,
-            AttackRange = 22, DangerRadius = 28, AvoidStrength = 3,
-        },
-        TheUnderworld = {
-            DodgeOrbitRadius = 15, DodgeOrbitSpeed = 2,
-            AttackRange = 30, DangerRadius = 35, AvoidStrength = 3,
-        },
-        BossRaid = {
-            DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5,
-            DangerRadius = 32, AvoidStrength = 3, EscapeMode = true,
-        },
+        Physical = { DodgeOrbitRadius = 8, DodgeOrbitSpeed = 3, AttackRange = 20 },
+        DesertTemple = { DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5, DangerRadius = 30 },
+        WinterOutpost = { DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2, DangerRadius = 30, AvoidStrength = 3 },
+        PirateIsland = { DodgeOrbitRadius = 14, DodgeOrbitSpeed = 2, AttackRange = 30 },
+        KingsCastle = { DodgeOrbitRadius = 10, DodgeOrbitSpeed = 3, DangerRadius = 28, AvoidStrength = 3 },
+        TheUnderworld = { DodgeOrbitRadius = 15, DodgeOrbitSpeed = 2, DangerRadius = 35 },
+        NorthernLands = { DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5, DangerRadius = 32 },
     }
 
-    local presetSec = TabConfig:Section({ Title = "Presets", Box = true, BoxBorder = true, Opened = true })
+    local s1 = TabConfig:Section({ Title = "Presets", Box = true, BoxBorder = true, Opened = true })
     for name, data in pairs(presets) do
-        presetSec:Button({
-            Title = "Load: " .. name,
-            Justify = "Center",
+        s1:Button({
+            Title = "Load: " .. name, Justify = "Center",
             Callback = function()
                 for k, v in pairs(data) do
                     if State[k] ~= nil then State[k] = v end
                 end
-                local hum = getHum(); if hum then hum.WalkSpeed = State.WalkSpeed end
-                WindUI:Notify({
-                    Title = "Preset Loaded",
-                    Content = name .. " berhasil dimuat.",
-                    Icon = "check",
-                })
+                WindUI:Notify({ Title = "Preset Loaded", Content = name .. " dimuat." })
             end,
         })
-        presetSec:Space()
+        s1:Space()
     end
 
-    local exportSec = TabConfig:Section({ Title = "Export / Import", Box = true, BoxBorder = true, Opened = true })
-    exportSec:Button({
-        Title = "Export Config (Copy)",
-        Justify = "Center",
+    local s2 = TabConfig:Section({ Title = "Export / Import", Box = true, BoxBorder = true, Opened = true })
+    s2:Button({
+        Title = "Export Config (Copy)", Justify = "Center",
         Callback = function()
             local clean = {}
             for k, v in pairs(State) do
-                if type(v) ~= "table" and type(v) ~= "function" then
-                    clean[k] = v
-                end
+                if type(v) ~= "table" and type(v) ~= "function" then clean[k] = v end
             end
             local json = HttpService:JSONEncode(clean)
             if setclipboard then setclipboard(json) end
-            WindUI:Notify({ Title = "Export", Content = "Config copied to clipboard." })
+            WindUI:Notify({ Title = "Export", Content = "Config copied." })
         end,
     })
-    exportSec:Space()
-    exportSec:Button({
-        Title = "Import Config (Paste)",
-        Justify = "Center",
+    s2:Space()
+    s2:Button({
+        Title = "Import Config (Paste)", Justify = "Center",
         Callback = function()
             local raw = getclipboard and getclipboard() or ""
-            local ok2, data = pcall(function() return HttpService:JSONDecode(raw) end)
-            if ok2 and type(data) == "table" then
+            local okJ, data = pcall(function() return HttpService:JSONDecode(raw) end)
+            if okJ and type(data) == "table" then
                 for k, v in pairs(data) do
                     if State[k] ~= nil then State[k] = v end
                 end
-                WindUI:Notify({ Title = "Import", Content = "Config berhasil dimuat." })
+                WindUI:Notify({ Title = "Import", Content = "Config dimuat." })
             else
                 WindUI:Notify({ Title = "Import", Content = "Config tidak valid." })
             end
@@ -870,18 +898,17 @@ end
 -- TAB: PLAYER
 --============================================================
 local TabPlayer = Window:Tab({
-    Title = "Player", Desc = "Noclip jump anti-afk",
+    Title = "Player", Desc = "Misc",
     Icon = "solar:user-bold", IconColor = Grey, IconShape = "Square", Border = true,
 })
 do
-    local pSection = TabPlayer:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
-    pSection:Toggle({ Title = "Noclip", Value = false, Callback = function(v) State.Noclip = v end })
-    pSection:Space()
-    pSection:Toggle({ Title = "Infinite Jump", Value = false, Callback = function(v) State.InfJump = v end })
-    pSection:Space()
-    pSection:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
+    local s = TabPlayer:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({ Title = "Noclip", Value = false, Callback = function(v) State.Noclip = v end })
+    s:Space()
+    s:Toggle({ Title = "Infinite Jump", Value = false, Callback = function(v) State.InfJump = v end })
+    s:Space()
+    s:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
-
 --============================================================
 -- LOOPS
 --============================================================
@@ -896,7 +923,6 @@ task.spawn(function()
     end
 end)
 
--- Auto Attack
 local function clickOnce()
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
@@ -911,6 +937,7 @@ local function activateTool()
     if tool then pcall(function() tool:Activate() end) end
 end
 
+-- AUTO ATTACK
 task.spawn(function()
     while task.wait(0.1) do
         if State.AutoAttack then
@@ -922,16 +949,16 @@ task.spawn(function()
     end
 end)
 
--- Auto Aggro
+-- AUTO AGGRO
 task.spawn(function()
     while task.wait(0.6) do
         if State.AutoAggro then
             local hrp = getHRP()
             if hrp then
                 local targets = {}
-                for _, model in ipairs(workspace:GetDescendants()) do
-                    if isEnemy(model) then
-                        local mhrp = model:FindFirstChild("HumanoidRootPart")
+                for _, m in ipairs(workspace:GetDescendants()) do
+                    if isEnemy(m) then
+                        local mhrp = m:FindFirstChild("HumanoidRootPart")
                         if mhrp then
                             local d = (mhrp.Position - hrp.Position).Magnitude
                             if d <= State.AggroRange then
@@ -944,16 +971,16 @@ task.spawn(function()
                 for _, t in ipairs(targets) do
                     if not State.AutoAggro then break end
                     local cur = getHRP(); if not cur then break end
-                    local d = (cur.Position - t.hrp.Position).Magnitude
-                    if d > 6 then walkWithPath(t.hrp.Position, 6) end
+                    if (cur.Position - t.hrp.Position).Magnitude > 6 then
+                        walkWithPath(t.hrp.Position, 6)
+                    end
                 end
             end
         end
     end
 end)
---============================================================
--- AUTO DODGE (v5.4.2 style)
---============================================================
+
+-- AUTO DODGE
 local orbitAngle = 0
 local faceAlign = nil
 local faceAttach = nil
@@ -1034,9 +1061,8 @@ task.spawn(function()
         end
     end
 end)
---============================================================
+
 -- AUTO SKILL
---============================================================
 local abilityFolder = ReplicatedStorage:FindFirstChild("abilities")
 local allAbilityEvents = {}
 if abilityFolder then
@@ -1079,71 +1105,30 @@ task.spawn(function()
     end
 end)
 --============================================================
--- AUTO UPGRADE
+-- AUTO SELL LOOP
 --============================================================
-task.spawn(function()
-    while task.wait(State.UpgradeDelay) do
-        if State.AutoUpgrade then
-            if State.UpgradeFilter == "All" or State.UpgradeFilter == "Item" then
-                fire(R.UpgradeItem)
-            end
-            if State.UpgradeFilter == "All" or State.UpgradeFilter == "Key" then
-                fire(R.UpgradeKey)
-            end
-        end
-    end
-end)
+local function getToolStat(tool, statName)
+    local child = tool:FindFirstChild(statName)
+    if child and child:IsA("ValueBase") then return child.Value end
+    return nil
+end
 
---============================================================
--- AUTO EQUIP BEST
---============================================================
-task.spawn(function()
-    while task.wait(3) do
-        if State.AutoEquipBest then
-            local bp = LP:FindFirstChild("Backpack")
-            if bp then
-                local bestTool, bestScore = nil, 0
-                for _, item in ipairs(bp:GetChildren()) do
-                    if item:IsA("Tool") then
-                        local score = 1
-                        local n = item.Name:lower()
-                        if n:find("legendary") or n:find("mythic") then score = score + 10
-                        elseif n:find("epic") then score = score + 7
-                        elseif n:find("rare") then score = score + 5
-                        elseif n:find("uncommon") then score = score + 3 end
-                        if n:find("sword") or n:find("blade") then score = score + 3 end
-                        if n:find("staff") or n:find("wand") then score = score + 2 end
-                        if score > bestScore then bestScore, bestTool = score, item end
-                    end
-                end
-                if bestTool then
-                    fire(R.EquipItem, bestTool)
-                end
-            end
-        end
-    end
-end)
---============================================================
--- AUTO SELL
---============================================================
 task.spawn(function()
     while task.wait(2) do
         if State.AutoSell then
             local bp = LP:FindFirstChild("Backpack")
             if bp then
                 local equipped = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-                for _, item in ipairs(bp:GetChildren()) do
-                    if item:IsA("Tool") then
-                        local skip = false
-                        if State.KeepEquipped and equipped and item.Name == equipped.Name then
-                            skip = true
-                        end
+                for _, tool in ipairs(bp:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        local skip = State.KeepEquipped and equipped and tool.Name == equipped.Name
                         if not skip then
-                            local n = item.Name:lower()
-                            local rarityOK = (State.SellRarity == "All") or n:find(State.SellRarity:lower(), 1, true)
-                            local catOK = (State.SellCategory == "All") or n:find(State.SellCategory:lower(), 1, true)
-                            if rarityOK and catOK then
-                                fire(R.SellItem, item.Name)
+                            local rarity = getToolStat(tool, "rarity") or ""
+                            local typ = getToolStat(tool, "type") or ""
+                            local matchR = (State.SellRarity == "Any") or (rarity == State.SellRarity)
+                            local matchT = (State.SellType == "Any") or (typ == State.SellType)
+                            if matchR and matchT then
+                                fire(R.SellItem, tool)
                                 task.wait(State.SellDelay)
                             end
                         end
@@ -1154,11 +1139,89 @@ task.spawn(function()
     end
 end)
 --============================================================
--- AUTO PROGRESSION
+-- AUTO UPGRADE LOOP
 --============================================================
 task.spawn(function()
-    while task.wait(2) do
+    while task.wait(State.UpgradeDelay) do
+        if State.AutoUpgrade then
+            if State.UpgradeTarget == "Item" or State.UpgradeTarget == "Both" then
+                fire(R.UpgradeItem)
+            end
+            if State.UpgradeTarget == "Key" or State.UpgradeTarget == "Both" then
+                fire(R.UpgradeKey)
+            end
+        end
+    end
+end)
+--============================================================
+-- AUTO EQUIP BEST LOOP
+--============================================================
+task.spawn(function()
+    while task.wait(3) do
+        if State.AutoEquipBest then
+            local bp = LP:FindFirstChild("Backpack")
+            if bp then
+                local bestTool, bestScore = nil, -1
+                for _, tool in ipairs(bp:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        local typ = getToolStat(tool, "type") or ""
+                        if State.EquipBestType == "Any" or typ == State.EquipBestType then
+                            local dmg = tonumber(getToolStat(tool, "damage")) or 0
+                            local rarity = tostring(getToolStat(tool, "rarity") or "common"):lower()
+                            local rarityBonus = 0
+                            if rarity == "mythic" or rarity == "ultimate" then rarityBonus = 500
+                            elseif rarity == "legendary" then rarityBonus = 300
+                            elseif rarity == "epic" then rarityBonus = 150
+                            elseif rarity == "rare" then rarityBonus = 80
+                            elseif rarity == "uncommon" then rarityBonus = 30 end
+                            local score = dmg + rarityBonus
+                            if score > bestScore then
+                                bestScore, bestTool = score, tool
+                            end
+                        end
+                    end
+                end
+                if bestTool then
+                    fire(R.EquipItem, bestTool)
+                end
+            end
+        end
+    end
+end)
+--============================================================
+-- PROGRESSION LOOPS
+--============================================================
+task.spawn(function()
+    while task.wait(3) do
+        if State.AutoBestDungeon then
+            local lvl = getPlayerLevel()
+            local best = DUNGEONS[1]
+            for _, d in ipairs(DUNGEONS) do
+                if lvl >= d.Level then best = d end
+            end
+            State.SelectedDungeon = best.Name
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(3) do
         if State.AutoStart then
+            -- Coba klik startButton di queueGui
+            local pg = LP:FindFirstChild("PlayerGui")
+            if pg then
+                local qg = pg:FindFirstChild("queueGui")
+                if qg then
+                    local startBtn = qg:FindFirstChild("startButton", true)
+                    if startBtn and startBtn:IsA("TextButton") then
+                        pcall(function()
+                            for _, conn in ipairs(getconnections(startBtn.MouseButton1Click)) do
+                                conn:Fire()
+                            end
+                        end)
+                    end
+                end
+            end
             fire(R.StartDungeon)
         end
     end
@@ -1173,9 +1236,8 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
--- CAMERA + FACE TARGET
+-- CAMERA + FACE
 --============================================================
 RunService.RenderStepped:Connect(function()
     local hrp = getHRP(); if not hrp then return end
@@ -1183,7 +1245,6 @@ RunService.RenderStepped:Connect(function()
     if not target then return end
     local tHRP = target:FindFirstChild("HumanoidRootPart")
     if not tHRP then return end
-
     local npcPos = tHRP.Position
 
     local baseDir
@@ -1199,11 +1260,9 @@ RunService.RenderStepped:Connect(function()
 
     local desiredPos = hrp.Position - baseDir * State.CameraDistance
         + Vector3.new(0, State.CameraHeight, 0)
-
     if State.CameraCollision then
         desiredPos = getSafeCameraPos(hrp, desiredPos)
     end
-
     local minY = hrp.Position.Y + State.CameraMinHeight
     desiredPos = Vector3.new(desiredPos.X, math.max(desiredPos.Y, minY), desiredPos.Z)
 
@@ -1215,8 +1274,8 @@ RunService.RenderStepped:Connect(function()
         cam.CFrame = cam.CFrame:Lerp(desiredCF, State.CameraSmoothness)
     end
 
-    local faceModeActive = (State.FaceMode == "Both" or State.FaceMode == "Character Only")
-    if not State.AutoDodge and faceModeActive then
+    local faceActive = (State.FaceMode == "Both" or State.FaceMode == "Character Only")
+    if not State.AutoDodge and faceActive then
         if State.FaceOnlyWhenMoving then
             local hum = getHum()
             if hum and hum.MoveDirection.Magnitude < 0.1 then return end
@@ -1226,14 +1285,16 @@ RunService.RenderStepped:Connect(function()
         smoothFaceY(npcPos, State.FaceRotationSpeed)
     end
 end)
-
+--============================================================
+-- MISC LOOPS
+--============================================================
 LP.CharacterAdded:Connect(function()
     if State.CameraRestoreOnDeath then
         task.wait(0.5)
         restoreCamera()
         if State.CameraLock then
             task.wait(0.5)
-            saveOriginalCameraState()
+            saveCamState()
         end
     end
 end)
@@ -1257,12 +1318,13 @@ LP.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid")
     hum.WalkSpeed = State.WalkSpeed
 end)
-
+--============================================================
+-- NOTIF
+--============================================================
 WindUI:Notify({
-    Title = "Pall Hub v5.5.0",
-    Content = "Gear, Progression, Lobby, Config siap dipakai.",
+    Title = "Pall Hub v6.0.0",
+    Content = "Lobby dihapus. Progression & Gear rebuilt.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.5.0 loaded. Base v5.4.2 + Gear/Progression/Lobby/Config.")
-print("[PALL-DEBUG] Script selesai load sampe akhir.")
+print("[PALL-HUB] v6.0.0 loaded. Lobby removed. Progression + Gear rebuilt.")
