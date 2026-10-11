@@ -138,7 +138,6 @@ local function invoke(name, ...)
     end
     return nil
 end
-
 --============================================================
 -- BOSS KEYWORDS
 --============================================================
@@ -245,7 +244,6 @@ local function walkWithPath(targetPos, timeout)
         end
     end
 end
-
 --============================================================
 -- DANGER SCANNER
 --============================================================
@@ -372,69 +370,6 @@ task.spawn(function()
         end
     end
 end)
-
---============================================================
--- CAMERA HELPERS
---============================================================
-local CameraState = { _originalType = nil, _originalAutoRotate = true }
-
-local function saveOriginalCameraState()
-    CameraState._originalType = workspace.CurrentCamera.CameraType
-    local hum = getHum()
-    if hum then CameraState._originalAutoRotate = hum.AutoRotate end
-end
-
-local function restoreCamera()
-    local cam = workspace.CurrentCamera
-    cam.CameraType = CameraState._originalType or Enum.CameraType.Custom
-    local hum = getHum()
-    if hum then hum.AutoRotate = CameraState._originalAutoRotate end
-end
-
-local function smoothFaceY(targetPos, speed)
-    local hrp = getHRP(); if not hrp then return end
-    local pos = hrp.Position
-    local dirXZ = Vector3.new(targetPos.X - pos.X, 0, targetPos.Z - pos.Z)
-    if dirXZ.Magnitude < 0.1 then return end
-    local desiredY = math.atan2(-dirXZ.X, -dirXZ.Z)
-    local _, curY, _ = hrp.CFrame:ToEulerAnglesYXZ()
-    local diff = desiredY - curY
-    while diff > math.pi do diff = diff - math.pi * 2 end
-    while diff < -math.pi do diff = diff + math.pi * 2 end
-    local newY = curY + diff * math.clamp(speed, 0.05, 1)
-    hrp.CFrame = CFrame.new(pos) * CFrame.Angles(0, newY, 0)
-end
-
-local function pickFaceTarget()
-    if State.FacePriority == "Dodge Target" and State._dodgeTarget and State._dodgeTarget.Parent then
-        return State._dodgeTarget
-    elseif State.FacePriority == "Nearest Boss" then
-        return getNearestBoss(500)
-    elseif State.FacePriority == "Nearest Enemy" then
-        return getNearestEnemy(500)
-    end
-    if State.CameraTargetMode == "Nearest Boss" then
-        return getNearestBoss(500)
-    else
-        return getNearestEnemy(500)
-    end
-end
-
-local function getSafeCameraPos(hrp, desiredPos)
-    local rayOrigin = hrp.Position + Vector3.new(0, 2, 0)
-    local rayDir = desiredPos - rayOrigin
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {LP.Character}
-    params.IgnoreWater = true
-    local hit = workspace:Raycast(rayOrigin, rayDir, params)
-    if hit then
-        local dist = math.max((hit.Position - rayOrigin).Magnitude - 0.8, 1)
-        return rayOrigin + rayDir.Unit * dist
-    end
-    return desiredPos
-end
-
 --============================================================
 -- WINDOW
 --============================================================
@@ -454,7 +389,6 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({ Title = "v5.5.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
-
 --============================================================
 -- TAB: SKILLS
 --============================================================
@@ -477,7 +411,6 @@ do
     sec:Toggle({ Title = "Use Remote Fallback", Value = true,
         Callback = function(v) State.UseRemoteFallback = v end })
 end
-
 --============================================================
 -- TAB: COMBAT
 --============================================================
@@ -507,7 +440,6 @@ do
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
-
 --============================================================
 -- TAB: DODGE
 --============================================================
@@ -570,7 +502,6 @@ do
         end,
     })
 end
-
 --============================================================
 -- TAB: GEAR
 --============================================================
@@ -730,7 +661,6 @@ do
         Callback = function() fire(R.HostAutoReplay, true) end,
     })
 end
-
 --============================================================
 -- TAB: LOBBY
 --============================================================
@@ -764,7 +694,6 @@ do
         Callback = function() fire(R.LeaveGame) end,
     })
 end
-
 --============================================================
 -- TAB: CAMERA
 --============================================================
@@ -811,7 +740,6 @@ do
     fixSection:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
-
 --============================================================
 -- TAB: FACE TARGET
 --============================================================
@@ -843,7 +771,6 @@ do
     faceSection:Toggle({ Title = "Face Only When Moving", Value = false,
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
-
 --============================================================
 -- TAB: CONFIG
 --============================================================
@@ -1022,7 +949,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- AUTO DODGE (v5.4.2 style)
 --============================================================
@@ -1106,7 +1032,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- AUTO SKILL
 --============================================================
@@ -1196,7 +1121,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- AUTO SELL
 --============================================================
@@ -1227,7 +1151,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- AUTO PROGRESSION
 --============================================================
