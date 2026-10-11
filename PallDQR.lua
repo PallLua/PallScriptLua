@@ -2,8 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v5.4.2 — Walk-Natural Dodge (no dash)
-    Notes   : Escape pakai WalkSpeed biasa. Anti-kick friendly.
+    Version : v5.5.0 — v5.4.2 base + Gear/Progression/Lobby/Config
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -14,6 +13,7 @@ local UserInputService    = game:GetService("UserInputService")
 local VirtualUser         = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local PathfindingService  = game:GetService("PathfindingService")
+local HttpService         = game:GetService("HttpService")
 
 local LP = Players.LocalPlayer
 
@@ -28,45 +28,116 @@ local Yellow = Color3.fromHex("#ECA201")
 local Purple = Color3.fromHex("#7775F2")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
+local Red    = Color3.fromHex("#EF4F1D")
 
 --============================================================
 -- STATE
 --============================================================
 local State = {
+    -- Combat
     AutoAttack = false, AutoAggro = false,
     AttackRange = 25, AggroRange = 300, WalkSpeed = 16,
 
+    -- Dodge
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
-    DodgeWalkSpeed = 16,
-    MaxDodgeWalkSpeed = 16,   -- cap biar nggak lari
+    DodgeWalkSpeed = 16, MaxDodgeWalkSpeed = 16,
 
     DodgeBossSkill = true,
-    DangerRadius = 25,
-    AvoidStrength = 2.5,
-    EscapeMode = true,
-    -- EscapeSpeed dihapus, pakai MaxDodgeWalkSpeed
-
+    DangerRadius = 25, AvoidStrength = 2.5, EscapeMode = true,
     DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius,warning,telegraph,laser,line,cone,pulse,sigil",
     ShowDebugNames = false,
 
+    -- Skill
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
 
+    -- Camera
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
     CameraDistance = 8, CameraHeight = 3, CameraSmoothness = 0.25,
     CameraMinHeight = 2, CameraFollowChar = true, CameraCollision = true,
     CameraRestoreOnDeath = true,
 
+    -- Face
     FaceMode = "Both", FacePriority = "Camera Target",
     FaceRotationSpeed = 0.35, FaceOnlyWhenMoving = false,
 
-    _dodgeTarget = nil,
-    _dangerAvoid = Vector3.zero,
-    _dangerCount = 0,
-    _dangerEscape = false,
+    -- GEAR
+    AutoUpgrade = false, UpgradeDelay = 1.5, UpgradeFilter = "All",
+    AutoSell = false, SellRarity = "All", SellCategory = "All",
+    KeepEquipped = true, ConfirmDialog = true, SellDelay = 0.3,
+    AutoEquipBest = false,
 
+    -- PROGRESSION
+    AutoStart = false, AutoReplay = false,
+    AutoLobbyReturn = false, ReplayDelay = 3,
+
+    -- LOBBY
+    AutoCreateLobby = false, AutoStartLobby = false,
+    AutoBestDungeon = false, AutoBestDifficulty = false,
+    Hardcore = false, PrivateLobby = false, AutoReady = false,
+    StartOnlyOwner = false, DeleteLobbyOnJoin = false,
+
+    -- Misc
     Noclip = false, InfJump = false, AntiAFK = true,
+
+    -- Runtime
+    _dodgeTarget = nil, _dangerAvoid = Vector3.zero,
+    _dangerCount = 0, _dangerEscape = false,
 }
+
+--============================================================
+-- REMOTES (dari scan Pall)
+--============================================================
+local R = {
+    StartDungeon     = "startDungeon",
+    ReplayDungeon    = "replayDungeon",
+    JoinDungeon      = "joinDungeon",
+    HostAutoReplay   = "hostSetAutoReplay",
+    StartBossRaid    = "startBossRaid",
+    ShowStartButton  = "showStartButton",
+    ChangeStartValue = "changeStartValue",
+    ReloadInvy       = "reloadInvy",
+    EquipItem        = "equipItem",
+    UnequipItem      = "unequipItem",
+    EquipSet         = "equipSet",
+    SellItem         = "sellItemEvent",
+    OpenSellShop     = "openSellShop",
+    UpgradeItem      = "upgradeItem",
+    UpgradeKey       = "upgradeKey",
+    AbilityUsed      = "abilityUsed",
+    AbilityCast      = "abilityCast",
+    LeaveGame        = "leaveGame",
+    LeaveBossLobby   = "leaveBossLobby",
+}
+
+local remoteCache = {}
+local function resolveRemote(name)
+    if remoteCache[name] then return remoteCache[name] end
+    local remotesFolder = ReplicatedStorage:FindFirstChild("remotes")
+    if remotesFolder then
+        local ev = remotesFolder:FindFirstChild(name)
+        if ev then remoteCache[name] = ev; return ev end
+    end
+    local ev = ReplicatedStorage:FindFirstChild(name)
+    if ev then remoteCache[name] = ev end
+    return ev
+end
+
+local function fire(name, ...)
+    local ev = resolveRemote(name)
+    if ev and ev:IsA("RemoteEvent") then
+        pcall(function() ev:FireServer(...) end)
+    end
+end
+
+local function invoke(name, ...)
+    local ev = resolveRemote(name)
+    if ev and ev:IsA("RemoteFunction") then
+        local ok2, res = pcall(function() return ev:InvokeServer(...) end)
+        if ok2 then return res end
+    end
+    return nil
+end
 
 --============================================================
 -- BOSS KEYWORDS
@@ -138,7 +209,6 @@ local function getNearestBoss(maxDist)
     end
     return closest
 end
-
 --============================================================
 -- PATHFINDING
 --============================================================
@@ -175,6 +245,7 @@ local function walkWithPath(targetPos, timeout)
         end
     end
 end
+
 --============================================================
 -- DANGER SCANNER
 --============================================================
@@ -209,37 +280,30 @@ end
 local function isDangerousPart(part)
     if not part:IsA("BasePart") then return false end
     if isPlayerOwned(part) then return false end
-
     local name = part.Name:lower()
     local mat = part.Material
     local transp = part.Transparency
     local size = part.Size
-
     for _, kw in ipairs(dangerKeywordList) do
         if name:find(kw, 1, true) then return true end
     end
-
     if size.X > 400 or size.Y > 300 or size.Z > 400 then return false end
-
     local isNeon = (mat == Enum.Material.Neon)
     local isForceField = (mat == Enum.Material.ForceField)
     local isGlowing = isNeon or isForceField
     local isTransparent = (transp >= 0.15 and transp <= 0.95)
     local isSemiTransparent = (transp >= 0.3 and transp <= 0.85)
-
     local flatCylinder = false
     local thinBeam = false
     if size.Y <= 1.5 and math.max(size.X, size.Z) >= 4 then flatCylinder = true end
     local maxXZ = math.max(size.X, size.Z)
     local minXZ = math.min(size.X, size.Z)
     if maxXZ >= 10 and minXZ <= 2.5 then thinBeam = true end
-
     if flatCylinder and (isGlowing or isTransparent) then return true end
     if thinBeam and (isGlowing or isTransparent) then return true end
     if isGlowing and isSemiTransparent and size.Y < 80 then return true end
     if isInsideBoss(part) and (isGlowing or isTransparent) then return true end
     if part.Parent == workspace and isNeon and isTransparent then return true end
-
     return false
 end
 
@@ -276,7 +340,6 @@ task.spawn(function()
                 local count = 0
                 local radius = State.DangerRadius
                 local escapeThreat = false
-
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if isDangerousPart(obj) then
                         local d = (obj.Position - hrp.Position).Magnitude
@@ -292,7 +355,6 @@ task.spawn(function()
                         end
                     end
                 end
-
                 if count > 0 then
                     State._dangerAvoid = (avoid / count) * State.AvoidStrength
                     State._dangerCount = count
@@ -310,6 +372,7 @@ task.spawn(function()
         end
     end
 end)
+
 --============================================================
 -- CAMERA HELPERS
 --============================================================
@@ -377,7 +440,7 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv542",
+    Folder = "pallhubv550",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -390,7 +453,7 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.4.2", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.5.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: SKILLS
@@ -401,8 +464,7 @@ local TabSkills = Window:Tab({
 })
 do
     local sec = TabSkills:Section({ Title = "Auto Skill", Box = true, BoxBorder = true, Opened = true })
-    sec:Toggle({ Title = "Auto Skill", Desc = "Otomatis tekan Q lalu E berulang",
-        Value = false, Callback = function(v) State.AutoSkill = v end })
+    sec:Toggle({ Title = "Auto Skill", Value = false, Callback = function(v) State.AutoSkill = v end })
     sec:Space()
     sec:Slider({ Title = "Q ke E Delay", Step = 0.1,
         Value = { Min = 0.1, Max = 3, Default = 0.4 },
@@ -445,6 +507,7 @@ do
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
+
 --============================================================
 -- TAB: DODGE
 --============================================================
@@ -460,7 +523,7 @@ do
         Value = { Min = 10, Max = 100, Default = 40 },
         Callback = function(v) State.DodgeRange = v end })
     dodgeSection:Space()
-    dodgeSection:Slider({ Title = "Orbit Radius (jauh)", Step = 1,
+    dodgeSection:Slider({ Title = "Orbit Radius", Step = 1,
         Value = { Min = 3, Max = 50, Default = 10 },
         Callback = function(v) State.DodgeOrbitRadius = v end })
     dodgeSection:Space()
@@ -475,26 +538,8 @@ do
             State.MaxDodgeWalkSpeed = v
         end })
 
-    local approachSection = TabDodge:Section({ Title = "Attack Approach", Box = true, BoxBorder = true, Opened = true })
-    approachSection:Toggle({
-        Title = "Attack Approach",
-        Desc = "Ngecilin orbit saat mau attack, balik jauh saat ada danger",
-        Value = true,
-        Callback = function(v) State.AttackApproach = v end,
-    })
-    approachSection:Space()
-    approachSection:Slider({ Title = "Approach Range", Step = 1,
-        Desc = "Jarak di mana karakter berhenti & attack",
-        Value = { Min = 4, Max = 20, Default = 8 },
-        Callback = function(v) State.AttackApproachRange = v end })
-    approachSection:Space()
-    approachSection:Slider({ Title = "Approach Speed", Step = 1,
-        Value = { Min = 16, Max = 40, Default = 16 },
-        Callback = function(v) State.AttackApproachSpeed = v end })
-
     local bossAvoidSection = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
-    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox AOE beam indicator",
-        Value = true, Callback = function(v) State.DodgeBossSkill = v end })
+    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Value = true, Callback = function(v) State.DodgeBossSkill = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Slider({ Title = "Danger Radius", Step = 1,
         Value = { Min = 10, Max = 80, Default = 25 },
@@ -504,8 +549,8 @@ do
         Value = { Min = 0.5, Max = 6, Default = 2.5 },
         Callback = function(v) State.AvoidStrength = v end })
     bossAvoidSection:Space()
-    bossAvoidSection:Toggle({ Title = "Escape Mode", Desc = "Jalan keluar zona pakai WalkSpeed normal",
-        Value = true, Callback = function(v) State.EscapeMode = v end })
+    bossAvoidSection:Toggle({ Title = "Escape Mode", Value = true,
+        Callback = function(v) State.EscapeMode = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Input({
         Title = "Custom Keywords",
@@ -523,6 +568,200 @@ do
             State.ShowDebugNames = v
             if v then loggedParts = {} end
         end,
+    })
+end
+
+--============================================================
+-- TAB: GEAR
+--============================================================
+local TabGear = Window:Tab({
+    Title = "Gear", Desc = "Upgrade, Sell, Equip",
+    Icon = "solar:bag-4-bold", IconColor = Yellow, IconShape = "Square", Border = true,
+})
+do
+    local upgradeSec = TabGear:Section({ Title = "Auto Upgrade", Box = true, BoxBorder = true, Opened = true })
+    upgradeSec:Toggle({
+        Title = "Auto Upgrade",
+        Desc = "Upgrade gear / key otomatis",
+        Value = false,
+        Callback = function(v) State.AutoUpgrade = v end,
+    })
+    upgradeSec:Space()
+    upgradeSec:Slider({
+        Title = "Upgrade Delay", Step = 0.5,
+        Value = { Min = 0.5, Max = 10, Default = 1.5 },
+        Callback = function(v) State.UpgradeDelay = v end,
+    })
+    upgradeSec:Space()
+    upgradeSec:Dropdown({
+        Title = "Upgrade Target",
+        Values = { "All", "Item", "Key" },
+        Value = "All",
+        Callback = function(v) State.UpgradeFilter = v end,
+    })
+    upgradeSec:Space()
+    upgradeSec:Button({
+        Title = "Upgrade Now",
+        Justify = "Center",
+        Callback = function()
+            fire(R.UpgradeItem)
+            WindUI:Notify({ Title = "Upgrade", Content = "Mengirim permintaan upgrade..." })
+        end,
+    })
+    upgradeSec:Space()
+    upgradeSec:Button({
+        Title = "Upgrade Key Now",
+        Justify = "Center",
+        Callback = function()
+            fire(R.UpgradeKey)
+            WindUI:Notify({ Title = "Upgrade Key", Content = "Mengirim permintaan upgrade key..." })
+        end,
+    })
+
+    local sellSec = TabGear:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
+    sellSec:Toggle({
+        Title = "Auto Sell",
+        Desc = "Jual gear otomatis sesuai filter",
+        Value = false,
+        Callback = function(v) State.AutoSell = v end,
+    })
+    sellSec:Space()
+    sellSec:Dropdown({
+        Title = "Sell Rarity",
+        Values = { "All", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" },
+        Value = "All",
+        Callback = function(v) State.SellRarity = v end,
+    })
+    sellSec:Space()
+    sellSec:Dropdown({
+        Title = "Sell Category",
+        Values = { "All", "Spell", "Weapon", "Armor", "Accessory", "Material" },
+        Value = "All",
+        Callback = function(v) State.SellCategory = v end,
+    })
+    sellSec:Space()
+    sellSec:Slider({
+        Title = "Sell Delay", Step = 0.1,
+        Value = { Min = 0.1, Max = 3, Default = 0.3 },
+        Callback = function(v) State.SellDelay = v end,
+    })
+    sellSec:Space()
+    sellSec:Toggle({
+        Title = "Keep Equipped",
+        Desc = "Jangan jual gear yang sedang dipakai",
+        Value = true,
+        Callback = function(v) State.KeepEquipped = v end,
+    })
+    sellSec:Space()
+    sellSec:Toggle({
+        Title = "Confirm Dialog",
+        Value = true,
+        Callback = function(v) State.ConfirmDialog = v end,
+    })
+    sellSec:Space()
+    sellSec:Button({
+        Title = "Sell Now",
+        Justify = "Center",
+        Callback = function()
+            fire(R.SellItem, "all")
+            WindUI:Notify({ Title = "Sell", Content = "Mengirim permintaan jual..." })
+        end,
+    })
+    sellSec:Space()
+    sellSec:Button({
+        Title = "Open Sell Shop",
+        Justify = "Center",
+        Callback = function()
+            fire(R.OpenSellShop)
+        end,
+    })
+
+    local equipSec = TabGear:Section({ Title = "Auto Equip", Box = true, BoxBorder = true, Opened = true })
+    equipSec:Toggle({
+        Title = "Auto Equip Best",
+        Desc = "Equip gear terbaik otomatis",
+        Value = false,
+        Callback = function(v) State.AutoEquipBest = v end,
+    })
+    equipSec:Space()
+    equipSec:Button({
+        Title = "Refresh Inventory",
+        Justify = "Center",
+        Callback = function()
+            fire(R.ReloadInvy)
+            WindUI:Notify({ Title = "Inventory", Content = "Refreshing..." })
+        end,
+    })
+end
+--============================================================
+-- TAB: PROGRESSION
+--============================================================
+local TabProgression = Window:Tab({
+    Title = "Progression", Desc = "Auto start, replay",
+    Icon = "solar:chart-2-bold", IconColor = Blue, IconShape = "Square", Border = true,
+})
+do
+    local flowSec = TabProgression:Section({ Title = "Dungeon Flow", Box = true, BoxBorder = true, Opened = true })
+    flowSec:Toggle({ Title = "Auto Start", Value = false, Callback = function(v) State.AutoStart = v end })
+    flowSec:Space()
+    flowSec:Toggle({ Title = "Auto Replay", Value = false, Callback = function(v) State.AutoReplay = v end })
+    flowSec:Space()
+    flowSec:Toggle({ Title = "Auto Return to Lobby", Value = false, Callback = function(v) State.AutoLobbyReturn = v end })
+    flowSec:Space()
+    flowSec:Slider({ Title = "Replay Delay", Step = 0.5,
+        Value = { Min = 0.5, Max = 15, Default = 3 },
+        Callback = function(v) State.ReplayDelay = v end })
+    flowSec:Space()
+    flowSec:Button({
+        Title = "Start Dungeon Now",
+        Justify = "Center",
+        Callback = function() fire(R.StartDungeon) end,
+    })
+    flowSec:Space()
+    flowSec:Button({
+        Title = "Replay Dungeon Now",
+        Justify = "Center",
+        Callback = function() fire(R.ReplayDungeon) end,
+    })
+    flowSec:Space()
+    flowSec:Button({
+        Title = "Set Auto Replay Host",
+        Justify = "Center",
+        Callback = function() fire(R.HostAutoReplay, true) end,
+    })
+end
+
+--============================================================
+-- TAB: LOBBY
+--============================================================
+local TabLobby = Window:Tab({
+    Title = "Lobby", Desc = "Auto create, start, ready",
+    Icon = "solar:users-group-rounded-bold", IconColor = Green, IconShape = "Square", Border = true,
+})
+do
+    local lobbySec = TabLobby:Section({ Title = "Lobby Automation", Box = true, BoxBorder = true, Opened = true })
+    lobbySec:Toggle({ Title = "Auto Create Lobby", Value = false, Callback = function(v) State.AutoCreateLobby = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Auto Start Lobby", Value = false, Callback = function(v) State.AutoStartLobby = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Auto Best Dungeon", Value = false, Callback = function(v) State.AutoBestDungeon = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Auto Best Difficulty", Value = false, Callback = function(v) State.AutoBestDifficulty = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Hardcore", Value = false, Callback = function(v) State.Hardcore = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Private", Value = false, Callback = function(v) State.PrivateLobby = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Auto Ready", Value = false, Callback = function(v) State.AutoReady = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Start Only If Owner", Value = false, Callback = function(v) State.StartOnlyOwner = v end })
+    lobbySec:Space()
+    lobbySec:Toggle({ Title = "Delete Lobby On Join", Value = false, Callback = function(v) State.DeleteLobbyOnJoin = v end })
+    lobbySec:Space()
+    lobbySec:Button({
+        Title = "Leave Lobby Now",
+        Justify = "Center",
+        Callback = function() fire(R.LeaveGame) end,
     })
 end
 
@@ -572,6 +811,7 @@ do
     fixSection:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
+
 --============================================================
 -- TAB: FACE TARGET
 --============================================================
@@ -605,6 +845,99 @@ do
 end
 
 --============================================================
+-- TAB: CONFIG
+--============================================================
+local TabConfig = Window:Tab({
+    Title = "Config", Desc = "Preset, Export, Import",
+    Icon = "solar:folder-with-files-bold", IconColor = Purple, IconShape = "Square", Border = true,
+})
+do
+    local presets = {
+        Physical = {
+            FarmDistance = 10, DodgeOrbitRadius = 8, DodgeOrbitSpeed = 3,
+            AttackRange = 20, SkillQDelay = 0.3, SkillEDelay = 0.6,
+        },
+        DesertTemple = {
+            DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5,
+            AttackRange = 25, DangerRadius = 30,
+        },
+        WinterOutpost = {
+            DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
+            DangerRadius = 30, AvoidStrength = 3,
+        },
+        PirateIsland = {
+            DodgeOrbitRadius = 14, DodgeOrbitSpeed = 2,
+            AttackRange = 30, DangerRadius = 25,
+        },
+        KingsCastle = {
+            DodgeOrbitRadius = 10, DodgeOrbitSpeed = 3,
+            AttackRange = 22, DangerRadius = 28, AvoidStrength = 3,
+        },
+        TheUnderworld = {
+            DodgeOrbitRadius = 15, DodgeOrbitSpeed = 2,
+            AttackRange = 30, DangerRadius = 35, AvoidStrength = 3,
+        },
+        BossRaid = {
+            DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5,
+            DangerRadius = 32, AvoidStrength = 3, EscapeMode = true,
+        },
+    }
+
+    local presetSec = TabConfig:Section({ Title = "Presets", Box = true, BoxBorder = true, Opened = true })
+    for name, data in pairs(presets) do
+        presetSec:Button({
+            Title = "Load: " .. name,
+            Justify = "Center",
+            Callback = function()
+                for k, v in pairs(data) do
+                    if State[k] ~= nil then State[k] = v end
+                end
+                local hum = getHum(); if hum then hum.WalkSpeed = State.WalkSpeed end
+                WindUI:Notify({
+                    Title = "Preset Loaded",
+                    Content = name .. " berhasil dimuat.",
+                    Icon = "check",
+                })
+            end,
+        })
+        presetSec:Space()
+    end
+
+    local exportSec = TabConfig:Section({ Title = "Export / Import", Box = true, BoxBorder = true, Opened = true })
+    exportSec:Button({
+        Title = "Export Config (Copy)",
+        Justify = "Center",
+        Callback = function()
+            local clean = {}
+            for k, v in pairs(State) do
+                if type(v) ~= "table" and type(v) ~= "function" then
+                    clean[k] = v
+                end
+            end
+            local json = HttpService:JSONEncode(clean)
+            if setclipboard then setclipboard(json) end
+            WindUI:Notify({ Title = "Export", Content = "Config copied to clipboard." })
+        end,
+    })
+    exportSec:Space()
+    exportSec:Button({
+        Title = "Import Config (Paste)",
+        Justify = "Center",
+        Callback = function()
+            local raw = getclipboard and getclipboard() or ""
+            local ok2, data = pcall(function() return HttpService:JSONDecode(raw) end)
+            if ok2 and type(data) == "table" then
+                for k, v in pairs(data) do
+                    if State[k] ~= nil then State[k] = v end
+                end
+                WindUI:Notify({ Title = "Import", Content = "Config berhasil dimuat." })
+            else
+                WindUI:Notify({ Title = "Import", Content = "Config tidak valid." })
+            end
+        end,
+    })
+end
+--============================================================
 -- TAB: PLAYER
 --============================================================
 local TabPlayer = Window:Tab({
@@ -634,6 +967,7 @@ task.spawn(function()
     end
 end)
 
+-- Auto Attack
 local function clickOnce()
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
@@ -659,6 +993,7 @@ task.spawn(function()
     end
 end)
 
+-- Auto Aggro
 task.spawn(function()
     while task.wait(0.6) do
         if State.AutoAggro then
@@ -689,7 +1024,7 @@ task.spawn(function()
 end)
 
 --============================================================
--- AUTO DODGE — orbit + attack approach
+-- AUTO DODGE (v5.4.2 style)
 --============================================================
 local orbitAngle = 0
 local faceAlign = nil
@@ -700,11 +1035,9 @@ local function ensureAlign()
     if faceAlign and faceAlign.Parent == hrp then return end
     if faceAlign and faceAlign.Parent then faceAlign:Destroy() end
     if faceAttach and faceAttach.Parent then faceAttach:Destroy() end
-
     faceAttach = Instance.new("Attachment")
     faceAttach.Name = "PallFaceAttach"
     faceAttach.Parent = hrp
-
     faceAlign = Instance.new("AlignOrientation")
     faceAlign.Name = "PallFaceAlign"
     faceAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
@@ -734,50 +1067,27 @@ task.spawn(function()
                 if mhrp and hum and hrp then
                     ensureAlign()
                     orbitAngle = orbitAngle + State.DodgeOrbitSpeed * 0.05
-
-                    -- Radius dinamis:
-                    -- - Kalau danger tinggi → radius normal (jaga jarak)
-                    -- - Kalau aman + Attack Approach ON → radius mengecil ke approach range
-                    -- - Kalau Auto Attack OFF → radius normal
-                    local effectiveRadius = State.DodgeOrbitRadius
-                    local moveSpeed = State.DodgeWalkSpeed
-
-                    local inDanger = State.DodgeBossSkill and State._dangerCount > 0
-
-                    if State.AttackApproach and State.AutoAttack and not inDanger then
-                        effectiveRadius = math.min(State.DodgeOrbitRadius, State.AttackApproachRange)
-                        moveSpeed = State.AttackApproachSpeed
-                    end
-
                     local orbitPos = mhrp.Position + Vector3.new(
-                        math.cos(orbitAngle) * effectiveRadius, 0,
-                        math.sin(orbitAngle) * effectiveRadius
+                        math.cos(orbitAngle) * State.DodgeOrbitRadius, 0,
+                        math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
-
                     local targetPos = orbitPos
-
-                    -- Kalau ada danger, prioritize menjauh (radius efektif naik lagi)
-                    if inDanger then
+                    local moveSpeed = State.DodgeWalkSpeed
+                    if State.DodgeBossSkill and State._dangerCount > 0 then
                         if State._dangerEscape and State.EscapeMode then
-                            -- Escape: mundur ke luar zona
                             local escapeDir = State._dangerAvoid
                             if escapeDir.Magnitude < 0.1 then
                                 escapeDir = (hrp.Position - mhrp.Position).Unit * 5
                             end
                             targetPos = hrp.Position + escapeDir.Unit * 8
                         else
-                            -- Blend: geser orbit ke arah aman
                             targetPos = orbitPos + State._dangerAvoid
                         end
                     end
-
-                    -- Cap WalkSpeed
                     moveSpeed = math.min(moveSpeed, State.MaxDodgeWalkSpeed)
-
                     hum.AutoRotate = false
                     hum.WalkSpeed = moveSpeed
                     hum:MoveTo(targetPos)
-
                     if faceAlign then
                         local dir = mhrp.Position - hrp.Position
                         local flatDir = Vector3.new(dir.X, 0, dir.Z)
@@ -796,6 +1106,7 @@ task.spawn(function()
         end
     end
 end)
+
 --============================================================
 -- AUTO SKILL
 --============================================================
@@ -837,6 +1148,103 @@ task.spawn(function()
             pressKey(Enum.KeyCode.E)
             if State.UseRemoteFallback then fireAbility(2, mob) end
             task.wait(State.SkillEDelay)
+        end
+    end
+end)
+--============================================================
+-- AUTO UPGRADE
+--============================================================
+task.spawn(function()
+    while task.wait(State.UpgradeDelay) do
+        if State.AutoUpgrade then
+            if State.UpgradeFilter == "All" or State.UpgradeFilter == "Item" then
+                fire(R.UpgradeItem)
+            end
+            if State.UpgradeFilter == "All" or State.UpgradeFilter == "Key" then
+                fire(R.UpgradeKey)
+            end
+        end
+    end
+end)
+
+--============================================================
+-- AUTO EQUIP BEST
+--============================================================
+task.spawn(function()
+    while task.wait(3) do
+        if State.AutoEquipBest then
+            local bp = LP:FindFirstChild("Backpack")
+            if bp then
+                local bestTool, bestScore = nil, 0
+                for _, item in ipairs(bp:GetChildren()) do
+                    if item:IsA("Tool") then
+                        local score = 1
+                        local n = item.Name:lower()
+                        if n:find("legendary") or n:find("mythic") then score = score + 10
+                        elseif n:find("epic") then score = score + 7
+                        elseif n:find("rare") then score = score + 5
+                        elseif n:find("uncommon") then score = score + 3 end
+                        if n:find("sword") or n:find("blade") then score = score + 3 end
+                        if n:find("staff") or n:find("wand") then score = score + 2 end
+                        if score > bestScore then bestScore, bestTool = score, item end
+                    end
+                end
+                if bestTool then
+                    fire(R.EquipItem, bestTool)
+                end
+            end
+        end
+    end
+end)
+
+--============================================================
+-- AUTO SELL
+--============================================================
+task.spawn(function()
+    while task.wait(2) do
+        if State.AutoSell then
+            local bp = LP:FindFirstChild("Backpack")
+            if bp then
+                local equipped = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
+                for _, item in ipairs(bp:GetChildren()) do
+                    if item:IsA("Tool") then
+                        local skip = false
+                        if State.KeepEquipped and equipped and item.Name == equipped.Name then
+                            skip = true
+                        end
+                        if not skip then
+                            local n = item.Name:lower()
+                            local rarityOK = (State.SellRarity == "All") or n:find(State.SellRarity:lower(), 1, true)
+                            local catOK = (State.SellCategory == "All") or n:find(State.SellCategory:lower(), 1, true)
+                            if rarityOK and catOK then
+                                fire(R.SellItem, item.Name)
+                                task.wait(State.SellDelay)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+--============================================================
+-- AUTO PROGRESSION
+--============================================================
+task.spawn(function()
+    while task.wait(2) do
+        if State.AutoStart then
+            fire(R.StartDungeon)
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if State.AutoReplay then
+            task.wait(State.ReplayDelay)
+            fire(R.ReplayDungeon)
+            fire(R.HostAutoReplay, true)
         end
     end
 end)
@@ -926,9 +1334,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.4.3",
-    Content = "Attack Approach aktif. Deket saat attack, jauh saat danger.",
+    Title = "Pall Hub v5.5.0",
+    Content = "Gear, Progression, Lobby, Config siap dipakai.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.4.3 loaded.")
+print("[PALL-HUB] v5.5.0 loaded. Base v5.4.2 + Gear/Progression/Lobby/Config.")
