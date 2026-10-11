@@ -1203,36 +1203,109 @@ task.spawn(function()
         end
     end
 end)
-
-task.spawn(function()
-    while task.wait(3) do
-        if State.AutoStart then
-            -- Coba klik startButton di queueGui
-            local pg = LP:FindFirstChild("PlayerGui")
-            if pg then
-                local qg = pg:FindFirstChild("queueGui")
-                if qg then
-                    local startBtn = qg:FindFirstChild("startButton", true)
-                    if startBtn and startBtn:IsA("TextButton") then
-                        pcall(function()
-                            for _, conn in ipairs(getconnections(startBtn.MouseButton1Click)) do
-                                conn:Fire()
-                            end
-                        end)
-                    end
-                end
+-- Helper: klik tombol/label GUI beneran
+local function clickGuiElement(el)
+    if not el then return false end
+    if el:IsA("TextButton") or el:IsA("ImageButton") then
+        local ok = pcall(function()
+            for _, conn in ipairs(getconnections(el.MouseButton1Click)) do
+                conn:Fire()
             end
-            fire(R.StartDungeon)
+        end)
+        if ok then return true end
+        -- Fallback: pake firesignal
+        pcall(function() firesignal(el.MouseButton1Click) end)
+        return true
+    end
+    return false
+end
+
+-- Helper: cari label di dalam folder dengan text match
+local function findLabelByText(parent, text)
+    for _, child in ipairs(parent:GetDescendants()) do
+        if (child:IsA("TextLabel") or child:IsA("TextButton"))
+            and child.Text and child.Text:lower():find(text:lower(), 1, true) then
+            return child
         end
     end
-end)
+    return nil
+end
+
+-- Fungsi utama: pilih dungeon + difficulty + start
+local function startDungeonViaGui(dungeonName, difficulty, hardcore)
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return false end
+    local qg = pg:FindFirstChild("queueGui")
+    if not qg then return false end
+
+    -- Cari folder chooseDungeon yang isinya label dungeon
+    local chooseDungeon = qg:FindFirstChild("chooseDungeon", true)
+    if not chooseDungeon then return false end
+
+    -- 1) Klik dungeon label
+    local dungeonLabel = findLabelByText(chooseDungeon, dungeonName)
+    if dungeonLabel then
+        print("[PALL-HUB] Klik dungeon:", dungeonName)
+        -- Kalau label bukan button, coba parentnya
+        if not clickGuiElement(dungeonLabel) then
+            if dungeonLabel.Parent then clickGuiElement(dungeonLabel.Parent) end
+        end
+        task.wait(0.5)
+    else
+        print("[PALL-HUB] Dungeon tidak ditemukan di GUI:", dungeonName)
+        return false
+    end
+
+    -- 2) Klik difficulty
+    local diffLabel = findLabelByText(qg, difficulty)
+    if diffLabel then
+        print("[PALL-HUB] Klik difficulty:", difficulty)
+        if not clickGuiElement(diffLabel) then
+            if diffLabel.Parent then clickGuiElement(diffLabel.Parent) end
+        end
+        task.wait(0.4)
+    end
+
+    -- 3) Hardcore mode (opsional)
+    if hardcore then
+        local hcLabel = findLabelByText(qg, "Hardcore")
+        if hcLabel then
+            clickGuiElement(hcLabel)
+            task.wait(0.3)
+        end
+    end
+
+    -- 4) Klik createGame / joinGame
+    local createBtn = qg:FindFirstChild("createGame", true)
+    local joinBtn = qg:FindFirstChild("joinGame", true)
+    if createBtn and createBtn:IsA("TextButton") then
+        print("[PALL-HUB] Klik createGame")
+        clickGuiElement(createBtn)
+    elseif joinBtn and joinBtn:IsA("TextButton") then
+        print("[PALL-HUB] Klik joinGame")
+        clickGuiElement(joinBtn)
+    end
+    task.wait(2)
+
+    -- 5) Start (kalau owner)
+    local startBtn = qg:FindFirstChild("startButton", true)
+    if startBtn and startBtn:IsA("TextButton") then
+        print("[PALL-HUB] Klik startButton")
+        clickGuiElement(startBtn)
+    end
+
+    -- 6) Fire remote sebagai backup
+    fire(R.StartDungeon)
+    return true
+end
+
+_G.PallStartDungeon = startDungeonViaGui
 
 task.spawn(function()
-    while task.wait(1) do
-        if State.AutoReplay then
-            task.wait(State.ReplayDelay)
-            fire(R.ReplayDungeon)
-            fire(R.HostAutoReplay, true)
+    while task.wait(5) do
+        if State.AutoStart then
+            startDungeonViaGui(State.SelectedDungeon, State.SelectedDifficulty, State.HardcoreMode)
+            task.wait(15) -- cooldown biar nggak spam
         end
     end
 end)
