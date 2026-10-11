@@ -5,7 +5,7 @@
     Version : v5.5.0 — v5.4.2 base + Gear/Progression/Lobby/Config
     ═══════════════════════════════════════════════════════════
 --]]
-
+print("[PALL-DEBUG] Script mulai load...")
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local RunService          = game:GetService("RunService")
@@ -1263,3 +1263,4 @@ WindUI:Notify({
 })
 
 print("[PALL-HUB] v5.5.0 loaded. Base v5.4.2 + Gear/Progression/Lobby/Config.")
+print("[PALL-DEBUG] Script selesai load sampe akhir.")
