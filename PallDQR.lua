@@ -2,8 +2,9 @@
     ═══════════════════════════════════════════════════════════
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v5.4.2 — Walk-Natural Dodge (no dash)
-    Notes   : Escape pakai WalkSpeed biasa. Anti-kick friendly.
+    Version : v5.4.3 — Boss Body Exclusion Fix
+    Notes   : Badan boss tidak lagi dianggap hazard.
+              Karakter bisa deket buat attack.
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -38,14 +39,13 @@ local State = {
 
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
-    DodgeWalkSpeed = 16,
-    MaxDodgeWalkSpeed = 16,   -- cap biar nggak lari
+    DodgeWalkSpeed = 16, MaxDodgeWalkSpeed = 16,
 
     DodgeBossSkill = true,
     DangerRadius = 25,
     AvoidStrength = 2.5,
     EscapeMode = true,
-    -- EscapeSpeed dihapus, pakai MaxDodgeWalkSpeed
+    AttackProximityGuard = true,   -- NEW: bolehin deket buat attack
 
     DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius,warning,telegraph,laser,line,cone,pulse,sigil",
     ShowDebugNames = false,
@@ -77,11 +77,39 @@ local BOSS_KEYWORDS = {
     "dragon", "golem", "kraken", "hydra", "void", "phantom",
 }
 
+-- Body part keywords (di-skip, karena ini bagian tubuh boss, bukan hazard)
+local BODY_PART_KEYWORDS = {
+    "head", "torso", "upper", "lower", "left", "right",
+    "humanoidroot", "arm", "leg", "hand", "foot", "mesh",
+    "crystal", "core", "shell", "body", "icecrystal", "iceshard",
+    "snowflake", "icicle",
+}
+
+-- Indicator keywords — ini yang HARUS dianggap hazard walau di dalam boss
+local INDICATOR_STRICT = {
+    "warning", "indicator", "telegraph", "cast", "aim",
+    "precast", "channel", "charge", "prepare", "marker",
+}
+
 local function isBossModel(model)
     if not model then return false end
     local n = model.Name:lower()
     for _, kw in ipairs(BOSS_KEYWORDS) do
         if n:find(kw, 1, true) then return true end
+    end
+    return false
+end
+
+local function nameHasBodyPart(name)
+    for _, bp in ipairs(BODY_PART_KEYWORDS) do
+        if name:find(bp, 1, true) then return true end
+    end
+    return false
+end
+
+local function nameHasIndicatorStrict(name)
+    for _, kw in ipairs(INDICATOR_STRICT) do
+        if name:find(kw, 1, true) then return true end
     end
     return false
 end
@@ -138,7 +166,6 @@ local function getNearestBoss(maxDist)
     end
     return closest
 end
-
 --============================================================
 -- PATHFINDING
 --============================================================
@@ -175,8 +202,9 @@ local function walkWithPath(targetPos, timeout)
         end
     end
 end
+
 --============================================================
--- DANGER SCANNER
+-- DANGER SCANNER v3 — BOSS BODY EXCLUDED
 --============================================================
 local dangerKeywordList = {}
 local function refreshKeywords()
@@ -195,15 +223,16 @@ local function isPlayerOwned(part)
     return false
 end
 
-local function isInsideBoss(part)
+-- Cari ancestor boss terdekat
+local function findBossAncestor(part)
     local parent = part.Parent
     local depth = 0
-    while parent and parent ~= workspace and depth < 4 do
-        if isBossModel(parent) then return true end
+    while parent and parent ~= workspace and depth < 5 do
+        if isBossModel(parent) then return parent end
         parent = parent.Parent
         depth = depth + 1
     end
-    return false
+    return nil
 end
 
 local function isDangerousPart(part)
@@ -215,11 +244,63 @@ local function isDangerousPart(part)
     local transp = part.Transparency
     local size = part.Size
 
+    -- Filter ukuran raksasa (map)
+    if size.X > 400 or size.Y > 300 or size.Z > 400 then return false end
+
+    -- === RULE 1: INDICATOR STRICT — selalu hazard (warning, telegraph, dll) ===
+    if nameHasIndicatorStrict(name) then return true end
+
+    -- === RULE 2: Cek apakah part ini di dalam boss ===
+    local bossAncestor = findBossAncestor(part)
+
+    if bossAncestor then
+        -- === BOSS BODY EXCLUSION ===
+        -- Kalau ini body part (head, arm, crystal, dll) → BUKAN hazard
+        if nameHasBodyPart(name) then return false end
+
+        -- Kalau ini langsung child boss (bukan di subfolder) → kemungkinan body
+        -- Kecuali namanya punya keyword hazard
+        local hasDangerKeyword = false
+        for _, kw in ipairs(dangerKeywordList) do
+            if name:find(kw, 1, true) then hasDangerKeyword = true break end
+        end
+
+        if part.Parent == bossAncestor then
+            -- Direct child boss → body part, skip
+            return false
+        end
+
+        -- === SHAPE HEURISTIC only untuk part DI DALAM subfolder boss ===
+        local flatCylinder = (size.Y <= 1.5 and math.max(size.X, size.Z) >= 4)
+        local maxXZ = math.max(size.X, size.Z)
+        local minXZ = math.min(size.X, size.Z)
+        local thinBeam = (maxXZ >= 10 and minXZ <= 2.5)
+
+        if flatCylinder and (mat == Enum.Material.Neon or (transp >= 0.15 and transp <= 0.95)) then
+            return true
+        end
+        if thinBeam and (mat == Enum.Material.Neon or (transp >= 0.15 and transp <= 0.95)) then
+            return true
+        end
+
+        -- Kalau ada keyword hazard dan bukan body part → hazard
+        if hasDangerKeyword then return true end
+
+        -- Default: skip (biar nggak nge-push)
+        return false
+    end
+
+    -- === RULE 3: Part di workspace langsung (bukan anak boss) ===
+    -- Cek keyword dulu
     for _, kw in ipairs(dangerKeywordList) do
         if name:find(kw, 1, true) then return true end
     end
 
-    if size.X > 400 or size.Y > 300 or size.Z > 400 then return false end
+    -- Shape heuristic untuk effect di workspace
+    local flatCylinder = (size.Y <= 1.5 and math.max(size.X, size.Z) >= 4)
+    local maxXZ = math.max(size.X, size.Z)
+    local minXZ = math.min(size.X, size.Z)
+    local thinBeam = (maxXZ >= 10 and minXZ <= 2.5)
 
     local isNeon = (mat == Enum.Material.Neon)
     local isForceField = (mat == Enum.Material.ForceField)
@@ -227,18 +308,9 @@ local function isDangerousPart(part)
     local isTransparent = (transp >= 0.15 and transp <= 0.95)
     local isSemiTransparent = (transp >= 0.3 and transp <= 0.85)
 
-    local flatCylinder = false
-    local thinBeam = false
-    if size.Y <= 1.5 and math.max(size.X, size.Z) >= 4 then flatCylinder = true end
-    local maxXZ = math.max(size.X, size.Z)
-    local minXZ = math.min(size.X, size.Z)
-    if maxXZ >= 10 and minXZ <= 2.5 then thinBeam = true end
-
     if flatCylinder and (isGlowing or isTransparent) then return true end
     if thinBeam and (isGlowing or isTransparent) then return true end
     if isGlowing and isSemiTransparent and size.Y < 80 then return true end
-    if isInsideBoss(part) and (isGlowing or isTransparent) then return true end
-    if part.Parent == workspace and isNeon and isTransparent then return true end
 
     return false
 end
@@ -310,7 +382,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- CAMERA HELPERS
 --============================================================
@@ -377,7 +448,7 @@ end
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv542",
+    Folder = "pallhubv543",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -390,7 +461,7 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
-Window:Tag({ Title = "v5.4.2", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v5.4.3", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: SKILLS
@@ -445,7 +516,6 @@ do
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
-
 --============================================================
 -- TAB: DODGE
 --============================================================
@@ -470,7 +540,6 @@ do
         Callback = function(v) State.DodgeOrbitSpeed = v end })
     dodgeSection:Space()
     dodgeSection:Slider({ Title = "Dodge WalkSpeed (maks)", Step = 1,
-        Desc = "Rekomendasi 16 biar keliatan jalan biasa",
         Value = { Min = 16, Max = 40, Default = 16 },
         Callback = function(v)
             State.DodgeWalkSpeed = v
@@ -478,8 +547,8 @@ do
         end })
 
     local bossAvoidSection = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
-    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Desc = "Hindari hitbox AOE beam indicator",
-        Value = true, Callback = function(v) State.DodgeBossSkill = v end })
+    bossAvoidSection:Toggle({ Title = "Dodge Boss Skill", Value = true,
+        Callback = function(v) State.DodgeBossSkill = v end })
     bossAvoidSection:Space()
     bossAvoidSection:Slider({ Title = "Danger Radius", Step = 1,
         Value = { Min = 10, Max = 80, Default = 25 },
@@ -489,12 +558,18 @@ do
         Value = { Min = 0.5, Max = 6, Default = 2.5 },
         Callback = function(v) State.AvoidStrength = v end })
     bossAvoidSection:Space()
-    bossAvoidSection:Toggle({ Title = "Escape Mode", Desc = "Jalan langsung keluar zona, tetap pakai WalkSpeed 16",
-        Value = true, Callback = function(v) State.EscapeMode = v end })
+    bossAvoidSection:Toggle({ Title = "Escape Mode", Value = true,
+        Callback = function(v) State.EscapeMode = v end })
+    bossAvoidSection:Space()
+    bossAvoidSection:Toggle({
+        Title = "Attack Proximity Guard",
+        Desc = "Biar karakter tetap bisa deket buat attack boss",
+        Value = true,
+        Callback = function(v) State.AttackProximityGuard = v end,
+    })
     bossAvoidSection:Space()
     bossAvoidSection:Input({
         Title = "Custom Keywords",
-        Desc = "Pisah pakai koma",
         Value = State.DangerKeywords,
         Callback = function(v)
             State.DangerKeywords = v
@@ -511,6 +586,7 @@ do
         end,
     })
 end
+
 --============================================================
 -- TAB: CAMERA
 --============================================================
@@ -589,7 +665,6 @@ do
     faceSection:Toggle({ Title = "Face Only When Moving", Value = false,
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
-
 --============================================================
 -- TAB: PLAYER
 --============================================================
@@ -674,7 +749,7 @@ task.spawn(function()
     end
 end)
 --============================================================
--- AUTO DODGE — walk natural, no dash
+-- AUTO DODGE — dengan Attack Proximity Guard
 --============================================================
 local orbitAngle = 0
 local faceAlign = nil
@@ -725,25 +800,35 @@ task.spawn(function()
                         math.sin(orbitAngle) * State.DodgeOrbitRadius
                     )
 
-                    -- Semua pergerakan pakai WalkSpeed yang sama — natural
                     local targetPos = orbitPos
                     local moveSpeed = State.DodgeWalkSpeed
 
-                    if State.DodgeBossSkill and State._dangerCount > 0 then
+                    -- Attack Proximity Guard: kalau Auto Attack ON dan karakter
+                    -- udah dalam range, jangan push menjauh kecuali warning beneran
+                    local proximityLock = false
+                    if State.AttackProximityGuard and State.AutoAttack then
+                        local curDist = (hrp.Position - mhrp.Position).Magnitude
+                        -- Kalau udah masuk range attack, kunci posisi
+                        if curDist <= State.AttackRange * 0.9 then
+                            proximityLock = true
+                        end
+                    end
+
+                    if State.DodgeBossSkill and State._dangerCount > 0 and not proximityLock then
                         if State._dangerEscape and State.EscapeMode then
-                            -- Escape: gerak keluar zona, tetap WalkSpeed normal
                             local escapeDir = State._dangerAvoid
                             if escapeDir.Magnitude < 0.1 then
                                 escapeDir = (hrp.Position - mhrp.Position).Unit * 5
                             end
-                            -- Target cuma sedikit di luar radius (biar nggak keliatan kabur)
                             targetPos = hrp.Position + escapeDir.Unit * 8
                         else
                             targetPos = orbitPos + State._dangerAvoid
                         end
+                    elseif proximityLock and State._dangerCount > 0 then
+                        -- Guard aktif: cuma blend kecil, jangan kabur dari boss
+                        targetPos = orbitPos + State._dangerAvoid * 0.3
                     end
 
-                    -- Cap WalkSpeed biar nggak pernah lebih dari MaxDodgeWalkSpeed
                     moveSpeed = math.min(moveSpeed, State.MaxDodgeWalkSpeed)
 
                     hum.AutoRotate = false
@@ -813,7 +898,6 @@ task.spawn(function()
         end
     end
 end)
-
 --============================================================
 -- CAMERA + FACE TARGET
 --============================================================
@@ -899,9 +983,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v5.4.2",
-    Content = "Dodge natural walk, no dash. Anti-kick safe.",
+    Title = "Pall Hub v5.4.3",
+    Content = "Boss body excluded. Bisa deket buat attack.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v5.4.2 loaded. Walk-natural dodge.")
+print("[PALL-HUB] v5.4.3 loaded. Boss body exclusion fix.")
