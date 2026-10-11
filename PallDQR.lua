@@ -134,7 +134,8 @@ end
 local function invoke(name, ...)
     local ev = resolveRemote(name)
     if ev and ev:IsA("RemoteFunction") then
-        local ok2, res = pcall(function() return ev:InvokeServer(...) end)
+        local args = {...}
+        local ok2, res = pcall(function() return ev:InvokeServer(table.unpack(args)) end)
         if ok2 then return res end
     end
     return nil
