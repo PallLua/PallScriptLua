@@ -126,7 +126,8 @@ end
 local function fire(name, ...)
     local ev = resolveRemote(name)
     if ev and ev:IsA("RemoteEvent") then
-        pcall(function() ev:FireServer(...) end)
+        local args = {...}
+        pcall(function() ev:FireServer(table.unpack(args)) end)
     end
 end
 
