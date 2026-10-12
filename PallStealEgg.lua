@@ -26,11 +26,17 @@ local LP = Players.LocalPlayer
 -- LOAD WINDUI
 --============================================================
 local WindUI
-local ok, result = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-end)
-if not ok then error("[PALL-SE] Gagal load WindUI.") end
-WindUI = result
+if _G.PallWindUI then
+    WindUI = _G.PallWindUI
+    print("[PALL-SE] Pakai WindUI dari MultiHub.")
+else
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if not ok then error("[PALL-SE] Gagal load WindUI.") end
+    WindUI = result
+    _G.PallWindUI = WindUI
+end
 
 local Green  = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
