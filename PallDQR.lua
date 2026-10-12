@@ -1,8 +1,8 @@
 --[[
     PALL HUB — DUNGEON QUEST REBORN
     Author  : ENI (for Pall)
-    Version : v6.0.1
-    Notes   : Config = Save/Load/Delete simple. Auto Sell dihapus.
+    Version : v6.1.0
+    Notes   : + FPS Booster tab. Config = save/load/delete.
 --]]
 
 local Players             = game:GetService("Players")
@@ -13,6 +13,8 @@ local VirtualUser         = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local PathfindingService  = game:GetService("PathfindingService")
 local HttpService         = game:GetService("HttpService")
+local Lighting            = game:GetService("Lighting")
+local SoundService        = game:GetService("SoundService")
 
 local LP = Players.LocalPlayer
 
@@ -55,6 +57,12 @@ local State = {
     SelectedDungeon = "Northern Lands", SelectedDifficulty = "Nightmare",
     HardcoreMode = false,
     Noclip = false, InfJump = false, AntiAFK = true,
+    -- FPS
+    FPSCounter = false, LowTextures = false, RemoveDecals = false,
+    RemoveParticles = false, RemoveBeams = false, DisableShadows = false,
+    LowTerrain = false, DisableSkybox = false, DisableAtmosphere = false,
+    DisableSounds = false, LowMeshFidelity = false, StopAnimations = false,
+    BurikTotal = false,
     _dodgeTarget = nil, _dangerAvoid = Vector3.zero,
     _dangerCount = 0, _dangerEscape = false,
 }
@@ -64,7 +72,6 @@ local R = {
     HostAutoReplay = "hostSetAutoReplay",
     ReloadInventory = "reloadInventory", ReloadInvy = "reloadInvy",
     EquipItem = "equipItem", UnequipItem = "unequipItem", EquipSet = "equipSet",
-    OpenSellShop = "openSellShop",
     UpgradeItem = "upgradeItem", UpgradeKey = "upgradeKey",
     SpendSkillPoint = "spendSkillPoint",
 }
@@ -393,7 +400,7 @@ end
 
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv601",
+    Folder = "pallhubv610",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -405,7 +412,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v6.0.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v6.1.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 -- TAB: SKILLS
 local TabSkills = Window:Tab({
@@ -427,7 +434,6 @@ do
     sec:Toggle({ Title = "Use Remote Fallback", Value = true,
         Callback = function(v) State.UseRemoteFallback = v end })
 end
-
 -- TAB: SKILL UP
 local TabSkillUp = Window:Tab({
     Title = "Skill Up", Desc = "Auto spend skill points",
@@ -456,6 +462,7 @@ do
     s2:Button({ Title = "+1 Stamina", Justify = "Center",
         Callback = function() fire("spendSkillPoint", "stamina", 1) end })
 end
+
 -- TAB: COMBAT
 local TabCombat = Window:Tab({
     Title = "Combat", Desc = "Attack, Aggro",
@@ -483,7 +490,6 @@ do
         Value = { Min = 50, Max = 800, Default = 300 },
         Callback = function(v) State.AggroRange = v end })
 end
-
 -- TAB: DODGE
 local TabDodge = Window:Tab({
     Title = "Dodge", Desc = "Orbit + Boss Avoidance",
@@ -528,6 +534,7 @@ do
     s2:Toggle({ Title = "Debug: Log Indicator Names", Value = false,
         Callback = function(v) State.ShowDebugNames = v; if v then loggedParts = {} end end })
 end
+
 -- TAB: GEAR
 local TabGear = Window:Tab({
     Title = "Gear", Desc = "Upgrade, Equip Best",
@@ -621,7 +628,6 @@ do
 
         local dungeonLabel = findLabelByName(qg, State.SelectedDungeon)
         if dungeonLabel then
-            print("[PALL-HUB] Klik dungeon:", State.SelectedDungeon)
             clickElement(dungeonLabel)
             if dungeonLabel.Parent then clickElement(dungeonLabel.Parent) end
             task.wait(0.5)
@@ -629,7 +635,6 @@ do
 
         local diffLabel = findLabelByName(qg, State.SelectedDifficulty)
         if diffLabel then
-            print("[PALL-HUB] Klik difficulty:", State.SelectedDifficulty)
             clickElement(diffLabel)
             if diffLabel.Parent then clickElement(diffLabel.Parent) end
             task.wait(0.4)
@@ -641,24 +646,13 @@ do
         end
 
         local createBtn = qg:FindFirstChild("createGame", true)
-        if createBtn then
-            print("[PALL-HUB] Klik createGame")
-            clickElement(createBtn)
-        end
-
+        if createBtn then clickElement(createBtn) end
         task.wait(1)
         local joinBtn = qg:FindFirstChild("joinGame", true)
-        if joinBtn and createBtn == nil then
-            print("[PALL-HUB] Klik joinGame")
-            clickElement(joinBtn)
-        end
-
+        if joinBtn and createBtn == nil then clickElement(joinBtn) end
         task.wait(2)
         local startBtn = qg:FindFirstChild("startButton", true)
-        if startBtn then
-            print("[PALL-HUB] Klik startButton")
-            clickElement(startBtn)
-        end
+        if startBtn then clickElement(startBtn) end
 
         fire(R.StartDungeon)
         return true, "OK"
@@ -713,6 +707,7 @@ do
             WindUI:Notify({ Title = "Debug", Content = "Cek console Delta." })
         end })
 end
+
 -- TAB: CAMERA
 local TabCamera = Window:Tab({
     Title = "Camera", Desc = "Lock camera",
@@ -756,7 +751,6 @@ do
     s2:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
-
 -- TAB: FACE TARGET
 local TabFace = Window:Tab({
     Title = "Face Target", Desc = "Rotasi karakter",
@@ -781,19 +775,265 @@ do
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
 --============================================================
--- TAB: CONFIG (Simple Save / Load / Delete)
+-- TAB: FPS BOOST
 --============================================================
+local TabFPS = Window:Tab({
+    Title = "FPS Boost", Desc = "Performa & burik",
+    Icon = "solar:cpu-bolt-bold", IconColor = Yellow, IconShape = "Square", Border = true,
+})
+do
+    -- FPS Counter UI
+    local fpsLabel = Instance.new("TextLabel")
+    fpsLabel.Name = "PallFPSCounter"
+    fpsLabel.Size = UDim2.new(0, 120, 0, 30)
+    fpsLabel.Position = UDim2.new(0, 10, 0, 10)
+    fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    fpsLabel.BackgroundTransparency = 0.4
+    fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
+    fpsLabel.Font = Enum.Font.Code
+    fpsLabel.TextSize = 16
+    fpsLabel.Text = "FPS: --"
+    fpsLabel.Visible = false
+    fpsLabel.Parent = LP:WaitForChild("PlayerGui")
+
+    local frames, lastTime = 0, tick()
+    RunService.RenderStepped:Connect(function()
+        frames = frames + 1
+        if tick() - lastTime >= 1 then
+            if State.FPSCounter then fpsLabel.Text = "FPS: " .. frames end
+            frames = 0
+            lastTime = tick()
+        end
+        fpsLabel.Visible = State.FPSCounter
+    end)
+
+    -- Cache original values
+    local cache = { materials = {}, skybox = nil, atm = nil, shadows = nil, terrain = nil }
+
+    -- LOW TEXTURES
+    local function applyLowTextures()
+        cache.materials = {}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and not cache.materials[obj] then
+                cache.materials[obj] = { mat = obj.Material, ref = obj.Reflectance }
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+            end
+            if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+                obj.Transparency = 1
+            end
+        end
+    end
+    local function restoreLowTextures()
+        for obj, data in pairs(cache.materials) do
+            if obj and obj.Parent then
+                obj.Material = data.mat
+                obj.Reflectance = data.ref
+            end
+        end
+        cache.materials = {}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+                obj.Transparency = 0
+            end
+        end
+    end
+
+    -- HIDE DECALS
+    local function applyDecals() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("Decal") then o.Transparency = 1 end
+    end end
+    local function restoreDecals() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("Decal") then o.Transparency = 0 end
+    end end
+
+    -- PARTICLES
+    local function applyParticles() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then
+            o.Enabled = false
+        end
+    end end
+    local function restoreParticles() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then
+            o.Enabled = true
+        end
+    end end
+
+    -- BEAMS
+    local function applyBeams() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("Beam") or o:IsA("Trail") then o.Enabled = false end
+    end end
+    local function restoreBeams() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("Beam") or o:IsA("Trail") then o.Enabled = true end
+    end end
+
+    -- SHADOWS
+    local function applyShadows()
+        cache.shadows = { g = Lighting.GlobalShadows, s = Lighting.ShadowSoftness }
+        Lighting.GlobalShadows = false
+        Lighting.ShadowSoftness = 0
+        for _, o in ipairs(workspace:GetDescendants()) do
+            if o:IsA("BasePart") then o.CastShadow = false end
+        end
+    end
+    local function restoreShadows()
+        Lighting.GlobalShadows = cache.shadows and cache.shadows.g or true
+        Lighting.ShadowSoftness = cache.shadows and cache.shadows.s or 0.2
+        for _, o in ipairs(workspace:GetDescendants()) do
+            if o:IsA("BasePart") then o.CastShadow = true end
+        end
+    end
+
+    -- TERRAIN
+    local function applyTerrain()
+        local T = workspace.Terrain
+        cache.terrain = { w1=T.WaterWaveSize, w2=T.WaterWaveSpeed, w3=T.WaterReflectance, w4=T.WaterTransparency }
+        T.WaterWaveSize = 0; T.WaterWaveSpeed = 0
+        T.WaterReflectance = 0; T.WaterTransparency = 1
+        T.Decoration = false
+    end
+    local function restoreTerrain()
+        local T = workspace.Terrain
+        if cache.terrain then
+            T.WaterWaveSize = cache.terrain.w1; T.WaterWaveSpeed = cache.terrain.w2
+            T.WaterReflectance = cache.terrain.w3; T.WaterTransparency = cache.terrain.w4
+        end
+        T.Decoration = true
+    end
+
+    -- SKYBOX
+    local function applySkybox()
+        local sky = Lighting:FindFirstChildOfClass("Sky")
+        if sky then
+            cache.skybox = { b=sky.SkyboxBk, d=sky.SkyboxDn, f=sky.SkyboxFt, l=sky.SkyboxLf, r=sky.SkyboxRt, u=sky.SkyboxUp }
+            sky.SkyboxBk=""; sky.SkyboxDn=""; sky.SkyboxFt=""
+            sky.SkyboxLf=""; sky.SkyboxRt=""; sky.SkyboxUp=""
+        end
+    end
+    local function restoreSkybox()
+        local sky = Lighting:FindFirstChildOfClass("Sky")
+        if sky and cache.skybox then
+            sky.SkyboxBk=cache.skybox.b; sky.SkyboxDn=cache.skybox.d
+            sky.SkyboxFt=cache.skybox.f; sky.SkyboxLf=cache.skybox.l
+            sky.SkyboxRt=cache.skybox.r; sky.SkyboxUp=cache.skybox.u
+        end
+    end
+
+    -- ATMOSPHERE
+    local function applyAtmosphere()
+        local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+        if atm then
+            cache.atm = { d=atm.Density, h=atm.Haze, g=atm.Glare }
+            atm.Density = 0; atm.Haze = 0; atm.Glare = 0
+        end
+    end
+    local function restoreAtmosphere()
+        local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+        if atm and cache.atm then
+            atm.Density = cache.atm.d; atm.Haze = cache.atm.h; atm.Glare = cache.atm.g
+        end
+    end
+
+    -- SOUNDS
+    local function applySounds() for _, o in ipairs(game:GetDescendants()) do
+        if o:IsA("Sound") then o.Volume = 0 end
+    end end
+    local function restoreSounds() for _, o in ipairs(game:GetDescendants()) do
+        if o:IsA("Sound") then o.Volume = 0.5 end
+    end end
+
+    -- MESH
+    local function applyMesh() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("MeshPart") then
+            pcall(function() o.RenderFidelity = Enum.RenderFidelity.Performance end)
+            o.CastShadow = false
+        end
+    end end
+    local function restoreMesh() for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("MeshPart") then
+            pcall(function() o.RenderFidelity = Enum.RenderFidelity.Automatic end)
+            o.CastShadow = true
+        end
+    end end
+
+    local s1 = TabFPS:Section({ Title = "Info", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Show FPS Counter", Value = false,
+        Callback = function(v) State.FPSCounter = v end })
+
+    local s2 = TabFPS:Section({ Title = "Performance", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({ Title = "Low Textures (burik)", Value = false,
+        Callback = function(v) State.LowTextures = v
+            if v then applyLowTextures() else restoreLowTextures() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Hide Decals", Value = false,
+        Callback = function(v) State.RemoveDecals = v
+            if v then applyDecals() else restoreDecals() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Disable Particles", Value = false,
+        Callback = function(v) State.RemoveParticles = v
+            if v then applyParticles() else restoreParticles() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Disable Beams & Trails", Value = false,
+        Callback = function(v) State.RemoveBeams = v
+            if v then applyBeams() else restoreBeams() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Disable Shadows", Value = false,
+        Callback = function(v) State.DisableShadows = v
+            if v then applyShadows() else restoreShadows() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Low Terrain", Value = false,
+        Callback = function(v) State.LowTerrain = v
+            if v then applyTerrain() else restoreTerrain() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Disable Skybox", Value = false,
+        Callback = function(v) State.DisableSkybox = v
+            if v then applySkybox() else restoreSkybox() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Disable Atmosphere", Value = false,
+        Callback = function(v) State.DisableAtmosphere = v
+            if v then applyAtmosphere() else restoreAtmosphere() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Mute All Sounds", Value = false,
+        Callback = function(v) State.DisableSounds = v
+            if v then applySounds() else restoreSounds() end end })
+    s2:Space()
+    s2:Toggle({ Title = "Low Mesh Fidelity", Value = false,
+        Callback = function(v) State.LowMeshFidelity = v
+            if v then applyMesh() else restoreMesh() end end })
+
+    local s3 = TabFPS:Section({ Title = "Master", Box = true, BoxBorder = true, Opened = true })
+    s3:Toggle({ Title = "BURIK TOTAL MODE",
+        Desc = "Semua efek dimatikan sekaligus",
+        Value = false,
+        Callback = function(v)
+            State.BurikTotal = v
+            if v then
+                applyLowTextures(); applyDecals(); applyParticles(); applyBeams()
+                applyShadows(); applyTerrain(); applySkybox(); applyAtmosphere(); applyMesh()
+                WindUI:Notify({ Title = "Burik Total", Content = "Semua efek visual dimatikan." })
+            else
+                restoreLowTextures(); restoreDecals(); restoreParticles(); restoreBeams()
+                restoreShadows(); restoreTerrain(); restoreSkybox(); restoreAtmosphere(); restoreMesh()
+                WindUI:Notify({ Title = "Burik Total", Content = "Restore efek visual." })
+            end
+        end })
+    s3:Space()
+    s3:Button({ Title = "Reset Semua ke Normal", Justify = "Center",
+        Callback = function()
+            restoreLowTextures(); restoreDecals(); restoreParticles(); restoreBeams()
+            restoreShadows(); restoreTerrain(); restoreSkybox(); restoreAtmosphere(); restoreMesh()
+            restoreSounds()
+            WindUI:Notify({ Title = "Reset", Content = "Semua efek visual kembali normal." })
+        end })
+end
+-- TAB: CONFIG
 local TabConfig = Window:Tab({
     Title = "Config", Desc = "Save, Load, Delete",
     Icon = "solar:folder-with-files-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
     local CONFIG_FILE = "pallhub_config.json"
-
-    local function fileExists(name)
-        if isfile then return isfile(name) end
-        return false
-    end
+    local function fileExists(name) return isfile and isfile(name) end
 
     local function saveConfig()
         if not writefile then
@@ -815,7 +1055,7 @@ do
         if okW then
             WindUI:Notify({ Title = "Config Saved", Content = "Setting tersimpan." })
         else
-            WindUI:Notify({ Title = "Config", Content = "Gagal simpan file." })
+            WindUI:Notify({ Title = "Config", Content = "Gagal simpan." })
         end
     end
 
@@ -826,12 +1066,12 @@ do
         end
         local okR, raw = pcall(readfile, CONFIG_FILE)
         if not okR or not raw or raw == "" then
-            WindUI:Notify({ Title = "Config", Content = "Belum ada config tersimpan." })
+            WindUI:Notify({ Title = "Config", Content = "Belum ada config." })
             return
         end
         local okJ, data = pcall(function() return HttpService:JSONDecode(raw) end)
         if not okJ or type(data) ~= "table" then
-            WindUI:Notify({ Title = "Config", Content = "File config rusak." })
+            WindUI:Notify({ Title = "Config", Content = "Config rusak." })
             return
         end
         local count = 0
@@ -850,44 +1090,32 @@ do
             return
         end
         if not fileExists(CONFIG_FILE) then
-            WindUI:Notify({ Title = "Config", Content = "Belum ada config tersimpan." })
+            WindUI:Notify({ Title = "Config", Content = "Belum ada config." })
             return
         end
         local okD = pcall(delfile, CONFIG_FILE)
         if okD then
             WindUI:Notify({ Title = "Config Deleted", Content = "Setting dihapus." })
         else
-            WindUI:Notify({ Title = "Config", Content = "Gagal hapus file." })
+            WindUI:Notify({ Title = "Config", Content = "Gagal hapus." })
         end
     end
 
     local s = TabConfig:Section({ Title = "Config Manager", Box = true, BoxBorder = true, Opened = true })
-
-    s:Button({
-        Title = "Save Current Settings", Justify = "Center",
-        Callback = saveConfig,
-    })
+    s:Button({ Title = "Save Current Settings", Justify = "Center", Callback = saveConfig })
     s:Space()
-    s:Button({
-        Title = "Load Saved Settings", Justify = "Center",
-        Callback = loadConfig,
-    })
+    s:Button({ Title = "Load Saved Settings", Justify = "Center", Callback = loadConfig })
     s:Space()
-    s:Button({
-        Title = "Delete Saved Settings", Justify = "Center",
-        Callback = deleteConfig,
-    })
+    s:Button({ Title = "Delete Saved Settings", Justify = "Center", Callback = deleteConfig })
     s:Space()
-    s:Button({
-        Title = "Check Config Status", Justify = "Center",
+    s:Button({ Title = "Check Config Status", Justify = "Center",
         Callback = function()
             if fileExists(CONFIG_FILE) then
                 WindUI:Notify({ Title = "Config", Content = "Config TERSEDIA." })
             else
                 WindUI:Notify({ Title = "Config", Content = "Config KOSONG." })
             end
-        end,
-    })
+        end })
 end
 -- TAB: PLAYER
 local TabPlayer = Window:Tab({
@@ -1271,9 +1499,9 @@ LP.CharacterAdded:Connect(function(char)
 end)
 
 WindUI:Notify({
-    Title = "Pall Hub v6.0.1",
-    Content = "Config: Save/Load/Delete simple.",
+    Title = "Pall Hub v6.1.0",
+    Content = "FPS Booster tab ditambahkan.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v6.0.1 loaded.")
+print("[PALL-HUB] v6.1.0 loaded.")
