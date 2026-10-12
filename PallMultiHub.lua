@@ -2,34 +2,28 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.0.0
-    Fungsi  : Deteksi game via PlaceId, lalu load modul yang sesuai.
-    Cara pakai:
-      - Execute file ini di game apa pun
-      - Otomatis load script game yang sesuai
-      - Kalau game belum di-support, muncul notif + PlaceId-nya
+    Version : v1.0.1 — Share WindUI, Steal an Egg support
     ═══════════════════════════════════════════════════════════
 --]]
 
 --============================================================
--- KONFIGURASI GAME
--- Ganti/tambah entry kalau mau support game baru.
--- PlaceId bisa dilihat dengan print(game.PlaceId) di game tsb.
+-- DAFTAR GAME
 --============================================================
 local GAMES = {
-    -- Dungeon Quest Reborn (ganti PlaceId kalau salah)
+    -- Dungeon Quest Reborn
     [77649408247578] = {
         Name = "Dungeon Quest Reborn",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDQR.lua",
         Folder = "pallhubv610",
     },
 
--- Steal an Egg
-[107778070777162] = {
-    Name = "Steal an Egg",
-    URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallStealEgg.lua",
-    Folder = "pallse",
-},
+    -- Steal an Egg
+    [107778070777162] = {
+        Name = "Steal an Egg",
+        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallStealEgg.lua",
+        Folder = "pallse",
+    },
+}
 
 --============================================================
 -- DETEKSI GAME
@@ -38,13 +32,28 @@ local currentPlace = game.PlaceId
 local currentGameId = game.GameId
 local config = GAMES[currentPlace]
 
--- Kalau PlaceId nggak match, coba cek GameId (buat game yang punya banyak place)
 if not config then
     for _, entry in pairs(GAMES) do
         if entry.GameId and entry.GameId == currentGameId then
             config = entry
             break
         end
+    end
+end
+
+--============================================================
+-- LOAD WINDUI (shared via _G)
+--============================================================
+if not _G.PallWindUI then
+    print("[PALL-MH] Loading WindUI...")
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if ok and result then
+        _G.PallWindUI = result
+        print("[PALL-MH] WindUI loaded OK.")
+    else
+        error("[PALL-MH] Gagal load WindUI: " .. tostring(result))
     end
 end
 
@@ -65,12 +74,6 @@ if config then
     if not okFetch or not content or content == "" then
         warn("[PALL-MH] Gagal fetch module dari URL.")
         warn("[PALL-MH] URL: " .. config.URL)
-        -- Notif kalau ada WindUI yang udah loaded
-        pcall(function()
-            if _G.PallHubNotify then
-                _G.PallHubNotify("Load Error", "Gagal fetch " .. config.Name)
-            end
-        end)
     else
         local fn, err = loadstring(content)
         if not fn then
@@ -90,10 +93,10 @@ else
     print("[PALL-MH] Game belum di-support.")
     print("[PALL-MH] PlaceId : " .. currentPlace)
     print("[PALL-MH] GameId  : " .. currentGameId)
-    print("[PALL-MH] Tambahkan PlaceId di atas ke tabel GAMES untuk support.")
+    print("[PALL-MH] Tambahkan PlaceId di atas ke tabel GAMES.")
     print("═══════════════════════════════════════════")
 
-    -- Coba tampilin notif sederhana via ScreenGui
+    -- Notif munculin info
     pcall(function()
         local gui = Instance.new("ScreenGui")
         gui.Name = "PallMH_Notify"
@@ -126,7 +129,7 @@ else
         body.Size = UDim2.new(1, -20, 0, 60)
         body.Position = UDim2.new(0, 10, 0, 40)
         body.BackgroundTransparency = 1
-        body.Text = "Game belum di-support.\nPlaceId: " .. currentPlace .. "\nTambah ke tabel GAMES untuk support."
+        body.Text = "Game belum di-support.\nPlaceId: " .. currentPlace .. "\nTambah ke tabel GAMES."
         body.TextColor3 = Color3.fromRGB(200, 200, 210)
         body.TextSize = 12
         body.Font = Enum.Font.Gotham
@@ -135,7 +138,6 @@ else
         body.TextYAlignment = Enum.TextYAlignment.Top
         body.Parent = frame
 
-        -- Auto close 10 detik
         task.delay(10, function()
             if gui and gui.Parent then gui:Destroy() end
         end)
