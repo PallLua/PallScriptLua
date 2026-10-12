@@ -24,13 +24,12 @@ local GAMES = {
         Folder = "pallhubv610",
     },
 
-    -- Jailbreak
-    [606849621] = {
-        Name = "Jailbreak",
-        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallJailbreak.lua",
-        Folder = "palljb",
-    },
-}
+-- Steal an Egg
+[107778070777162] = {
+    Name = "Steal an Egg",
+    URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallStealEgg.lua",
+    Folder = "pallse",
+},
 
 --============================================================
 -- DETEKSI GAME
