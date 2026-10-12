@@ -1,10 +1,8 @@
 --[[
-    PALL HUB — v6.0.0
-    Changes:
-      - Lobby tab DIHAPUS
-      - Progression: 15 dungeon + 6 difficulty + Auto Best
-      - Gear: Auto Sell / Upgrade / Equip Best beneran baca stats
-    Author : ENI (for Pall)
+    PALL HUB — DUNGEON QUEST REBORN
+    Author  : ENI (for Pall)
+    Version : v6.0.1
+    Notes   : Config = Save/Load/Delete simple. Auto Sell dihapus.
 --]]
 
 local Players             = game:GetService("Players")
@@ -31,13 +29,9 @@ local Purple = Color3.fromHex("#7775F2")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
 
---============================================================
--- STATE
---============================================================
 local State = {
     AutoAttack = false, AutoAggro = false,
     AttackRange = 25, AggroRange = 300, WalkSpeed = 16,
-
     AutoDodge = false, DodgeRange = 40,
     DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2,
     DodgeWalkSpeed = 16, MaxDodgeWalkSpeed = 16,
@@ -45,47 +39,34 @@ local State = {
     EscapeMode = true,
     DangerKeywords = "hitbox,damage,aoe,attack,skill,zone,hazard,projectile,bullet,orb,explosion,wave,strike,beam,fire,ice,frost,snow,trap,circle,area,indicator,marker,shockwave,elemental,cast,spell,impact,radius,warning,telegraph,laser,line,cone,pulse,sigil",
     ShowDebugNames = false,
-
     AutoSkill = false, SkillQDelay = 0.4, SkillEDelay = 0.8, UseRemoteFallback = true,
-
+    AutoSpendSkill = false, SkillUpPriority = "Physical Power",
+    SkillUpDelay = 0.4, SkillUpCheck = true,
     CameraLock = false, CameraTargetMode = "Nearest Enemy",
     CameraDistance = 8, CameraHeight = 3, CameraSmoothness = 0.25,
     CameraMinHeight = 2, CameraFollowChar = true, CameraCollision = true,
     CameraRestoreOnDeath = true,
-
     FaceMode = "Both", FacePriority = "Camera Target",
     FaceRotationSpeed = 0.35, FaceOnlyWhenMoving = false,
-
-    -- GEAR
-    AutoSell = false, SellRarity = "common", SellType = "ability",
-    SellIncludeEquipped = false, SellDelay = 0.3, SellMaxPrice = 99999,
-    KeepEquipped = true,
     AutoUpgrade = false, UpgradeTarget = "Item", UpgradeDelay = 2,
-    AutoEquipBest = false, EquipBestType = "ability",
-
-    -- PROGRESSION
+    AutoEquipBest = false, EquipBestType = "Any",
     AutoStart = false, AutoReplay = false, ReplayDelay = 3,
     AutoBestDungeon = false, AutoBestDifficulty = false,
     SelectedDungeon = "Northern Lands", SelectedDifficulty = "Nightmare",
     HardcoreMode = false,
-
     Noclip = false, InfJump = false, AntiAFK = true,
-
     _dodgeTarget = nil, _dangerAvoid = Vector3.zero,
     _dangerCount = 0, _dangerEscape = false,
 }
---============================================================
--- REMOTES
---============================================================
+
 local R = {
     StartDungeon = "startDungeon", ReplayDungeon = "replayDungeon",
     HostAutoReplay = "hostSetAutoReplay",
     ReloadInventory = "reloadInventory", ReloadInvy = "reloadInvy",
     EquipItem = "equipItem", UnequipItem = "unequipItem", EquipSet = "equipSet",
-    SellItem = "sellItemEvent", OpenSellShop = "openSellShop",
+    OpenSellShop = "openSellShop",
     UpgradeItem = "upgradeItem", UpgradeKey = "upgradeKey",
-    MoveItemToInventory = "moveItemToInventory",
-    SwapEquippedToInvy = "swapEquippedToInvy",
+    SpendSkillPoint = "spendSkillPoint",
 }
 
 local remoteCache = {}
@@ -114,9 +95,7 @@ local function fire(name, ...)
         end)
     end
 end
---============================================================
--- DUNGEON DATA
---============================================================
+
 local DUNGEONS = {
     { Name = "Pumpkin King", Level = 1 },
     { Name = "Desert Temple", Level = 1 },
@@ -145,9 +124,7 @@ local function getPlayerLevel()
     end
     return 1
 end
---============================================================
--- BOSS + UTILITY
---============================================================
+
 local BOSS_KEYWORDS = {
     "boss","lord","king","queen","giant","titan","elemental",
     "reaper","demon","guardian","warden","champion","warlord",
@@ -241,9 +218,7 @@ local function walkWithPath(targetPos, timeout)
         end
     end
 end
---============================================================
--- DANGER SCANNER
---============================================================
+
 local dangerKeywordList = {}
 local function refreshKeywords()
     dangerKeywordList = {}
@@ -359,9 +334,7 @@ task.spawn(function()
         end
     end
 end)
---============================================================
--- CAMERA HELPERS
---============================================================
+
 local CameraState = { _originalType = nil, _originalAutoRotate = true }
 local function saveCamState()
     CameraState._originalType = workspace.CurrentCamera.CameraType
@@ -418,12 +391,9 @@ local function getSafeCameraPos(hrp, desiredPos)
     return desiredPos
 end
 
---============================================================
--- WINDOW
---============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x DUNGEON QUEST REBORN",
-    Folder = "pallhubv600",
+    Folder = "pallhubv601",
     Icon = "solar:folder-2-bold-duotone",
     NewElements = true,
     HideSearchBar = false,
@@ -435,11 +405,9 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v6.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v6.0.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
---============================================================
 -- TAB: SKILLS
---============================================================
 local TabSkills = Window:Tab({
     Title = "Skills", Desc = "Auto Skill",
     Icon = "solar:star-bold", IconColor = Yellow, IconShape = "Square", Border = true,
@@ -459,9 +427,36 @@ do
     sec:Toggle({ Title = "Use Remote Fallback", Value = true,
         Callback = function(v) State.UseRemoteFallback = v end })
 end
---============================================================
+
+-- TAB: SKILL UP
+local TabSkillUp = Window:Tab({
+    Title = "Skill Up", Desc = "Auto spend skill points",
+    Icon = "solar:medal-star-bold", IconColor = Yellow, IconShape = "Square", Border = true,
+})
+do
+    local s1 = TabSkillUp:Section({ Title = "Auto Spend Skill Points", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Auto Spend Skill Points", Value = false, Callback = function(v) State.AutoSpendSkill = v end })
+    s1:Space()
+    s1:Dropdown({ Title = "Priority Stats",
+        Values = { "Physical Power", "Spell Power", "Stamina" },
+        Value = "Physical Power",
+        Callback = function(v) State.SkillUpPriority = v end })
+    s1:Space()
+    s1:Slider({ Title = "Delay per Point", Step = 0.05,
+        Value = { Min = 0.1, Max = 2, Default = 0.4 },
+        Callback = function(v) State.SkillUpDelay = v end })
+
+    local s2 = TabSkillUp:Section({ Title = "Manual", Box = true, BoxBorder = true, Opened = true })
+    s2:Button({ Title = "+1 Physical Power", Justify = "Center",
+        Callback = function() fire("spendSkillPoint", "physicalPower", 1) end })
+    s2:Space()
+    s2:Button({ Title = "+1 Spell Power", Justify = "Center",
+        Callback = function() fire("spendSkillPoint", "spellPower", 1) end })
+    s2:Space()
+    s2:Button({ Title = "+1 Stamina", Justify = "Center",
+        Callback = function() fire("spendSkillPoint", "stamina", 1) end })
+end
 -- TAB: COMBAT
---============================================================
 local TabCombat = Window:Tab({
     Title = "Combat", Desc = "Attack, Aggro",
     Icon = "solar:sword-bold", IconColor = Green, IconShape = "Square", Border = true,
@@ -489,9 +484,7 @@ do
         Callback = function(v) State.AggroRange = v end })
 end
 
---============================================================
 -- TAB: DODGE
---============================================================
 local TabDodge = Window:Tab({
     Title = "Dodge", Desc = "Orbit + Boss Avoidance",
     Icon = "solar:shield-check-bold", IconColor = Purple, IconShape = "Square", Border = true,
@@ -514,10 +507,7 @@ do
     s1:Space()
     s1:Slider({ Title = "Dodge WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 40, Default = 16 },
-        Callback = function(v)
-            State.DodgeWalkSpeed = v
-            State.MaxDodgeWalkSpeed = v
-        end })
+        Callback = function(v) State.DodgeWalkSpeed = v; State.MaxDodgeWalkSpeed = v end })
 
     local s2 = TabDodge:Section({ Title = "Boss Skill Avoidance", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({ Title = "Dodge Boss Skill", Value = true, Callback = function(v) State.DodgeBossSkill = v end })
@@ -532,240 +522,212 @@ do
     s2:Space()
     s2:Toggle({ Title = "Escape Mode", Value = true, Callback = function(v) State.EscapeMode = v end })
     s2:Space()
-    s2:Input({
-        Title = "Custom Keywords",
-        Value = State.DangerKeywords,
-        Callback = function(v) State.DangerKeywords = v; refreshKeywords() end,
-    })
+    s2:Input({ Title = "Custom Keywords", Value = State.DangerKeywords,
+        Callback = function(v) State.DangerKeywords = v; refreshKeywords() end })
+    s2:Space()
+    s2:Toggle({ Title = "Debug: Log Indicator Names", Value = false,
+        Callback = function(v) State.ShowDebugNames = v; if v then loggedParts = {} end end })
 end
---============================================================
--- TAB: GEAR (REBUILT)
---============================================================
+-- TAB: GEAR
 local TabGear = Window:Tab({
-    Title = "Gear", Desc = "Sell, Upgrade, Equip",
+    Title = "Gear", Desc = "Upgrade, Equip Best",
     Icon = "solar:bag-4-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
-    -- Fungsi baca stats tool
-    local function getToolStat(tool, statName)
-        local child = tool:FindFirstChild(statName)
-        if child and child:IsA("ValueBase") then return child.Value end
-        return nil
-    end
-
-    -- AUTO SELL
-    local s1 = TabGear:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({
-        Title = "Auto Sell",
-        Desc = "Jual tool sesuai rarity & type",
-        Value = false, Callback = function(v) State.AutoSell = v end,
-    })
-    s1:Space()
-    s1:Dropdown({
-        Title = "Sell Rarity",
-        Values = { "Any", "common", "uncommon", "rare", "epic", "legendary", "mythic", "ultimate" },
-        Value = "common",
-        Callback = function(v) State.SellRarity = v end,
-    })
-    s1:Space()
-    s1:Dropdown({
-        Title = "Sell Type",
-        Values = { "Any", "ability", "weapon", "armor", "accessory" },
-        Value = "ability",
-        Callback = function(v) State.SellType = v end,
-    })
-    s1:Space()
-    s1:Slider({
-        Title = "Sell Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 3, Default = 0.3 },
-        Callback = function(v) State.SellDelay = v end,
-    })
-    s1:Space()
-    s1:Toggle({
-        Title = "Keep Equipped",
-        Value = true, Callback = function(v) State.KeepEquipped = v end,
-    })
-    s1:Space()
-    s1:Button({
-        Title = "Sell Now", Justify = "Center",
-        Callback = function()
-            local bp = LP:FindFirstChild("Backpack")
-            if not bp then return end
-            local count = 0
-            for _, tool in ipairs(bp:GetChildren()) do
-                if tool:IsA("Tool") then
-                    local rarity = getToolStat(tool, "rarity") or ""
-                    local typ = getToolStat(tool, "type") or ""
-                    local matchR = (State.SellRarity == "Any") or (rarity == State.SellRarity)
-                    local matchT = (State.SellType == "Any") or (typ == State.SellType)
-                    if matchR and matchT then
-                        fire(R.SellItem, tool)
-                        count = count + 1
-                        task.wait(State.SellDelay)
-                    end
-                end
-            end
-            WindUI:Notify({ Title = "Sell Now", Content = "Mencoba jual " .. count .. " item." })
-        end,
-    })
-    s1:Space()
-    s1:Button({
-        Title = "Open Sell Shop", Justify = "Center",
-        Callback = function() fire(R.OpenSellShop) end,
-    })
-
-    -- AUTO UPGRADE
     local s2 = TabGear:Section({ Title = "Auto Upgrade", Box = true, BoxBorder = true, Opened = true })
-    s2:Toggle({
-        Title = "Auto Upgrade",
-        Desc = "Upgrade item / key otomatis",
-        Value = false, Callback = function(v) State.AutoUpgrade = v end,
-    })
+    s2:Toggle({ Title = "Auto Upgrade", Value = false, Callback = function(v) State.AutoUpgrade = v end })
     s2:Space()
-    s2:Dropdown({
-        Title = "Upgrade Target",
-        Values = { "Item", "Key", "Both" },
-        Value = "Item",
-        Callback = function(v) State.UpgradeTarget = v end,
-    })
+    s2:Dropdown({ Title = "Upgrade Target",
+        Values = { "Item", "Key", "Both" }, Value = "Item",
+        Callback = function(v) State.UpgradeTarget = v end })
     s2:Space()
-    s2:Slider({
-        Title = "Upgrade Delay", Step = 0.5,
+    s2:Slider({ Title = "Upgrade Delay", Step = 0.5,
         Value = { Min = 1, Max = 15, Default = 2 },
-        Callback = function(v) State.UpgradeDelay = v end,
-    })
+        Callback = function(v) State.UpgradeDelay = v end })
     s2:Space()
-    s2:Button({
-        Title = "Upgrade Item Now", Justify = "Center",
-        Callback = function() fire(R.UpgradeItem) end,
-    })
+    s2:Button({ Title = "Upgrade Item Now", Justify = "Center",
+        Callback = function() fire(R.UpgradeItem) end })
     s2:Space()
-    s2:Button({
-        Title = "Upgrade Key Now", Justify = "Center",
-        Callback = function() fire(R.UpgradeKey) end,
-    })
+    s2:Button({ Title = "Upgrade Key Now", Justify = "Center",
+        Callback = function() fire(R.UpgradeKey) end })
 
-    -- AUTO EQUIP BEST
     local s3 = TabGear:Section({ Title = "Auto Equip Best", Box = true, BoxBorder = true, Opened = true })
-    s3:Toggle({
-        Title = "Auto Equip Best",
-        Desc = "Equip tool dengan damage tertinggi",
-        Value = false, Callback = function(v) State.AutoEquipBest = v end,
-    })
+    s3:Toggle({ Title = "Auto Equip Best", Value = false,
+        Callback = function(v) State.AutoEquipBest = v end })
     s3:Space()
-    s3:Dropdown({
-        Title = "Type Priority",
-        Values = { "Any", "ability", "weapon" },
-        Value = "Any",
-        Callback = function(v) State.EquipBestType = v end,
-    })
+    s3:Dropdown({ Title = "Type Priority",
+        Values = { "Any", "ability", "weapon" }, Value = "Any",
+        Callback = function(v) State.EquipBestType = v end })
     s3:Space()
-    s3:Button({
-        Title = "Refresh Inventory", Justify = "Center",
+    s3:Button({ Title = "Refresh Inventory", Justify = "Center",
         Callback = function()
-            fire(R.ReloadInventory)
-            fire(R.ReloadInvy)
+            fire(R.ReloadInventory); fire(R.ReloadInvy)
             WindUI:Notify({ Title = "Refresh", Content = "Request sent." })
-        end,
-    })
+        end })
 end
---============================================================
--- TAB: PROGRESSION (REBUILT)
---============================================================
+-- TAB: PROGRESSION
 local TabProgression = Window:Tab({
     Title = "Progression", Desc = "Dungeon auto start",
     Icon = "solar:chart-2-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    -- Dropdown pilih dungeon
     local dungeonNames = {}
     for _, d in ipairs(DUNGEONS) do table.insert(dungeonNames, d.Name) end
 
     local s1 = TabProgression:Section({ Title = "Dungeon Selection", Box = true, BoxBorder = true, Opened = true })
-    s1:Dropdown({
-        Title = "Dungeon",
-        Values = dungeonNames,
-        Value = "Northern Lands",
-        Callback = function(v) State.SelectedDungeon = v end,
-    })
+    s1:Dropdown({ Title = "Dungeon",
+        Values = dungeonNames, Value = "Northern Lands",
+        Callback = function(v) State.SelectedDungeon = v end })
     s1:Space()
-    s1:Dropdown({
-        Title = "Difficulty",
-        Values = DIFFICULTIES,
-        Value = "Nightmare",
-        Callback = function(v) State.SelectedDifficulty = v end,
-    })
+    s1:Dropdown({ Title = "Difficulty",
+        Values = DIFFICULTIES, Value = "Nightmare",
+        Callback = function(v) State.SelectedDifficulty = v end })
     s1:Space()
-    s1:Toggle({
-        Title = "Hardcore Mode",
-        Value = false, Callback = function(v) State.HardcoreMode = v end,
-    })
+    s1:Toggle({ Title = "Hardcore Mode", Value = false,
+        Callback = function(v) State.HardcoreMode = v end })
+
+    local function clickElement(el)
+        if not el then return false end
+        local ok2 = pcall(function()
+            if getconnections then
+                for _, conn in ipairs(getconnections(el.MouseButton1Click)) do
+                    conn:Fire()
+                end
+            elseif firesignal then
+                firesignal(el.MouseButton1Click)
+            end
+        end)
+        return ok2
+    end
+
+    local function findLabelByName(parent, targetText)
+        if not parent then return nil end
+        for _, child in ipairs(parent:GetDescendants()) do
+            if (child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("ImageButton")) then
+                local txt = child.Text or ""
+                if txt:lower() == targetText:lower() or txt:lower():find(targetText:lower(), 1, true) then
+                    return child
+                end
+            end
+        end
+        return nil
+    end
+
+    local function doStartDungeon()
+        local pg = LP:FindFirstChild("PlayerGui")
+        if not pg then return false, "PlayerGui tidak ada" end
+        local qg = pg:FindFirstChild("queueGui")
+        if not qg then return false, "queueGui tidak ada" end
+
+        local dungeonLabel = findLabelByName(qg, State.SelectedDungeon)
+        if dungeonLabel then
+            print("[PALL-HUB] Klik dungeon:", State.SelectedDungeon)
+            clickElement(dungeonLabel)
+            if dungeonLabel.Parent then clickElement(dungeonLabel.Parent) end
+            task.wait(0.5)
+        end
+
+        local diffLabel = findLabelByName(qg, State.SelectedDifficulty)
+        if diffLabel then
+            print("[PALL-HUB] Klik difficulty:", State.SelectedDifficulty)
+            clickElement(diffLabel)
+            if diffLabel.Parent then clickElement(diffLabel.Parent) end
+            task.wait(0.4)
+        end
+
+        if State.HardcoreMode then
+            local hc = findLabelByName(qg, "Hardcore")
+            if hc then clickElement(hc); task.wait(0.3) end
+        end
+
+        local createBtn = qg:FindFirstChild("createGame", true)
+        if createBtn then
+            print("[PALL-HUB] Klik createGame")
+            clickElement(createBtn)
+        end
+
+        task.wait(1)
+        local joinBtn = qg:FindFirstChild("joinGame", true)
+        if joinBtn and createBtn == nil then
+            print("[PALL-HUB] Klik joinGame")
+            clickElement(joinBtn)
+        end
+
+        task.wait(2)
+        local startBtn = qg:FindFirstChild("startButton", true)
+        if startBtn then
+            print("[PALL-HUB] Klik startButton")
+            clickElement(startBtn)
+        end
+
+        fire(R.StartDungeon)
+        return true, "OK"
+    end
+
+    _G.PallStartDungeon = doStartDungeon
 
     local s2 = TabProgression:Section({ Title = "Auto Flow", Box = true, BoxBorder = true, Opened = true })
-    s2:Toggle({
-        Title = "Auto Best Dungeon",
-        Desc = "Pilih dungeon tertinggi yang kamu bisa masuk",
-        Value = false, Callback = function(v) State.AutoBestDungeon = v end,
-    })
+    s2:Toggle({ Title = "Auto Best Dungeon", Value = false,
+        Callback = function(v) State.AutoBestDungeon = v end })
     s2:Space()
-    s2:Toggle({
-        Title = "Auto Best Difficulty",
-        Value = false, Callback = function(v) State.AutoBestDifficulty = v end,
-    })
+    s2:Toggle({ Title = "Auto Best Difficulty", Value = false,
+        Callback = function(v) State.AutoBestDifficulty = v end })
     s2:Space()
-    s2:Toggle({
-        Title = "Auto Start",
-        Value = false, Callback = function(v) State.AutoStart = v end,
-    })
+    s2:Toggle({ Title = "Auto Start", Value = false, Callback = function(v) State.AutoStart = v end })
     s2:Space()
-    s2:Toggle({
-        Title = "Auto Replay",
-        Value = false, Callback = function(v) State.AutoReplay = v end,
-    })
+    s2:Toggle({ Title = "Auto Replay", Value = false, Callback = function(v) State.AutoReplay = v end })
     s2:Space()
-    s2:Slider({
-        Title = "Replay Delay", Step = 0.5,
+    s2:Slider({ Title = "Replay Delay", Step = 0.5,
         Value = { Min = 1, Max = 15, Default = 3 },
-        Callback = function(v) State.ReplayDelay = v end,
-    })
+        Callback = function(v) State.ReplayDelay = v end })
     s2:Space()
-    s2:Button({
-    Title = "Start Now (via GUI)", Justify = "Center",
-    Callback = function()
-        if _G.PallStartDungeon then
-            _G.PallStartDungeon(State.SelectedDungeon, State.SelectedDifficulty, State.HardcoreMode)
-        end
-    end,
-})
-    s2:Space()
-    s2:Button({
-        Title = "Replay Now", Justify = "Center",
+    s2:Button({ Title = "Start Now (GUI Auto)", Justify = "Center",
         Callback = function()
-            fire(R.ReplayDungeon)
-            fire(R.HostAutoReplay, true)
-        end,
-    })
+            local ok2, msg = doStartDungeon()
+            WindUI:Notify({ Title = "Progression",
+                Content = ok2 and ("Dungeon start: " .. msg) or ("Gagal: " .. msg) })
+        end })
+    s2:Space()
+    s2:Button({ Title = "Replay Now", Justify = "Center",
+        Callback = function()
+            fire(R.ReplayDungeon); fire(R.HostAutoReplay, true)
+        end })
+    s2:Space()
+    s2:Button({ Title = "Debug GUI", Justify = "Center",
+        Callback = function()
+            local pg = LP:FindFirstChild("PlayerGui")
+            local qg = pg and pg:FindFirstChild("queueGui")
+            if not qg then
+                WindUI:Notify({ Title = "Debug", Content = "queueGui tidak ada" })
+                return
+            end
+            print("\n════ queueGui STRUCTURE ════")
+            for _, child in ipairs(qg:GetDescendants()) do
+                if child:IsA("TextButton") or child:IsA("ImageButton") then
+                    print("[BTN] " .. child.Name .. " | Text=" .. tostring(child.Text) .. " | " .. child:GetFullName())
+                elseif child:IsA("TextLabel") and child.Text ~= "" then
+                    print("[LBL] " .. child.Name .. " | Text=" .. child.Text)
+                end
+            end
+            print("═══════════════════════════")
+            WindUI:Notify({ Title = "Debug", Content = "Cek console Delta." })
+        end })
 end
---============================================================
 -- TAB: CAMERA
---============================================================
 local TabCamera = Window:Tab({
     Title = "Camera", Desc = "Lock camera",
     Icon = "solar:videocamera-record-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
     local s1 = TabCamera:Section({ Title = "Camera Lock", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({
-        Title = "Lock Camera to Target", Value = false,
+    s1:Toggle({ Title = "Lock Camera to Target", Value = false,
         Callback = function(v)
             State.CameraLock = v
             if v then saveCamState() else restoreCamera() end
-        end,
-    })
+        end })
     s1:Space()
     s1:Dropdown({ Title = "Target Mode",
-        Values = { "Nearest Enemy", "Nearest Boss" },
-        Value = "Nearest Enemy",
+        Values = { "Nearest Enemy", "Nearest Boss" }, Value = "Nearest Enemy",
         Callback = function(v) State.CameraTargetMode = v end })
     s1:Space()
     s1:Slider({ Title = "Camera Distance", Step = 0.5,
@@ -794,9 +756,8 @@ do
     s2:Toggle({ Title = "Restore on Death", Value = true,
         Callback = function(v) State.CameraRestoreOnDeath = v end })
 end
---============================================================
+
 -- TAB: FACE TARGET
---============================================================
 local TabFace = Window:Tab({
     Title = "Face Target", Desc = "Rotasi karakter",
     Icon = "solar:user-speak-rounded-bold", IconColor = Blue, IconShape = "Square", Border = true,
@@ -804,8 +765,7 @@ local TabFace = Window:Tab({
 do
     local s = TabFace:Section({ Title = "Face Target Settings", Box = true, BoxBorder = true, Opened = true })
     s:Dropdown({ Title = "Face Mode",
-        Values = { "Both", "Camera Only", "Character Only", "Off" },
-        Value = "Both",
+        Values = { "Both", "Camera Only", "Character Only", "Off" }, Value = "Both",
         Callback = function(v) State.FaceMode = v end })
     s:Space()
     s:Dropdown({ Title = "Target Priority",
@@ -821,70 +781,115 @@ do
         Callback = function(v) State.FaceOnlyWhenMoving = v end })
 end
 --============================================================
--- TAB: CONFIG
+-- TAB: CONFIG (Simple Save / Load / Delete)
 --============================================================
 local TabConfig = Window:Tab({
-    Title = "Config", Desc = "Preset, Export, Import",
+    Title = "Config", Desc = "Save, Load, Delete",
     Icon = "solar:folder-with-files-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
-    local presets = {
-        Physical = { DodgeOrbitRadius = 8, DodgeOrbitSpeed = 3, AttackRange = 20 },
-        DesertTemple = { DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5, DangerRadius = 30 },
-        WinterOutpost = { DodgeOrbitRadius = 10, DodgeOrbitSpeed = 2, DangerRadius = 30, AvoidStrength = 3 },
-        PirateIsland = { DodgeOrbitRadius = 14, DodgeOrbitSpeed = 2, AttackRange = 30 },
-        KingsCastle = { DodgeOrbitRadius = 10, DodgeOrbitSpeed = 3, DangerRadius = 28, AvoidStrength = 3 },
-        TheUnderworld = { DodgeOrbitRadius = 15, DodgeOrbitSpeed = 2, DangerRadius = 35 },
-        NorthernLands = { DodgeOrbitRadius = 12, DodgeOrbitSpeed = 2.5, DangerRadius = 32 },
-    }
+    local CONFIG_FILE = "pallhub_config.json"
 
-    local s1 = TabConfig:Section({ Title = "Presets", Box = true, BoxBorder = true, Opened = true })
-    for name, data in pairs(presets) do
-        s1:Button({
-            Title = "Load: " .. name, Justify = "Center",
-            Callback = function()
-                for k, v in pairs(data) do
-                    if State[k] ~= nil then State[k] = v end
-                end
-                WindUI:Notify({ Title = "Preset Loaded", Content = name .. " dimuat." })
-            end,
-        })
-        s1:Space()
+    local function fileExists(name)
+        if isfile then return isfile(name) end
+        return false
     end
 
-    local s2 = TabConfig:Section({ Title = "Export / Import", Box = true, BoxBorder = true, Opened = true })
-    s2:Button({
-        Title = "Export Config (Copy)", Justify = "Center",
-        Callback = function()
-            local clean = {}
-            for k, v in pairs(State) do
-                if type(v) ~= "table" and type(v) ~= "function" then clean[k] = v end
+    local function saveConfig()
+        if not writefile then
+            WindUI:Notify({ Title = "Config", Content = "writefile tidak tersedia." })
+            return
+        end
+        local clean = {}
+        for k, v in pairs(State) do
+            if type(v) ~= "table" and type(v) ~= "function" and k:sub(1,1) ~= "_" then
+                clean[k] = v
             end
-            local json = HttpService:JSONEncode(clean)
-            if setclipboard then setclipboard(json) end
-            WindUI:Notify({ Title = "Export", Content = "Config copied." })
-        end,
+        end
+        local okJ, json = pcall(function() return HttpService:JSONEncode(clean) end)
+        if not okJ then
+            WindUI:Notify({ Title = "Config", Content = "Gagal encode JSON." })
+            return
+        end
+        local okW = pcall(writefile, CONFIG_FILE, json)
+        if okW then
+            WindUI:Notify({ Title = "Config Saved", Content = "Setting tersimpan." })
+        else
+            WindUI:Notify({ Title = "Config", Content = "Gagal simpan file." })
+        end
+    end
+
+    local function loadConfig()
+        if not readfile then
+            WindUI:Notify({ Title = "Config", Content = "readfile tidak tersedia." })
+            return
+        end
+        local okR, raw = pcall(readfile, CONFIG_FILE)
+        if not okR or not raw or raw == "" then
+            WindUI:Notify({ Title = "Config", Content = "Belum ada config tersimpan." })
+            return
+        end
+        local okJ, data = pcall(function() return HttpService:JSONDecode(raw) end)
+        if not okJ or type(data) ~= "table" then
+            WindUI:Notify({ Title = "Config", Content = "File config rusak." })
+            return
+        end
+        local count = 0
+        for k, v in pairs(data) do
+            if State[k] ~= nil then
+                State[k] = v
+                count = count + 1
+            end
+        end
+        WindUI:Notify({ Title = "Config Loaded", Content = count .. " setting dimuat." })
+    end
+
+    local function deleteConfig()
+        if not delfile then
+            WindUI:Notify({ Title = "Config", Content = "delfile tidak tersedia." })
+            return
+        end
+        if not fileExists(CONFIG_FILE) then
+            WindUI:Notify({ Title = "Config", Content = "Belum ada config tersimpan." })
+            return
+        end
+        local okD = pcall(delfile, CONFIG_FILE)
+        if okD then
+            WindUI:Notify({ Title = "Config Deleted", Content = "Setting dihapus." })
+        else
+            WindUI:Notify({ Title = "Config", Content = "Gagal hapus file." })
+        end
+    end
+
+    local s = TabConfig:Section({ Title = "Config Manager", Box = true, BoxBorder = true, Opened = true })
+
+    s:Button({
+        Title = "Save Current Settings", Justify = "Center",
+        Callback = saveConfig,
     })
-    s2:Space()
-    s2:Button({
-        Title = "Import Config (Paste)", Justify = "Center",
+    s:Space()
+    s:Button({
+        Title = "Load Saved Settings", Justify = "Center",
+        Callback = loadConfig,
+    })
+    s:Space()
+    s:Button({
+        Title = "Delete Saved Settings", Justify = "Center",
+        Callback = deleteConfig,
+    })
+    s:Space()
+    s:Button({
+        Title = "Check Config Status", Justify = "Center",
         Callback = function()
-            local raw = getclipboard and getclipboard() or ""
-            local okJ, data = pcall(function() return HttpService:JSONDecode(raw) end)
-            if okJ and type(data) == "table" then
-                for k, v in pairs(data) do
-                    if State[k] ~= nil then State[k] = v end
-                end
-                WindUI:Notify({ Title = "Import", Content = "Config dimuat." })
+            if fileExists(CONFIG_FILE) then
+                WindUI:Notify({ Title = "Config", Content = "Config TERSEDIA." })
             else
-                WindUI:Notify({ Title = "Import", Content = "Config tidak valid." })
+                WindUI:Notify({ Title = "Config", Content = "Config KOSONG." })
             end
         end,
     })
 end
---============================================================
 -- TAB: PLAYER
---============================================================
 local TabPlayer = Window:Tab({
     Title = "Player", Desc = "Misc",
     Icon = "solar:user-bold", IconColor = Grey, IconShape = "Square", Border = true,
@@ -897,6 +902,7 @@ do
     s:Space()
     s:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
+
 --============================================================
 -- LOOPS
 --============================================================
@@ -925,7 +931,6 @@ local function activateTool()
     if tool then pcall(function() tool:Activate() end) end
 end
 
--- AUTO ATTACK
 task.spawn(function()
     while task.wait(0.1) do
         if State.AutoAttack then
@@ -937,7 +942,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO AGGRO
 task.spawn(function()
     while task.wait(0.6) do
         if State.AutoAggro then
@@ -968,7 +972,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO DODGE
 local orbitAngle = 0
 local faceAlign = nil
 local faceAttach = nil
@@ -1050,7 +1053,6 @@ task.spawn(function()
     end
 end)
 
--- AUTO SKILL
 local abilityFolder = ReplicatedStorage:FindFirstChild("abilities")
 local allAbilityEvents = {}
 if abilityFolder then
@@ -1092,45 +1094,23 @@ task.spawn(function()
         end
     end
 end)
---============================================================
--- AUTO SELL LOOP
---============================================================
-local function getToolStat(tool, statName)
-    local child = tool:FindFirstChild(statName)
-    if child and child:IsA("ValueBase") then return child.Value end
-    return nil
-end
 
+local SKILL_MAP = {
+    ["Physical Power"] = "physicalPower",
+    ["Spell Power"]    = "spellPower",
+    ["Stamina"]        = "stamina",
+}
 task.spawn(function()
-    while task.wait(2) do
-        if State.AutoSell then
-            local bp = LP:FindFirstChild("Backpack")
-            if bp then
-                local equipped = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-                for _, tool in ipairs(bp:GetChildren()) do
-                    if tool:IsA("Tool") then
-                        local skip = State.KeepEquipped and equipped and tool.Name == equipped.Name
-                        if not skip then
-                            local rarity = getToolStat(tool, "rarity") or ""
-                            local typ = getToolStat(tool, "type") or ""
-                            local matchR = (State.SellRarity == "Any") or (rarity == State.SellRarity)
-                            local matchT = (State.SellType == "Any") or (typ == State.SellType)
-                            if matchR and matchT then
-                                fire(R.SellItem, tool)
-                                task.wait(State.SellDelay)
-                            end
-                        end
-                    end
-                end
-            end
+    while task.wait(State.SkillUpDelay or 0.4) do
+        if State.AutoSpendSkill then
+            local remoteKey = SKILL_MAP[State.SkillUpPriority or "Physical Power"] or "physicalPower"
+            fire("spendSkillPoint", remoteKey, 1)
         end
     end
 end)
---============================================================
--- AUTO UPGRADE LOOP
---============================================================
+
 task.spawn(function()
-    while task.wait(State.UpgradeDelay) do
+    while task.wait(State.UpgradeDelay or 2) do
         if State.AutoUpgrade then
             if State.UpgradeTarget == "Item" or State.UpgradeTarget == "Both" then
                 fire(R.UpgradeItem)
@@ -1141,9 +1121,13 @@ task.spawn(function()
         end
     end
 end)
---============================================================
--- AUTO EQUIP BEST LOOP
---============================================================
+
+local function getToolStat(tool, statName)
+    local child = tool:FindFirstChild(statName)
+    if child and child:IsA("ValueBase") then return child.Value end
+    return nil
+end
+
 task.spawn(function()
     while task.wait(3) do
         if State.AutoEquipBest then
@@ -1163,22 +1147,16 @@ task.spawn(function()
                             elseif rarity == "rare" then rarityBonus = 80
                             elseif rarity == "uncommon" then rarityBonus = 30 end
                             local score = dmg + rarityBonus
-                            if score > bestScore then
-                                bestScore, bestTool = score, tool
-                            end
+                            if score > bestScore then bestScore, bestTool = score, tool end
                         end
                     end
                 end
-                if bestTool then
-                    fire(R.EquipItem, bestTool)
-                end
+                if bestTool then fire(R.EquipItem, bestTool) end
             end
         end
     end
 end)
---============================================================
--- PROGRESSION LOOPS
---============================================================
+
 task.spawn(function()
     while task.wait(3) do
         if State.AutoBestDungeon then
@@ -1191,115 +1169,29 @@ task.spawn(function()
         end
     end
 end)
--- Helper: klik tombol/label GUI beneran
-local function clickGuiElement(el)
-    if not el then return false end
-    if el:IsA("TextButton") or el:IsA("ImageButton") then
-        local ok = pcall(function()
-            for _, conn in ipairs(getconnections(el.MouseButton1Click)) do
-                conn:Fire()
-            end
-        end)
-        if ok then return true end
-        -- Fallback: pake firesignal
-        pcall(function() firesignal(el.MouseButton1Click) end)
-        return true
-    end
-    return false
-end
-
--- Helper: cari label di dalam folder dengan text match
-local function findLabelByText(parent, text)
-    for _, child in ipairs(parent:GetDescendants()) do
-        if (child:IsA("TextLabel") or child:IsA("TextButton"))
-            and child.Text and child.Text:lower():find(text:lower(), 1, true) then
-            return child
-        end
-    end
-    return nil
-end
-
--- Fungsi utama: pilih dungeon + difficulty + start
-local function startDungeonViaGui(dungeonName, difficulty, hardcore)
-    local pg = LP:FindFirstChild("PlayerGui")
-    if not pg then return false end
-    local qg = pg:FindFirstChild("queueGui")
-    if not qg then return false end
-
-    -- Cari folder chooseDungeon yang isinya label dungeon
-    local chooseDungeon = qg:FindFirstChild("chooseDungeon", true)
-    if not chooseDungeon then return false end
-
-    -- 1) Klik dungeon label
-    local dungeonLabel = findLabelByText(chooseDungeon, dungeonName)
-    if dungeonLabel then
-        print("[PALL-HUB] Klik dungeon:", dungeonName)
-        -- Kalau label bukan button, coba parentnya
-        if not clickGuiElement(dungeonLabel) then
-            if dungeonLabel.Parent then clickGuiElement(dungeonLabel.Parent) end
-        end
-        task.wait(0.5)
-    else
-        print("[PALL-HUB] Dungeon tidak ditemukan di GUI:", dungeonName)
-        return false
-    end
-
-    -- 2) Klik difficulty
-    local diffLabel = findLabelByText(qg, difficulty)
-    if diffLabel then
-        print("[PALL-HUB] Klik difficulty:", difficulty)
-        if not clickGuiElement(diffLabel) then
-            if diffLabel.Parent then clickGuiElement(diffLabel.Parent) end
-        end
-        task.wait(0.4)
-    end
-
-    -- 3) Hardcore mode (opsional)
-    if hardcore then
-        local hcLabel = findLabelByText(qg, "Hardcore")
-        if hcLabel then
-            clickGuiElement(hcLabel)
-            task.wait(0.3)
-        end
-    end
-
-    -- 4) Klik createGame / joinGame
-    local createBtn = qg:FindFirstChild("createGame", true)
-    local joinBtn = qg:FindFirstChild("joinGame", true)
-    if createBtn and createBtn:IsA("TextButton") then
-        print("[PALL-HUB] Klik createGame")
-        clickGuiElement(createBtn)
-    elseif joinBtn and joinBtn:IsA("TextButton") then
-        print("[PALL-HUB] Klik joinGame")
-        clickGuiElement(joinBtn)
-    end
-    task.wait(2)
-
-    -- 5) Start (kalau owner)
-    local startBtn = qg:FindFirstChild("startButton", true)
-    if startBtn and startBtn:IsA("TextButton") then
-        print("[PALL-HUB] Klik startButton")
-        clickGuiElement(startBtn)
-    end
-
-    -- 6) Fire remote sebagai backup
-    fire(R.StartDungeon)
-    return true
-end
-
-_G.PallStartDungeon = startDungeonViaGui
 
 task.spawn(function()
-    while task.wait(5) do
+    while task.wait(8) do
         if State.AutoStart then
-            startDungeonViaGui(State.SelectedDungeon, State.SelectedDifficulty, State.HardcoreMode)
-            task.wait(15) -- cooldown biar nggak spam
+            if _G.PallStartDungeon then
+                local ok2, msg = _G.PallStartDungeon()
+                print("[PALL-HUB] Auto Start:", ok2, msg)
+            end
+            task.wait(15)
         end
     end
 end)
---============================================================
--- CAMERA + FACE
---============================================================
+
+task.spawn(function()
+    while task.wait(1) do
+        if State.AutoReplay then
+            task.wait(State.ReplayDelay)
+            fire(R.ReplayDungeon)
+            fire(R.HostAutoReplay, true)
+        end
+    end
+end)
+
 RunService.RenderStepped:Connect(function()
     local hrp = getHRP(); if not hrp then return end
     local target = pickFaceTarget()
@@ -1346,9 +1238,7 @@ RunService.RenderStepped:Connect(function()
         smoothFaceY(npcPos, State.FaceRotationSpeed)
     end
 end)
---============================================================
--- MISC LOOPS
---============================================================
+
 LP.CharacterAdded:Connect(function()
     if State.CameraRestoreOnDeath then
         task.wait(0.5)
@@ -1379,13 +1269,11 @@ LP.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid")
     hum.WalkSpeed = State.WalkSpeed
 end)
---============================================================
--- NOTIF
---============================================================
+
 WindUI:Notify({
-    Title = "Pall Hub v6.0.0",
-    Content = "Lobby dihapus. Progression & Gear rebuilt.",
+    Title = "Pall Hub v6.0.1",
+    Content = "Config: Save/Load/Delete simple.",
     Icon = "solar:bell-bold", Duration = 6,
 })
 
-print("[PALL-HUB] v6.0.0 loaded. Lobby removed. Progression + Gear rebuilt.")
+print("[PALL-HUB] v6.0.1 loaded.")
