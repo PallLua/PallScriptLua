@@ -1,13 +1,12 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — FISCH v1.0.0
-    Logic  : Diadaptasi dari script komunitas Fisch yang proven
-    UI     : WindUI (milik kita)
-    Features:
-      • Auto Fish (Cast + Shake + Reel + Perfect)
-      • Auto Sell (Hand, All, Below C$)
-      • Auto Appraise
-      • FPS Boost, Camera, Movement, World
+    PALL — FISCH v1.1.0
+    Logic  : Diambil dari script komunitas (Pastebin + Xeno Scripts)
+    UI     : WindUI
+    Remote:
+      - Cast : tool.events.cast:FireServer(100, 1)
+      - Reel : ReplicatedStorage.events.reelfinished:FireServer(100, true)
+      - Sell : ReplicatedStorage.events.SellAll:InvokeServer()
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -18,7 +17,6 @@ local UserInputService    = game:GetService("UserInputService")
 local VirtualUser         = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Lighting            = game:GetService("Lighting")
-local HttpService         = game:GetService("HttpService")
 
 local LP = Players.LocalPlayer
 local pg = LP:WaitForChild("PlayerGui")
@@ -43,7 +41,6 @@ local Yellow = Color3.fromHex("#ECA201")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
 local Purple = Color3.fromHex("#7775F2")
-local Red    = Color3.fromHex("#EF4F1D")
 
 --============================================================
 -- STATE
@@ -51,25 +48,14 @@ local Red    = Color3.fromHex("#EF4F1D")
 local State = {
     -- Auto Fish
     AutoFish = false,
-    AutoCast = true,
     AutoShake = true,
-    AutoReel = true,
-    InstantReel = false,
-    PerfectCatch = true,
-    CastDelay = 1.5,
-    BiteWait = 5,
-    PerfectThreshold = 0.65,
-    ShakeSpeed = 0.06,
+    InstantReel = true,
+    CastDelay = 2,
+    ShakeSearchRadius = 200,  -- radius pencarian tombol shake (px)
 
     -- Auto Sell
     AutoSell = false,
-    SellMode = "Held",       -- Held / All / Below
-    SellBelowAmount = 100,
     SellDelay = 2,
-
-    -- Auto Appraise
-    AutoAppraise = false,
-    AppraiseDelay = 3,
 
     -- Client
     FPSCounter = false,
@@ -79,15 +65,12 @@ local State = {
     DisableSkybox = false,
     DisableAtmosphere = false,
     BurikTotal = false,
-
     CamZoom = false,
     CamZoomMax = 800,
-
     WalkSpeed = 16,
     InfJump = false,
     Noclip = false,
     AntiAFK = true,
-
     FullBright = false,
     NoFog = false,
 
@@ -112,20 +95,11 @@ local function tapElement(el)
     return true
 end
 
-local function findByPath(root, path)
-    local node = root
-    for _, seg in ipairs(path) do
-        if not node then return nil end
-        node = node:FindFirstChild(seg)
-    end
-    return node
-end
-
 local function getHum() local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
 local function getHRP() local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
 
 --============================================================
--- FPS BOOST (client-side)
+-- FPS BOOST
 --============================================================
 local fpsCache = { materials = {}, skybox = nil, atm = nil, shadows = nil }
 
@@ -137,56 +111,40 @@ local function applyLowTextures()
             obj.Material = Enum.Material.SmoothPlastic
             obj.Reflectance = 0
         end
-        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
-            obj.Transparency = 1
-        end
+        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then obj.Transparency = 1 end
     end
 end
 local function restoreLowTextures()
     for obj, data in pairs(fpsCache.materials) do
         if obj and obj.Parent then
-            obj.Material = data.mat
-            obj.Reflectance = data.ref
+            obj.Material = data.mat; obj.Reflectance = data.ref
         end
     end
     fpsCache.materials = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
-            obj.Transparency = 0
-        end
+        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then obj.Transparency = 0 end
     end
 end
 
 local function applyParticles()
     for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then
-            o.Enabled = false
-        end
+        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then o.Enabled = false end
     end
 end
 local function restoreParticles()
     for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then
-            o.Enabled = true
-        end
+        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then o.Enabled = true end
     end
 end
 
 local function applyShadows()
     fpsCache.shadows = { g = Lighting.GlobalShadows, s = Lighting.ShadowSoftness }
-    Lighting.GlobalShadows = false
-    Lighting.ShadowSoftness = 0
-    for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("BasePart") then o.CastShadow = false end
-    end
+    Lighting.GlobalShadows = false; Lighting.ShadowSoftness = 0
 end
 local function restoreShadows()
     if fpsCache.shadows then
         Lighting.GlobalShadows = fpsCache.shadows.g
         Lighting.ShadowSoftness = fpsCache.shadows.s
-    end
-    for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("BasePart") then o.CastShadow = true end
     end
 end
 
@@ -221,30 +179,25 @@ local function restoreAtmosphere()
     end
 end
 
--- World
 local worldCache = { ambient=Color3.new(0,0,0), outdoor=Color3.new(0,0,0), fogEnd=0, fogStart=0 }
 local function applyFullBright()
-    worldCache.ambient = Lighting.Ambient
-    worldCache.outdoor = Lighting.OutdoorAmbient
-    Lighting.Ambient = Color3.fromRGB(180, 180, 180)
-    Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 180)
+    worldCache.ambient = Lighting.Ambient; worldCache.outdoor = Lighting.OutdoorAmbient
+    Lighting.Ambient = Color3.fromRGB(180,180,180)
+    Lighting.OutdoorAmbient = Color3.fromRGB(180,180,180)
     Lighting.Brightness = 3
 end
 local function restoreFullBright()
-    Lighting.Ambient = worldCache.ambient
-    Lighting.OutdoorAmbient = worldCache.outdoor
+    Lighting.Ambient = worldCache.ambient; Lighting.OutdoorAmbient = worldCache.outdoor
     Lighting.Brightness = 1
 end
 local function applyNoFog()
-    worldCache.fogEnd = Lighting.FogEnd
-    worldCache.fogStart = Lighting.FogStart
-    Lighting.FogEnd = 100000
-    Lighting.FogStart = 100000
+    worldCache.fogEnd = Lighting.FogEnd; worldCache.fogStart = Lighting.FogStart
+    Lighting.FogEnd = 100000; Lighting.FogStart = 100000
 end
 local function restoreNoFog()
-    Lighting.FogEnd = worldCache.fogEnd
-    Lighting.FogStart = worldCache.fogStart
+    Lighting.FogEnd = worldCache.fogEnd; Lighting.FogStart = worldCache.fogStart
 end
+
 --============================================================
 -- WINDOW
 --============================================================
@@ -262,13 +215,13 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.1.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: AUTO FISH
 --============================================================
 local TabAuto = Window:Tab({
-    Title = "Auto Fish", Desc = "Cast, Guncang, Reel",
+    Title = "Auto Fish", Desc = "Cast + Shake + Reel",
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
@@ -276,34 +229,20 @@ do
     s1:Toggle({ Title = "Auto Fish", Value = false,
         Callback = function(v) State.AutoFish = v end })
     s1:Space()
-    s1:Toggle({ Title = "Auto Cast", Value = true,
-        Callback = function(v) State.AutoCast = v end })
-    s1:Space()
-    s1:Toggle({ Title = "Auto Guncang (Shake)", Value = true,
+    s1:Toggle({ Title = "Auto Shake (tap)", Value = true,
         Callback = function(v) State.AutoShake = v end })
     s1:Space()
-    s1:Toggle({ Title = "Auto Reel / Bar", Value = true,
-        Callback = function(v) State.AutoReel = v end })
-    s1:Space()
-    s1:Toggle({ Title = "Perfect Catch", Value = true,
-        Callback = function(v) State.PerfectCatch = v end })
+    s1:Toggle({ Title = "Instant Reel (FireServer)", Value = true,
+        Callback = function(v) State.InstantReel = v end })
 
     local s2 = TabAuto:Section({ Title = "Timing", Box = true, BoxBorder = true, Opened = true })
-    s2:Slider({ Title = "Shake Speed", Step = 0.01,
-        Value = { Min = 0.03, Max = 0.2, Default = 0.06 },
-        Callback = function(v) State.ShakeSpeed = v end })
-    s2:Space()
-    s2:Slider({ Title = "Cast Delay", Step = 0.1,
-        Value = { Min = 0.5, Max = 5, Default = 1.5 },
+    s2:Slider({ Title = "Cast Delay", Step = 0.5,
+        Value = { Min = 1, Max = 10, Default = 2 },
         Callback = function(v) State.CastDelay = v end })
     s2:Space()
-    s2:Slider({ Title = "Bite Wait", Step = 0.5,
-        Value = { Min = 2, Max = 15, Default = 5 },
-        Callback = function(v) State.BiteWait = v end })
-    s2:Space()
-    s2:Slider({ Title = "Perfect Threshold", Step = 0.05,
-        Value = { Min = 0.5, Max = 1, Default = 0.65 },
-        Callback = function(v) State.PerfectThreshold = v end })
+    s2:Slider({ Title = "Shake Search Radius (px)", Step = 50,
+        Value = { Min = 100, Max = 800, Default = 200 },
+        Callback = function(v) State.ShakeSearchRadius = v end })
 
     local s3 = TabAuto:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
     local statusText = s3:Section({ Title = "Idle", TextSize = 15, TextTransparency = 0.2 })
@@ -318,45 +257,17 @@ end
 -- TAB: AUTO SELL
 --============================================================
 local TabSell = Window:Tab({
-    Title = "Auto Sell", Desc = "Jual ikan otomatis",
+    Title = "Auto Sell", Desc = "SellAll remote",
     Icon = "solar:cart-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
-    local s1 = TabSell:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({ Title = "Auto Sell", Value = false,
+    local s = TabSell:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({ Title = "Auto Sell (SellAll)", Value = false,
         Callback = function(v) State.AutoSell = v end })
-    s1:Space()
-    s1:Dropdown({
-        Title = "Mode",
-        Values = { "Held", "All", "Below" },
-        Value = "Held",
-        Callback = function(v) State.SellMode = v end,
-    })
-    s1:Space()
-    s1:Slider({ Title = "Sell Below C$", Step = 10,
-        Value = { Min = 10, Max = 5000, Default = 100 },
-        Callback = function(v) State.SellBelowAmount = v end })
-    s1:Space()
-    s1:Slider({ Title = "Sell Delay", Step = 0.5,
-        Value = { Min = 1, Max = 10, Default = 2 },
-        Callback = function(v) State.SellDelay = v end })
-end
-
---============================================================
--- TAB: AUTO APPRAISE
---============================================================
-local TabAppraise = Window:Tab({
-    Title = "Appraise", Desc = "Appraise otomatis",
-    Icon = "solar:star-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local s = TabAppraise:Section({ Title = "Auto Appraise", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Auto Appraise", Value = false,
-        Callback = function(v) State.AutoAppraise = v end })
     s:Space()
-    s:Slider({ Title = "Appraise Delay", Step = 0.5,
-        Value = { Min = 1, Max = 10, Default = 3 },
-        Callback = function(v) State.AppraiseDelay = v end })
+    s:Slider({ Title = "Sell Delay", Step = 0.5,
+        Value = { Min = 1, Max = 15, Default = 2 },
+        Callback = function(v) State.SellDelay = v end })
 end
 
 --============================================================
@@ -384,8 +295,7 @@ do
         frames = frames + 1
         if tick() - lastTime >= 1 then
             if State.FPSCounter then fpsLabel.Text = "FPS: " .. frames end
-            frames = 0
-            lastTime = tick()
+            frames = 0; lastTime = tick()
         end
         fpsLabel.Visible = State.FPSCounter
     end)
@@ -416,8 +326,7 @@ do
             if v then applyAtmosphere() else restoreAtmosphere() end end })
 
     local s3 = TabFPS:Section({ Title = "Master", Box = true, BoxBorder = true, Opened = true })
-    s3:Toggle({
-        Title = "BURIK TOTAL MODE", Value = false,
+    s3:Toggle({ Title = "BURIK TOTAL MODE", Value = false,
         Callback = function(v)
             State.BurikTotal = v
             if v then
@@ -427,8 +336,7 @@ do
                 restoreLowTextures(); restoreParticles(); restoreShadows()
                 restoreSkybox(); restoreAtmosphere()
             end
-        end,
-    })
+        end })
 end
 
 --============================================================
@@ -458,15 +366,12 @@ local TabMove = Window:Tab({
 })
 do
     local s1 = TabMove:Section({ Title = "Speed", Box = true, BoxBorder = true, Opened = true })
-    s1:Slider({
-        Title = "WalkSpeed", Step = 1,
+    s1:Slider({ Title = "WalkSpeed", Step = 1,
         Value = { Min = 16, Max = 150, Default = 16 },
         Callback = function(v)
             State.WalkSpeed = v
-            local hum = getHum()
-            if hum then hum.WalkSpeed = v end
-        end,
-    })
+            local hum = getHum(); if hum then hum.WalkSpeed = v end
+        end })
 
     local s2 = TabMove:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({ Title = "Infinite Jump", Value = false,
@@ -504,235 +409,142 @@ do
         end
     end)
 end
---============================================================
--- AUTO FISH ENGINE (diadaptasi dari script komunitas)
---============================================================
-local flags = { guncangActive = false, barActive = false, castActive = false }
 
-local function findGuncang()
+--============================================================
+-- AUTO FISH ENGINE (LOGIC KOMUNITAS)
+--============================================================
+-- Cari rod yang punya remote events.cast
+local function findRodWithCast()
+    local char = LP.Character
+    if not char then return nil end
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            local events = tool:FindFirstChild("events")
+            if events and events:FindFirstChild("cast") then
+                return tool
+            end
+        end
+    end
+    -- Cek backpack juga
+    local bp = LP:FindFirstChild("Backpack")
+    if bp then
+        for _, tool in ipairs(bp:GetChildren()) do
+            if tool:IsA("Tool") then
+                local events = tool:FindFirstChild("events")
+                if events and events:FindFirstChild("cast") then
+                    return tool
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Cari tombol Guncang (shake) yang muncul acak
+local function findShakeButton()
     for _, gui in ipairs(pg:GetChildren()) do
         for _, c in ipairs(gui:GetDescendants()) do
-            if c:IsA("GuiButton") and c.Visible then
-                local txt = ""
-                pcall(function() txt = (c.Text or ""):lower() end)
-                if txt:find("guncang") or txt:find("shake") then return c end
-                if c.Name:lower():find("guncang") or c.Name:lower():find("shake") then return c end
+            if (c:IsA("ImageButton") or c:IsA("TextButton")) and c.Visible then
+                local n = c.Name:lower()
+                local t = ""
+                pcall(function() t = (c.Text or ""):lower() end)
+                if n:find("shake") or n:find("guncang") or t:find("shake") or t:find("guncang") then
+                    return c
+                end
+                -- Cek parent name
+                if c.Parent and c.Parent.Name:lower():find("shake") then
+                    return c
+                end
             end
         end
     end
-    local node = pg:FindFirstChild("shakeui")
-    if node then
-        for _, c in ipairs(node:GetDescendants()) do
-            if c:IsA("GuiButton") and c.Visible then return c end
+    return nil
+end
+
+-- Cast rod pakai remote komunitas
+local function castRod()
+    local rod = findRodWithCast()
+    if rod then
+        local events = rod:FindFirstChild("events")
+        if events and events:FindFirstChild("cast") then
+            pcall(function()
+                events.cast:FireServer(100, 1)
+            end)
+            return true
         end
     end
-    return nil
+    return false
 end
 
-local function findReelBar()
-    local reel = pg:FindFirstChild("reel")
-    if reel and reel.Visible then return reel end
-    return nil
-end
-
-local function findReelHandle(reel)
-    if not reel then return nil end
-    for _, c in ipairs(reel:GetDescendants()) do
-        if c.Name == "Handle" and c.Visible then return c end
+-- Reel pakai remote komunitas
+local function reelFish()
+    local events = ReplicatedStorage:FindFirstChild("events")
+    if events and events:FindFirstChild("reelfinished") then
+        pcall(function()
+            events.reelfinished:FireServer(100, true)
+        end)
+        return true
     end
-    return nil
+    return false
 end
 
-local function findReelBarTrack(reel)
-    if not reel then return nil end
-    for _, c in ipairs(reel:GetDescendants()) do
-        if c.Name == "bar" and c:IsA("Frame") and c.Visible and c.AbsoluteSize.X > 20 then
-            return c
-        end
+-- Sell pakai remote komunitas
+local function sellAll()
+    local events = ReplicatedStorage:FindFirstChild("events")
+    if events and events:FindFirstChild("SellAll") then
+        pcall(function()
+            events.SellAll:InvokeServer()
+        end)
+        return true
     end
-    return nil
+    return false
 end
 
-local function getHandleProgress(handle, bar)
-    if not handle or not bar then return 0.5 end
-    local hcx = handle.AbsolutePosition.X + handle.AbsoluteSize.X / 2
-    local bx = bar.AbsolutePosition.X
-    local bw = bar.AbsoluteSize.X
-    if bw <= 0 then return 0.5 end
-    return math.clamp((hcx - bx) / bw, 0, 1)
-end
-
-local function tapRod()
-    local vp = workspace.CurrentCamera.ViewportSize
-    tapAt(vp.X * 0.88, vp.Y * 0.72)
-end
-
-local function tapCenter()
-    local vp = workspace.CurrentCamera.ViewportSize
-    tapAt(vp.X * 0.5, vp.Y * 0.5)
-end
-
--- Update flags
+-- Engine Auto Fish
 task.spawn(function()
-    while task.wait(0.05) do
+    while task.wait(0.1) do
         if State.AutoFish then
-            flags.guncangActive = findGuncang() ~= nil
-            flags.barActive = findReelBar() ~= nil
-            local char = LP.Character
-            local rod = char and char:FindFirstChildOfClass("Tool")
-            flags.castActive = rod and rod:FindFirstChild("bobber") ~= nil
-        end
-    end
-end)
+            local rod = findRodWithCast()
 
--- Engine
-task.spawn(function()
-    while task.wait(0.05) do
-        if not State.AutoFish then
+            if not rod then
+                State.Status = "⚠️ Rod dengan events.cast tidak ditemukan"
+                task.wait(1)
+            else
+                -- Cek apakah rod udah di-cast (bobber ada)
+                local bobber = rod:FindFirstChild("bobber")
+                local shakeBtn = findShakeButton()
+
+                if shakeBtn and State.AutoShake then
+                    State.Status = "🔴 Shake — tap"
+                    tapElement(shakeBtn)
+                    task.wait(0.05)
+
+                elseif bobber then
+                    State.Status = "🟢 Nunggu bite — Instant Reel aktif"
+                    if State.InstantReel then
+                        reelFish()
+                    end
+                    task.wait(0.5)
+
+                else
+                    State.Status = "⚪ Casting..."
+                    castRod()
+                    task.wait(State.CastDelay)
+                end
+            end
+        else
             State.Status = "Idle"
             task.wait(0.5)
-        else
-            if flags.guncangActive and State.AutoShake then
-                State.Status = "🔴 Guncang"
-                local gb = findGuncang()
-                if gb then tapElement(gb) end
-                task.wait(State.ShakeSpeed)
-
-            elseif flags.barActive and State.AutoReel then
-                local reel = findReelBar()
-                local handle = findReelHandle(reel)
-                local bar = findReelBarTrack(reel)
-                if handle and bar then
-                    local prog = getHandleProgress(handle, bar)
-                    State.Status = string.format("🎯 Bar: %.0f%%", prog * 100)
-                    if prog >= State.PerfectThreshold then
-                        tapCenter()
-                        task.wait(0.1)
-                    else
-                        task.wait(0.03)
-                    end
-                else
-                    tapCenter()
-                    task.wait(0.1)
-                end
-
-            elseif flags.castActive then
-                State.Status = string.format("🟢 Nunggu bite (%ds)", State.BiteWait)
-                task.wait(State.BiteWait)
-
-            elseif State.AutoCast then
-                State.Status = "⚪ Casting..."
-                tapRod()
-                task.wait(State.CastDelay)
-            else
-                State.Status = "Idle (Auto Cast off)"
-                task.wait(1)
-            end
         end
     end
 end)
 
---============================================================
--- AUTO SELL ENGINE (tap-based, dari script komunitas)
---============================================================
+-- Auto Sell Engine
 task.spawn(function()
     while task.wait(State.SellDelay) do
         if State.AutoSell then
-            -- Buka inventory (tekan B atau tap icon)
-            local backpackBtn = nil
-            for _, gui in ipairs(pg:GetChildren()) do
-                for _, c in ipairs(gui:GetDescendants()) do
-                    if c:IsA("GuiButton") and c.Visible then
-                        local n = c.Name:lower()
-                        if n:find("backpack") or n:find("inventory") or n:find("bag") then
-                            backpackBtn = c; break
-                        end
-                    end
-                end
-                if backpackBtn then break end
-            end
-            if backpackBtn then
-                tapElement(backpackBtn)
-                task.wait(0.5)
-            end
-
-            -- Cari tombol sell di inventory
-            local sellBtn = nil
-            for _, gui in ipairs(pg:GetChildren()) do
-                for _, c in ipairs(gui:GetDescendants()) do
-                    if c:IsA("GuiButton") and c.Visible then
-                        local n = c.Name:lower()
-                        local t = ""
-                        pcall(function() t = (c.Text or ""):lower() end)
-                        if n:find("sell") or t:find("sell") or t:find("jual") then
-                            sellBtn = c; break
-                        end
-                    end
-                end
-                if sellBtn then break end
-            end
-            if sellBtn then
-                tapElement(sellBtn)
-                task.wait(0.5)
-                -- Konfirmasi kalau ada
-                local confirmBtn = nil
-                for _, gui in ipairs(pg:GetChildren()) do
-                    for _, c in ipairs(gui:GetDescendants()) do
-                        if c:IsA("GuiButton") and c.Visible then
-                            local t = ""
-                            pcall(function() t = (c.Text or ""):lower() end)
-                            if t:find("yes") or t:find("confirm") or t:find("ok") then
-                                confirmBtn = c; break
-                            end
-                        end
-                    end
-                    if confirmBtn then break end
-                end
-                if confirmBtn then tapElement(confirmBtn) end
-            end
-        end
-    end
-end)
-
---============================================================
--- AUTO APPRAISE ENGINE (tap-based)
---============================================================
-task.spawn(function()
-    while task.wait(State.AppraiseDelay) do
-        if State.AutoAppraise then
-            -- Cari tombol appraise di inventory
-            local appraiseBtn = nil
-            for _, gui in ipairs(pg:GetChildren()) do
-                for _, c in ipairs(gui:GetDescendants()) do
-                    if c:IsA("GuiButton") and c.Visible then
-                        local n = c.Name:lower()
-                        local t = ""
-                        pcall(function() t = (c.Text or ""):lower() end)
-                        if n:find("appraise") or t:find("appraise") or t:find("nilai") then
-                            appraiseBtn = c; break
-                        end
-                    end
-                end
-                if appraiseBtn then break end
-            end
-            if appraiseBtn then
-                tapElement(appraiseBtn)
-                task.wait(0.5)
-                -- Konfirmasi kalau ada
-                local confirmBtn = nil
-                for _, gui in ipairs(pg:GetChildren()) do
-                    for _, c in ipairs(gui:GetDescendants()) do
-                        if c:IsA("GuiButton") and c.Visible then
-                            local t = ""
-                            pcall(function() t = (c.Text or ""):lower() end)
-                            if t:find("yes") or t:find("confirm") then
-                                confirmBtn = c; break
-                            end
-                        end
-                    end
-                    if confirmBtn then break end
-                end
-                if confirmBtn then tapElement(confirmBtn) end
+           if sellAll() then
+                State.Status = "💰 SellAll triggered"
             end
         end
     end
@@ -777,10 +589,10 @@ end)
 -- NOTIF
 --============================================================
 WindUI:Notify({
-    Title = "Pall Fisch v1.0.0",
-    Content = "Logic komunitas + UI kita. Auto Fish, Auto Sell, Auto Appraise.",
+    Title = "Pall Fisch v1.1.0",
+    Content = "Logic komunitas: Cast + Instant Reel + SellAll.",
     Icon = "solar:bell-bold",
     Duration = 8,
 })
 
-print("[PALL-FISCH] v1.0.0 loaded. Community logic + our UI.")
+print("[PALL-FISCH] v1.1.0 loaded. Community logic.")
