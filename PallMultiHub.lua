@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.0.1 — Share WindUI, Steal an Egg support
+    Version : v1.1.0 — DQR + Fisch
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -17,11 +17,11 @@ local GAMES = {
         Folder = "pallhubv610",
     },
 
-    -- Steal an Egg
-    [107778070777162] = {
-        Name = "Steal an Egg",
-        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallStealEgg.lua",
-        Folder = "pallse",
+    -- Fisch
+    [16732694052] = {
+        Name = "Fisch",
+        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallFisch.lua",
+        Folder = "pallfisch",
     },
 }
 
