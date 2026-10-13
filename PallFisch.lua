@@ -91,10 +91,11 @@ end
 local function fireRemote(name, ...)
     local r = findRemote(name)
     if not r then return end
+    local args = {...}
     if r:IsA("RemoteEvent") then
-        pcall(function() r:FireServer(...) end)
+        pcall(function() r:FireServer(table.unpack(args)) end)
     elseif r:IsA("RemoteFunction") then
-        pcall(function() r:InvokeServer(...) end)
+        pcall(function() r:InvokeServer(table.unpack(args)) end)
     end
 end
 
