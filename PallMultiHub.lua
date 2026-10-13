@@ -18,7 +18,7 @@ local GAMES = {
     },
 
     -- Fisch
-    [16732694052] = {
+    [131716211654599] = {
         Name = "Fisch",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallFisch.lua",
         Folder = "pallfisch",
