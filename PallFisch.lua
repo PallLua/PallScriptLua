@@ -1,25 +1,21 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — FISCH v1.1.0
-    Logic  : Diambil dari script komunitas (Pastebin + Xeno Scripts)
-    UI     : WindUI
-    Remote:
-      - Cast : tool.events.cast:FireServer(100, 1)
-      - Reel : ReplicatedStorage.events.reelfinished:FireServer(100, true)
-      - Sell : ReplicatedStorage.events.SellAll:InvokeServer()
+    PALL — FISCH v3.0.0
+    Logic  : NIGHT (community script — no UI)
+    UI     : WindUI (Pall)
+    Notes  : Logic internal identik, toggle dipindah ke UI
     ═══════════════════════════════════════════════════════════
 --]]
 
-local Players             = game:GetService("Players")
-local ReplicatedStorage   = game:GetService("ReplicatedStorage")
-local RunService          = game:GetService("RunService")
-local UserInputService    = game:GetService("UserInputService")
-local VirtualUser         = game:GetService("VirtualUser")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local Lighting            = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local RS      = game:GetService("ReplicatedStorage")
+local WS      = game:GetService("Workspace")
+local RUN     = game:GetService("RunService")
+local UIS     = game:GetService("UserInputService")
+local TW      = game:GetService("TweenService")
 
 local LP = Players.LocalPlayer
-local pg = LP:WaitForChild("PlayerGui")
+local PG = LP:WaitForChild("PlayerGui")
 
 --============================================================
 -- LOAD WINDUI
@@ -41,165 +37,579 @@ local Yellow = Color3.fromHex("#ECA201")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
 local Purple = Color3.fromHex("#7775F2")
+local Red    = Color3.fromHex("#EF4F1D")
 
 --============================================================
--- STATE
+-- GLOBAL STATE (dari NIGHT, dipindah ke _G biar logic internal tetap jalan)
 --============================================================
-local State = {
-    -- Auto Fish
-    AutoFish = false,
-    AutoShake = true,
-    InstantReel = true,
-    CastDelay = 2,
-    ShakeSearchRadius = 200,  -- radius pencarian tombol shake (px)
+_G.AutoFish      = false
+_G.AutoReel      = false
+_G.NoShake       = false
+_G.InfiniteStam  = false
+_G.AutoSell      = false
+_G.AutoQuest     = false
+_G.AutoCollect   = false
+_G.AntiAFK       = false
+_G.SpeedBoost    = false
+_G.AutoEquipBest = false
+_G.ESP           = false
+_G.FishRadar     = false
+_G.Fly           = false
+_G.FlySpeed      = 50
+_G.ESPRange      = 500
 
-    -- Auto Sell
-    AutoSell = false,
-    SellDelay = 2,
+--============================================================
+-- CHAR REF
+--============================================================
+local char, hrp, hum
+local function refreshChar()
+    char = LP.Character or LP.CharacterAdded:Wait()
+    hrp  = char:WaitForChild("HumanoidRootPart", 5)
+    hum  = char:WaitForChild("Humanoid", 5)
+end
+refreshChar()
+LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
 
-    -- Client
-    FPSCounter = false,
-    LowTextures = false,
-    RemoveParticles = false,
-    DisableShadows = false,
-    DisableSkybox = false,
-    DisableAtmosphere = false,
-    BurikTotal = false,
-    CamZoom = false,
-    CamZoomMax = 800,
-    WalkSpeed = 16,
-    InfJump = false,
-    Noclip = false,
-    AntiAFK = true,
-    FullBright = false,
-    NoFog = false,
+--============================================================
+-- REMOTE HELPERS
+--============================================================
+local remoteCache = {}
+local function findRemote(name)
+    if remoteCache[name] then return remoteCache[name] end
+    local nameLow = name:lower()
+    for _, v in ipairs(RS:GetDescendants()) do
+        if (v:IsA("RemoteEvent") or v:IsA("RemoteFunction")) then
+            if v.Name:lower() == nameLow or v.Name:lower():find(nameLow) then
+                remoteCache[name] = v
+                return v
+            end
+        end
+    end
+    return nil
+end
 
-    Status = "Idle",
+local function fireRemote(name, ...)
+    local r = findRemote(name)
+    if not r then return end
+    if r:IsA("RemoteEvent") then
+        pcall(function() r:FireServer(...) end)
+    elseif r:IsA("RemoteFunction") then
+        pcall(function() r:InvokeServer(...) end)
+    end
+end
+
+--============================================================
+-- ROD HELPERS
+--============================================================
+local rodTier = {
+    ["legendary"] = 10, ["mythic"] = 9, ["ancient"] = 8,
+    ["divine"]    = 7,  ["rare"]   = 6, ["uncommon"]= 5,
+    ["common"]    = 1,
 }
 
+local function getRodScore(tool)
+    local name = tool.Name:lower()
+    for tier, score in pairs(rodTier) do
+        if name:find(tier) then return score end
+    end
+    return 2
+end
+
+local function findBestRod()
+    local best, bestScore = nil, -1
+    local sources = {LP:FindFirstChild("Backpack"), char}
+    for _, src in ipairs(sources) do
+        if src then
+            for _, t in ipairs(src:GetChildren()) do
+                if t:IsA("Tool") and (t.Name:lower():find("rod") or t.Name:lower():find("fishing")) then
+                    local score = getRodScore(t)
+                    if score > bestScore then
+                        bestScore = score
+                        best = t
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function findAnyRod()
+    if not char then return nil end
+    for _, t in ipairs(char:GetChildren()) do
+        if t:IsA("Tool") and (t.Name:lower():find("rod") or t.Name:lower():find("fishing")) then
+            return t
+        end
+    end
+    local bp = LP:FindFirstChild("Backpack")
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if t:IsA("Tool") and (t.Name:lower():find("rod") or t.Name:lower():find("fishing")) then
+                return t
+            end
+        end
+    end
+    return nil
+end
+
+local function equipRod(rod)
+    if not rod or not hum or not char then return end
+    if char:FindFirstChild(rod.Name) then return end
+    pcall(function() hum:EquipTool(rod) end)
+    task.wait(0.4)
+end
+
+local function equippedRod()
+    if not char then return nil end
+    for _, t in ipairs(char:GetChildren()) do
+        if t:IsA("Tool") and (t.Name:lower():find("rod") or t.Name:lower():find("fishing")) then
+            return t
+        end
+    end
+    return nil
+end
+
 --============================================================
--- UTILITY
+-- AUTO EQUIP BEST ROD (logic NIGHT)
 --============================================================
-local function tapAt(x, y)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        task.wait(0.015)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+task.spawn(function()
+    while true do
+        task.wait(3)
+        if not _G.AutoEquipBest then continue end
+        if not hum or not char then continue end
+        local best = findBestRod()
+        if best and not char:FindFirstChild(best.Name) then
+            equipRod(best)
+            print("[FISCH] Equipped best rod: " .. best.Name)
+        end
+    end
+end)
+
+--============================================================
+-- AUTO FISH (logic NIGHT)
+--============================================================
+local fishState = "idle"
+local lastCast  = 0
+local CAST_CD   = 3
+local BITE_TIMEOUT = 18
+
+local function findReelGui()
+    for _, g in ipairs(PG:GetDescendants()) do
+        if g:IsA("Frame") and g.Visible then
+            local n = g.Name:lower()
+            if n:find("reel") or n:find("fishbar") or n:find("progress") or n:find("bite") then
+                return g
+            end
+        end
+    end
+    return nil
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.08)
+        if not _G.AutoFish then
+            fishState = "idle"
+            continue
+        end
+        if not char or not hrp or not hum then continue end
+        if hum.Health <= 0 then continue end
+
+        local now = tick()
+
+        if fishState == "idle" then
+            if now - lastCast >= CAST_CD then
+                local rod = equippedRod()
+                if not rod then
+                    rod = findAnyRod()
+                    if rod then equipRod(rod) end
+                end
+                rod = equippedRod()
+                if rod then
+                    pcall(function() rod:Activate() end)
+                    fireRemote("cast")
+                    fireRemote("Cast")
+                    fireRemote("castRod")
+                    fishState = "waiting"
+                    lastCast  = now
+                end
+            end
+
+        elseif fishState == "waiting" then
+            local reelGui = findReelGui()
+            if reelGui then
+                fishState = "reeling"
+            end
+            if now - lastCast >= BITE_TIMEOUT then
+                fishState = "idle"
+                lastCast  = now - CAST_CD
+            end
+
+        elseif fishState == "reeling" then
+            local reelGui = findReelGui()
+            if reelGui then
+                fireRemote("reel")
+                fireRemote("Reel")
+                fireRemote("reelFish")
+                fireRemote("ReelFish")
+                fireRemote("click")
+                local rod = equippedRod()
+                if rod then pcall(function() rod:Activate() end) end
+                task.wait(0.04)
+            else
+                fishState = "idle"
+                lastCast  = tick()
+                print("[FISCH] Fish caught!")
+            end
+        end
+    end
+end)
+-- AUTO REEL
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if not _G.AutoReel then continue end
+        local reelGui = findReelGui()
+        if reelGui then
+            fireRemote("reel")
+            fireRemote("Reel")
+            fireRemote("reelFish")
+            local rod = equippedRod()
+            if rod then pcall(function() rod:Activate() end) end
+        end
+    end
+end)
+
+-- NO SHAKE
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.NoShake then continue end
+        fireRemote("shake")
+        fireRemote("Shake")
+        fireRemote("shakeSuccess")
+        fireRemote("passShake")
+        fireRemote("shakeComplete")
+    end
+end)
+
+-- INFINITE STAMINA
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if not _G.InfiniteStam then continue end
+        if char then
+            for _, v in ipairs(char:GetChildren()) do
+                if v:IsA("NumberValue") then
+                    local n = v.Name:lower()
+                    if n:find("stamina") or n:find("energy") or n:find("endur") then
+                        pcall(function()
+                            if v.Value < 80 then v.Value = 100 end
+                        end)
+                    end
+                end
+            end
+        end
+        fireRemote("stamina")
+        fireRemote("refillStamina")
+        fireRemote("restoreStamina")
+    end
+end)
+
+-- AUTO SELL
+local lastSell = 0
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if not _G.AutoSell then continue end
+        if tick() - lastSell < 5 then continue end
+        lastSell = tick()
+
+        fireRemote("sell")
+        fireRemote("Sell")
+        fireRemote("sellFish")
+        fireRemote("SellFish")
+        fireRemote("sellAll")
+        fireRemote("SellAll")
+        fireRemote("sellInventory")
+
+        for _, v in ipairs(RS:GetDescendants()) do
+            if v:IsA("RemoteFunction") and v.Name:lower():find("sell") then
+                pcall(function() v:InvokeServer() end)
+            end
+        end
+        print("[FISCH] Auto sell fired")
+    end
+end)
+-- AUTO QUEST
+local lastQuest = 0
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if not _G.AutoQuest then continue end
+        if tick() - lastQuest < 8 then continue end
+        lastQuest = tick()
+
+        fireRemote("acceptQuest")
+        fireRemote("AcceptQuest")
+        fireRemote("claimQuest")
+        fireRemote("ClaimQuest")
+        fireRemote("completeQuest")
+        fireRemote("questAccept")
+        fireRemote("questClaim")
+        fireRemote("questComplete")
+        print("[FISCH] Auto quest fired")
+    end
+end)
+
+-- AUTO COLLECT
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if not _G.AutoCollect then continue end
+        if not hrp then continue end
+        local COLLECT_RANGE = 20
+        for _, obj in ipairs(WS:GetDescendants()) do
+            if not hrp then break end
+            local n = obj.Name:lower()
+            if n:find("pickup") or n:find("loot") or n:find("drop")
+            or n:find("reward") or n:find("coin") or n:find("gem")
+            or n:find("treasure") or n:find("chest") then
+                local pos
+                if obj:IsA("BasePart") then
+                    pos = obj.Position
+                elseif obj:IsA("Model") then
+                    local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                    if p then pos = p.Position end
+                end
+                if pos and (pos - hrp.Position).Magnitude <= COLLECT_RANGE then
+                    if obj:IsA("BasePart") then
+                        pcall(function()
+                            hrp.CFrame = CFrame.new(pos + Vector3.new(0,2,0))
+                        end)
+                    end
+                    fireRemote("collect")
+                    fireRemote("pickup")
+                    fireRemote("Collect")
+                    fireRemote("Pickup")
+                end
+            end
+        end
+    end
+end)
+
+-- ANTI AFK
+local lastAFK = 0
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if not _G.AntiAFK then continue end
+        if tick() - lastAFK < 240 then continue end
+        lastAFK = tick()
+        if not hrp or not hum then continue end
+        local dirs = {
+            Vector3.new(2,0,0), Vector3.new(-2,0,0),
+            Vector3.new(0,0,2), Vector3.new(0,0,-2),
+        }
+        local d = dirs[math.random(1, #dirs)]
+        pcall(function() hum:MoveTo(hrp.Position + d) end)
+        task.wait(0.5)
+        pcall(function() hum:MoveTo(hrp.Position - d) end)
+        print("[FISCH] Anti-AFK triggered")
+    end
+end)
+
+-- SPEED BOOST
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if not hum then continue end
+        if _G.SpeedBoost then
+            pcall(function() hum.WalkSpeed = 32 end)
+        else
+            if hum.WalkSpeed == 32 then
+                pcall(function() hum.WalkSpeed = 16 end)
+            end
+        end
+    end
+end)
+
+-- FLY
+local flyConn
+local function updateFly()
+    if flyConn then flyConn:Disconnect() flyConn = nil end
+    if not _G.Fly then
+        if hum then pcall(function() hum.PlatformStand = false end) end
+        return
+    end
+    if hum then pcall(function() hum.PlatformStand = true end) end
+
+    flyConn = RUN.RenderStepped:Connect(function()
+        if not _G.Fly then
+            if hum then pcall(function() hum.PlatformStand = false end) end
+            flyConn:Disconnect() flyConn = nil
+            return
+        end
+        if not hrp then return end
+        local cam  = WS.CurrentCamera
+        local cf   = cam.CFrame
+        local move = Vector3.new(0,0,0)
+        local spd  = _G.FlySpeed or 50
+        if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + cf.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) or UIS:IsKeyDown(Enum.KeyCode.E) then
+            move = move + Vector3.new(0,1,0)
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.Q) or UIS:IsKeyDown(Enum.KeyCode.LeftShift) then
+            move = move - Vector3.new(0,1,0)
+        end
+        if move.Magnitude > 0.01 then move = move.Unit * spd end
+        pcall(function()
+            hrp.Velocity               = move
+            hrp.AssemblyLinearVelocity = move
+        end)
     end)
 end
 
-local function tapElement(el)
-    if not el then return false end
-    local pos, size = el.AbsolutePosition, el.AbsoluteSize
-    tapAt(pos.X + size.X / 2, pos.Y + size.Y / 2)
-    return true
-end
-
-local function getHum() local c = LP.Character; return c and c:FindFirstChildOfClass("Humanoid") end
-local function getHRP() local c = LP.Character; return c and c:FindFirstChild("HumanoidRootPart") end
-
---============================================================
--- FPS BOOST
---============================================================
-local fpsCache = { materials = {}, skybox = nil, atm = nil, shadows = nil }
-
-local function applyLowTextures()
-    fpsCache.materials = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and not fpsCache.materials[obj] then
-            fpsCache.materials[obj] = { mat = obj.Material, ref = obj.Reflectance }
-            obj.Material = Enum.Material.SmoothPlastic
-            obj.Reflectance = 0
-        end
-        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then obj.Transparency = 1 end
-    end
-end
-local function restoreLowTextures()
-    for obj, data in pairs(fpsCache.materials) do
-        if obj and obj.Parent then
-            obj.Material = data.mat; obj.Reflectance = data.ref
+task.spawn(function()
+    local prev = false
+    while true do
+        task.wait(0.2)
+        if _G.Fly ~= prev then
+            prev = _G.Fly
+            updateFly()
         end
     end
-    fpsCache.materials = {}
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then obj.Transparency = 0 end
-    end
+end)
+
+-- ESP
+local espBills = {}
+local function clearESP()
+    for _, b in ipairs(espBills) do pcall(function() b:Destroy() end) end
+    espBills = {}
 end
 
-local function applyParticles()
-    for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then o.Enabled = false end
+local RARE_KEYWORDS = {
+    "legendary","mythic","ancient","divine","prismatic",
+    "event","special","rare","epic","ultra"
+}
+local function isRare(name)
+    local low = name:lower()
+    for _, k in ipairs(RARE_KEYWORDS) do
+        if low:find(k) then return true end
     end
-end
-local function restoreParticles()
-    for _, o in ipairs(workspace:GetDescendants()) do
-        if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then o.Enabled = true end
-    end
+    return false
 end
 
-local function applyShadows()
-    fpsCache.shadows = { g = Lighting.GlobalShadows, s = Lighting.ShadowSoftness }
-    Lighting.GlobalShadows = false; Lighting.ShadowSoftness = 0
-end
-local function restoreShadows()
-    if fpsCache.shadows then
-        Lighting.GlobalShadows = fpsCache.shadows.g
-        Lighting.ShadowSoftness = fpsCache.shadows.s
-    end
+local function mkBill(adornee, text, color)
+    if not adornee then return end
+    local bb = Instance.new("BillboardGui")
+    bb.Size        = UDim2.fromOffset(140, 32)
+    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.AlwaysOnTop = true
+    bb.Adornee     = adornee
+    bb.Parent      = WS
+
+    local lbl = Instance.new("TextLabel", bb)
+    lbl.Size                   = UDim2.new(1,0,1,0)
+    lbl.BackgroundTransparency = 0.25
+    lbl.BackgroundColor3       = Color3.new(0,0,0)
+    lbl.Text                   = text
+    lbl.TextColor3             = color
+    lbl.TextSize               = 12
+    lbl.Font                   = Enum.Font.GothamBold
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3       = Color3.new(0,0,0)
+    table.insert(espBills, bb)
 end
 
-local function applySkybox()
-    local sky = Lighting:FindFirstChildOfClass("Sky")
-    if sky then
-        fpsCache.skybox = { b=sky.SkyboxBk, d=sky.SkyboxDn, f=sky.SkyboxFt, l=sky.SkyboxLf, r=sky.SkyboxRt, u=sky.SkyboxUp }
-        sky.SkyboxBk=""; sky.SkyboxDn=""; sky.SkyboxFt=""
-        sky.SkyboxLf=""; sky.SkyboxRt=""; sky.SkyboxUp=""
-    end
-end
-local function restoreSkybox()
-    local sky = Lighting:FindFirstChildOfClass("Sky")
-    if sky and fpsCache.skybox then
-        sky.SkyboxBk=fpsCache.skybox.b; sky.SkyboxDn=fpsCache.skybox.d
-        sky.SkyboxFt=fpsCache.skybox.f; sky.SkyboxLf=fpsCache.skybox.l
-        sky.SkyboxRt=fpsCache.skybox.r; sky.SkyboxUp=fpsCache.skybox.u
-    end
-end
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        if not _G.ESP then clearESP() continue end
+        clearESP()
+        if not hrp then continue end
+        local range = _G.ESPRange or 500
+        for _, obj in ipairs(WS:GetDescendants()) do
+            if not hrp then break end
+            local name = obj.Name
+            local nameLow = name:lower()
+            local pos
+            if obj:IsA("BasePart") then pos = obj.Position
+            elseif obj:IsA("Model") then
+                local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                if p then pos = p.Position end
+            end
+            if not pos then continue end
+            if (pos - hrp.Position).Magnitude > range then continue end
 
-local function applyAtmosphere()
-    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-    if atm then
-        fpsCache.atm = { d=atm.Density, h=atm.Haze, g=atm.Glare }
-        atm.Density = 0; atm.Haze = 0; atm.Glare = 0
-    end
-end
-local function restoreAtmosphere()
-    local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-    if atm and fpsCache.atm then
-        atm.Density = fpsCache.atm.d; atm.Haze = fpsCache.atm.h; atm.Glare = fpsCache.atm.g
-    end
-end
+            if nameLow:find("spot") or nameLow:find("bobber")
+            or nameLow:find("fishing") or nameLow:find("buoy") then
+                local adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")) or obj
+                mkBill(adornee, "🎣 " .. name, Color3.fromRGB(0, 255, 150))
+            end
 
-local worldCache = { ambient=Color3.new(0,0,0), outdoor=Color3.new(0,0,0), fogEnd=0, fogStart=0 }
-local function applyFullBright()
-    worldCache.ambient = Lighting.Ambient; worldCache.outdoor = Lighting.OutdoorAmbient
-    Lighting.Ambient = Color3.fromRGB(180,180,180)
-    Lighting.OutdoorAmbient = Color3.fromRGB(180,180,180)
-    Lighting.Brightness = 3
-end
-local function restoreFullBright()
-    Lighting.Ambient = worldCache.ambient; Lighting.OutdoorAmbient = worldCache.outdoor
-    Lighting.Brightness = 1
-end
-local function applyNoFog()
-    worldCache.fogEnd = Lighting.FogEnd; worldCache.fogStart = Lighting.FogStart
-    Lighting.FogEnd = 100000; Lighting.FogStart = 100000
-end
-local function restoreNoFog()
-    Lighting.FogEnd = worldCache.fogEnd; Lighting.FogStart = worldCache.fogStart
-end
+            if nameLow:find("fish") and not nameLow:find("rod")
+            and not nameLow:find("tool") and not nameLow:find("script") then
+                local adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")) or obj
+                if isRare(name) then
+                    mkBill(adornee, "⭐ " .. name, Color3.fromRGB(255, 200, 0))
+                else
+                    mkBill(adornee, "🐟 " .. name, Color3.fromRGB(100, 200, 255))
+                end
+            end
 
+            if nameLow:find("treasure") or nameLow:find("chest")
+            or nameLow:find("loot") then
+                local adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")) or obj
+                mkBill(adornee, "💰 " .. name, Color3.fromRGB(255, 220, 50))
+            end
+        end
+    end
+end)
+
+-- FISH RADAR
+local notified = {}
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if not _G.FishRadar then
+            notified = {}
+            continue
+        end
+        if not hrp then continue end
+        for _, obj in ipairs(WS:GetDescendants()) do
+            if not isRare(obj.Name) then continue end
+            local nameLow = obj.Name:lower()
+            if not nameLow:find("fish") then continue end
+            local pos
+            if obj:IsA("BasePart") then pos = obj.Position
+            elseif obj:IsA("Model") then
+                local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                if p then pos = p.Position end
+            end
+            if pos and (pos - hrp.Position).Magnitude < 250 then
+                if not notified[obj] then
+                    notified[obj] = true
+                    pcall(function()
+                        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                            Text     = "[RADAR] 🌟 RARE: " .. obj.Name,
+                            Color    = Color3.fromRGB(255,200,0),
+                            FontSize = Enum.FontSize.Size18,
+                        })
+                    end)
+                    print("[FISCH RADAR] Rare fish nearby: " .. obj.Name)
+                end
+            else
+                notified[obj] = nil
+            end
+        end
+    end
+end)
 --============================================================
--- WINDOW
+-- WINDOW UI
 --============================================================
 local Window = WindUI:CreateWindow({
     Title = "Pall x Fisch",
@@ -215,384 +625,186 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.1.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v3.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
--- TAB: AUTO FISH
+-- TAB: FISHING
 --============================================================
-local TabAuto = Window:Tab({
-    Title = "Auto Fish", Desc = "Cast + Shake + Reel",
+local TabFish = Window:Tab({
+    Title = "Fishing", Desc = "Auto cast, reel, shake",
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
-    local s1 = TabAuto:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({ Title = "Auto Fish", Value = false,
-        Callback = function(v) State.AutoFish = v end })
-    s1:Space()
-    s1:Toggle({ Title = "Auto Shake (tap)", Value = true,
-        Callback = function(v) State.AutoShake = v end })
-    s1:Space()
-    s1:Toggle({ Title = "Instant Reel (FireServer)", Value = true,
-        Callback = function(v) State.InstantReel = v end })
+    local s = TabFish:Section({ Title = "Auto Fishing", Box = true, BoxBorder = true, Opened = true })
 
-    local s2 = TabAuto:Section({ Title = "Timing", Box = true, BoxBorder = true, Opened = true })
-    s2:Slider({ Title = "Cast Delay", Step = 0.5,
-        Value = { Min = 1, Max = 10, Default = 2 },
-        Callback = function(v) State.CastDelay = v end })
-    s2:Space()
-    s2:Slider({ Title = "Shake Search Radius (px)", Step = 50,
-        Value = { Min = 100, Max = 800, Default = 200 },
-        Callback = function(v) State.ShakeSearchRadius = v end })
-
-    local s3 = TabAuto:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
-    local statusText = s3:Section({ Title = "Idle", TextSize = 15, TextTransparency = 0.2 })
-    task.spawn(function()
-        while task.wait(0.3) do
-            pcall(function() statusText:SetTitle(State.Status) end)
-        end
-    end)
-end
-
---============================================================
--- TAB: AUTO SELL
---============================================================
-local TabSell = Window:Tab({
-    Title = "Auto Sell", Desc = "SellAll remote",
-    Icon = "solar:cart-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local s = TabSell:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Auto Sell (SellAll)", Value = false,
-        Callback = function(v) State.AutoSell = v end })
+    s:Toggle({
+        Title = "Auto Fish",
+        Desc = "Cast → tunggu bite → reel",
+        Value = false,
+        Callback = function(v) _G.AutoFish = v end,
+    })
     s:Space()
-    s:Slider({ Title = "Sell Delay", Step = 0.5,
-        Value = { Min = 1, Max = 15, Default = 2 },
-        Callback = function(v) State.SellDelay = v end })
-end
-
---============================================================
--- TAB: FPS BOOST
---============================================================
-local TabFPS = Window:Tab({
-    Title = "FPS Boost", Desc = "Performa",
-    Icon = "solar:cpu-bolt-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local fpsLabel = Instance.new("TextLabel")
-    fpsLabel.Size = UDim2.new(0, 120, 0, 30)
-    fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-    fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    fpsLabel.BackgroundTransparency = 0.4
-    fpsLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-    fpsLabel.Font = Enum.Font.Code
-    fpsLabel.TextSize = 16
-    fpsLabel.Text = "FPS: --"
-    fpsLabel.Visible = false
-    fpsLabel.Parent = pg
-
-    local frames, lastTime = 0, tick()
-    RunService.RenderStepped:Connect(function()
-        frames = frames + 1
-        if tick() - lastTime >= 1 then
-            if State.FPSCounter then fpsLabel.Text = "FPS: " .. frames end
-            frames = 0; lastTime = tick()
-        end
-        fpsLabel.Visible = State.FPSCounter
-    end)
-
-    local s1 = TabFPS:Section({ Title = "Info", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({ Title = "Show FPS Counter", Value = false,
-        Callback = function(v) State.FPSCounter = v end })
-
-    local s2 = TabFPS:Section({ Title = "Performance", Box = true, BoxBorder = true, Opened = true })
-    s2:Toggle({ Title = "Low Textures", Value = false,
-        Callback = function(v) State.LowTextures = v
-            if v then applyLowTextures() else restoreLowTextures() end end })
-    s2:Space()
-    s2:Toggle({ Title = "Disable Particles", Value = false,
-        Callback = function(v) State.RemoveParticles = v
-            if v then applyParticles() else restoreParticles() end end })
-    s2:Space()
-    s2:Toggle({ Title = "Disable Shadows", Value = false,
-        Callback = function(v) State.DisableShadows = v
-            if v then applyShadows() else restoreShadows() end end })
-    s2:Space()
-    s2:Toggle({ Title = "Disable Skybox", Value = false,
-        Callback = function(v) State.DisableSkybox = v
-            if v then applySkybox() else restoreSkybox() end end })
-    s2:Space()
-    s2:Toggle({ Title = "Disable Atmosphere", Value = false,
-        Callback = function(v) State.DisableAtmosphere = v
-            if v then applyAtmosphere() else restoreAtmosphere() end end })
-
-    local s3 = TabFPS:Section({ Title = "Master", Box = true, BoxBorder = true, Opened = true })
-    s3:Toggle({ Title = "BURIK TOTAL MODE", Value = false,
-        Callback = function(v)
-            State.BurikTotal = v
-            if v then
-                applyLowTextures(); applyParticles(); applyShadows()
-                applySkybox(); applyAtmosphere()
-            else
-                restoreLowTextures(); restoreParticles(); restoreShadows()
-                restoreSkybox(); restoreAtmosphere()
-            end
-        end })
-end
-
---============================================================
--- TAB: WORLD
---============================================================
-local TabWorld = Window:Tab({
-    Title = "World", Desc = "Lighting & Fog",
-    Icon = "solar:sun-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local s = TabWorld:Section({ Title = "Lighting", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Full Bright", Value = false,
-        Callback = function(v) State.FullBright = v
-            if v then applyFullBright() else restoreFullBright() end end })
+    s:Toggle({
+        Title = "Auto Reel",
+        Desc = "Spam reel saat bar muncul",
+        Value = false,
+        Callback = function(v) _G.AutoReel = v end,
+    })
     s:Space()
-    s:Toggle({ Title = "No Fog", Value = false,
-        Callback = function(v) State.NoFog = v
-            if v then applyNoFog() else restoreNoFog() end end })
+    s:Toggle({
+        Title = "No Shake",
+        Desc = "Skip minigame guncang",
+        Value = false,
+        Callback = function(v) _G.NoShake = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Infinite Stamina",
+        Value = false,
+        Callback = function(v) _G.InfiniteStam = v end,
+    })
+
+    local st = TabFish:Section({ Title = "Auto Equip Best Rod", Box = true, BoxBorder = true, Opened = true })
+    st:Toggle({
+        Title = "Auto Equip Best Rod",
+        Value = false,
+        Callback = function(v) _G.AutoEquipBest = v end,
+    })
+end
+
+--============================================================
+-- TAB: ITEMS
+--============================================================
+local TabItems = Window:Tab({
+    Title = "Items", Desc = "Sell, Quest, Collect",
+    Icon = "solar:bag-4-bold", IconColor = Yellow, IconShape = "Square", Border = true,
+})
+do
+    local s = TabItems:Section({ Title = "Auto Actions", Box = true, BoxBorder = true, Opened = true })
+
+    s:Toggle({
+        Title = "Auto Sell",
+        Value = false,
+        Callback = function(v) _G.AutoSell = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Auto Quest",
+        Value = false,
+        Callback = function(v) _G.AutoQuest = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Auto Collect",
+        Desc = "Ambil loot sekitar",
+        Value = false,
+        Callback = function(v) _G.AutoCollect = v end,
+    })
 end
 
 --============================================================
 -- TAB: MOVEMENT
 --============================================================
 local TabMove = Window:Tab({
-    Title = "Movement", Desc = "Speed, Jump, Noclip",
+    Title = "Movement", Desc = "Speed, Fly, AFK",
     Icon = "solar:running-2-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
-    local s1 = TabMove:Section({ Title = "Speed", Box = true, BoxBorder = true, Opened = true })
-    s1:Slider({ Title = "WalkSpeed", Step = 1,
-        Value = { Min = 16, Max = 150, Default = 16 },
-        Callback = function(v)
-            State.WalkSpeed = v
-            local hum = getHum(); if hum then hum.WalkSpeed = v end
-        end })
+    local s = TabMove:Section({ Title = "Movement", Box = true, BoxBorder = true, Opened = true })
 
-    local s2 = TabMove:Section({ Title = "Misc", Box = true, BoxBorder = true, Opened = true })
-    s2:Toggle({ Title = "Infinite Jump", Value = false,
-        Callback = function(v) State.InfJump = v end })
-    s2:Space()
-    s2:Toggle({ Title = "Noclip", Value = false,
-        Callback = function(v) State.Noclip = v end })
-    s2:Space()
-    s2:Toggle({ Title = "Anti-AFK", Value = true,
-        Callback = function(v) State.AntiAFK = v end })
+    s:Toggle({
+        Title = "Speed Boost (32)",
+        Value = false,
+        Callback = function(v) _G.SpeedBoost = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Anti-AFK",
+        Value = false,
+        Callback = function(v) _G.AntiAFK = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Fly (WASD + Space/E)",
+        Value = false,
+        Callback = function(v) _G.Fly = v end,
+    })
+    s:Space()
+    s:Slider({
+        Title = "Fly Speed", Step = 5,
+        Value = { Min = 10, Max = 300, Default = 50 },
+        Callback = function(v) _G.FlySpeed = v end,
+    })
 end
 
 --============================================================
--- TAB: CAMERA
+-- TAB: VISUAL
 --============================================================
-local TabCamera = Window:Tab({
-    Title = "Camera", Desc = "Zoom out",
-    Icon = "solar:videocamera-record-bold", IconColor = Purple, IconShape = "Square", Border = true,
+local TabVisual = Window:Tab({
+    Title = "Visual", Desc = "ESP & Radar",
+    Icon = "solar:eye-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
-    local s = TabCamera:Section({ Title = "Camera", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Unlock Max Zoom", Value = false,
-        Callback = function(v) State.CamZoom = v end })
-    s:Space()
-    s:Slider({ Title = "Max Zoom", Step = 50,
-        Value = { Min = 50, Max = 3000, Default = 800 },
-        Callback = function(v) State.CamZoomMax = v end })
+    local s = TabVisual:Section({ Title = "Visuals", Box = true, BoxBorder = true, Opened = true })
 
-    RunService.RenderStepped:Connect(function()
-        if State.CamZoom then
-            pcall(function()
-                LP.CameraMaxZoomDistance = State.CamZoomMax
-                LP.CameraMinZoomDistance = 0.5
-            end)
+    s:Toggle({
+        Title = "ESP (Fishing Spot, Fish, Chest)",
+        Value = false,
+        Callback = function(v) _G.ESP = v end,
+    })
+    s:Space()
+    s:Slider({
+        Title = "ESP Range", Step = 50,
+        Value = { Min = 100, Max = 2000, Default = 500 },
+        Callback = function(v) _G.ESPRange = v end,
+    })
+    s:Space()
+    s:Toggle({
+        Title = "Fish Radar (notif rare fish)",
+        Value = false,
+        Callback = function(v) _G.FishRadar = v end,
+    })
+end
+
+--============================================================
+-- TAB: INFO
+--============================================================
+local TabInfo = Window:Tab({
+    Title = "Info", Desc = "Status & log",
+    Icon = "solar:info-circle-bold", IconColor = Grey, IconShape = "Square", Border = true,
+})
+do
+    local s = TabInfo:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
+    local statusText = s:Section({ Title = "Loading...", TextSize = 14, TextTransparency = 0.2 })
+
+    task.spawn(function()
+        while task.wait(1) do
+            local rod = equippedRod()
+            local txt = string.format(
+                "State: %s\nRod: %s\nFish: %s | Reel: %s | Shake: %s\nSell: %s | Quest: %s | Collect: %s\nFly: %s | ESP: %s | Radar: %s",
+                fishState,
+                rod and rod.Name or "none",
+                tostring(_G.AutoFish), tostring(_G.AutoReel), tostring(not _G.NoShake),
+                tostring(_G.AutoSell), tostring(_G.AutoQuest), tostring(_G.AutoCollect),
+                tostring(_G.Fly), tostring(_G.ESP), tostring(_G.FishRadar)
+            )
+            pcall(function() statusText:SetTitle(txt) end)
         end
     end)
 end
 
 --============================================================
--- AUTO FISH ENGINE (LOGIC KOMUNITAS)
---============================================================
--- Cari rod yang punya remote events.cast
-local function findRodWithCast()
-    local char = LP.Character
-    if not char then return nil end
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") then
-            local events = tool:FindFirstChild("events")
-            if events and events:FindFirstChild("cast") then
-                return tool
-            end
-        end
-    end
-    -- Cek backpack juga
-    local bp = LP:FindFirstChild("Backpack")
-    if bp then
-        for _, tool in ipairs(bp:GetChildren()) do
-            if tool:IsA("Tool") then
-                local events = tool:FindFirstChild("events")
-                if events and events:FindFirstChild("cast") then
-                    return tool
-                end
-            end
-        end
-    end
-    return nil
-end
-
--- Cari tombol Guncang (shake) yang muncul acak
-local function findShakeButton()
-    for _, gui in ipairs(pg:GetChildren()) do
-        for _, c in ipairs(gui:GetDescendants()) do
-            if (c:IsA("ImageButton") or c:IsA("TextButton")) and c.Visible then
-                local n = c.Name:lower()
-                local t = ""
-                pcall(function() t = (c.Text or ""):lower() end)
-                if n:find("shake") or n:find("guncang") or t:find("shake") or t:find("guncang") then
-                    return c
-                end
-                -- Cek parent name
-                if c.Parent and c.Parent.Name:lower():find("shake") then
-                    return c
-                end
-            end
-        end
-    end
-    return nil
-end
-
--- Cast rod pakai remote komunitas
-local function castRod()
-    local rod = findRodWithCast()
-    if rod then
-        local events = rod:FindFirstChild("events")
-        if events and events:FindFirstChild("cast") then
-            pcall(function()
-                events.cast:FireServer(100, 1)
-            end)
-            return true
-        end
-    end
-    return false
-end
-
--- Reel pakai remote komunitas
-local function reelFish()
-    local events = ReplicatedStorage:FindFirstChild("events")
-    if events and events:FindFirstChild("reelfinished") then
-        pcall(function()
-            events.reelfinished:FireServer(100, true)
-        end)
-        return true
-    end
-    return false
-end
-
--- Sell pakai remote komunitas
-local function sellAll()
-    local events = ReplicatedStorage:FindFirstChild("events")
-    if events and events:FindFirstChild("SellAll") then
-        pcall(function()
-            events.SellAll:InvokeServer()
-        end)
-        return true
-    end
-    return false
-end
-
--- Engine Auto Fish
-task.spawn(function()
-    while task.wait(0.1) do
-        if State.AutoFish then
-            local rod = findRodWithCast()
-
-            if not rod then
-                State.Status = "⚠️ Rod dengan events.cast tidak ditemukan"
-                task.wait(1)
-            else
-                -- Cek apakah rod udah di-cast (bobber ada)
-                local bobber = rod:FindFirstChild("bobber")
-                local shakeBtn = findShakeButton()
-
-                if shakeBtn and State.AutoShake then
-                    State.Status = "🔴 Shake — tap"
-                    tapElement(shakeBtn)
-                    task.wait(0.05)
-
-                elseif bobber then
-                    State.Status = "🟢 Nunggu bite — Instant Reel aktif"
-                    if State.InstantReel then
-                        reelFish()
-                    end
-                    task.wait(0.5)
-
-                else
-                    State.Status = "⚪ Casting..."
-                    castRod()
-                    task.wait(State.CastDelay)
-                end
-            end
-        else
-            State.Status = "Idle"
-            task.wait(0.5)
-        end
-    end
-end)
-
--- Auto Sell Engine
-task.spawn(function()
-    while task.wait(State.SellDelay) do
-        if State.AutoSell then
-           if sellAll() then
-                State.Status = "💰 SellAll triggered"
-            end
-        end
-    end
-end)
-
---============================================================
--- LOOPS
---============================================================
-task.spawn(function()
-    while task.wait(60) do
-        if State.AntiAFK then
-            pcall(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new())
-            end)
-        end
-    end
-end)
-
-UserInputService.JumpRequest:Connect(function()
-    if State.InfJump then
-        local hum = getHum()
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end
-end)
-
-RunService.Stepped:Connect(function()
-    if State.Noclip and LP.Character then
-        for _, p in ipairs(LP.Character:GetDescendants()) do
-            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
-        end
-    end
-end)
-
-LP.CharacterAdded:Connect(function(char)
-    task.wait(1)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.WalkSpeed = State.WalkSpeed end
-end)
-
---============================================================
 -- NOTIF
 --============================================================
 WindUI:Notify({
-    Title = "Pall Fisch v1.1.0",
-    Content = "Logic komunitas: Cast + Instant Reel + SellAll.",
+    Title = "Pall Fisch v3.0.0",
+    Content = "Logic dari NIGHT + WindUI. Toggle di tab masing-masing.",
     Icon = "solar:bell-bold",
     Duration = 8,
 })
 
-print("[PALL-FISCH] v1.1.0 loaded. Community logic.")
+print("════════════════════════════════════════════")
+print("[PALL-FISCH] v3.0.0 loaded.")
+print("Logic: NIGHT community script")
+print("UI: WindUI")
+print("════════════════════════════════════════════")
