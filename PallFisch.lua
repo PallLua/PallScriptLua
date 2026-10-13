@@ -2,10 +2,10 @@
     ═══════════════════════════════════════════════════════════
     PALL — FISCH
     Author  : ENI (for Pall)
-    Version : v0.1.0 — Smooth Auto Fish
+    Version : v0.2.0 — Auto Fish (Cast + Guncang + Perfect Bar)
     Notes   :
-      • Event-driven (bukan polling) → nggak lag
-      • Tap simulation (VirtualInputManager) → aman dari Byfron
+      • Event-driven (nggak lag)
+      • Tap simulation (VirtualInputManager) — aman dari Byfron
       • Nggak fire remote apa pun
     ═══════════════════════════════════════════════════════════
 --]]
@@ -40,11 +40,13 @@ local Green  = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
 local Blue   = Color3.fromHex("#257AF7")
 local Grey   = Color3.fromHex("#83889E")
+local Purple = Color3.fromHex("#7775F2")
 
 --============================================================
 -- STATE
 --============================================================
 local State = {
+    -- FPS
     FPSCounter = false,
     LowTextures = false,
     RemoveParticles = false,
@@ -53,9 +55,11 @@ local State = {
     DisableAtmosphere = false,
     BurikTotal = false,
 
+    -- Camera
     CameraZoomEnabled = false,
     CameraZoomMax = 800,
 
+    -- Player
     AntiAFK = true,
 
     -- Auto Fish
@@ -63,8 +67,10 @@ local State = {
     AutoShake = true,
     AutoReel = true,
     ShakeSpeed = 0.06,
-    ReelDelay = 0.4,
+    ReelDelay = 0.1,
     CastDelay = 1.5,
+    BiteWait = 5,
+    PerfectThreshold = 0.7,
     Status = "Idle",
 }
 
@@ -111,6 +117,9 @@ local function applyLowTextures()
             obj.Material = Enum.Material.SmoothPlastic
             obj.Reflectance = 0
         end
+        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+            obj.Transparency = 1
+        end
     end
 end
 local function restoreLowTextures()
@@ -121,7 +130,13 @@ local function restoreLowTextures()
         end
     end
     fpsCache.materials = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Texture") or obj:IsA("SurfaceAppearance") then
+            obj.Transparency = 0
+        end
+    end
 end
+
 local function applyParticles()
     for _, o in ipairs(workspace:GetDescendants()) do
         if o:IsA("ParticleEmitter") or o:IsA("Fire") or o:IsA("Smoke") or o:IsA("Sparkles") then
@@ -136,17 +151,25 @@ local function restoreParticles()
         end
     end
 end
+
 local function applyShadows()
     fpsCache.shadows = { g = Lighting.GlobalShadows, s = Lighting.ShadowSoftness }
     Lighting.GlobalShadows = false
     Lighting.ShadowSoftness = 0
+    for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("BasePart") then o.CastShadow = false end
+    end
 end
 local function restoreShadows()
     if fpsCache.shadows then
         Lighting.GlobalShadows = fpsCache.shadows.g
         Lighting.ShadowSoftness = fpsCache.shadows.s
     end
+    for _, o in ipairs(workspace:GetDescendants()) do
+        if o:IsA("BasePart") then o.CastShadow = true end
+    end
 end
+
 local function applySkybox()
     local sky = Lighting:FindFirstChildOfClass("Sky")
     if sky then
@@ -163,6 +186,7 @@ local function restoreSkybox()
         sky.SkyboxRt=fpsCache.skybox.r; sky.SkyboxUp=fpsCache.skybox.u
     end
 end
+
 local function applyAtmosphere()
     local atm = Lighting:FindFirstChildOfClass("Atmosphere")
     if atm then
@@ -194,24 +218,24 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.1.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v0.2.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: AUTO FISH
 --============================================================
 local TabAuto = Window:Tab({
-    Title = "Auto Fish", Desc = "Event-driven tap",
+    Title = "Auto Fish", Desc = "Cast + Guncang + Perfect",
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
-    local s1 = TabAuto:Section({ Title = "Auto Fish", Box = true, BoxBorder = true, Opened = true })
+    local s1 = TabAuto:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
     s1:Toggle({ Title = "Auto Fish", Value = false,
         Callback = function(v) State.AutoFish = v end })
     s1:Space()
-    s1:Toggle({ Title = "Auto Shake Minigame", Value = true,
+    s1:Toggle({ Title = "Auto Guncang (Shake)", Value = true,
         Callback = function(v) State.AutoShake = v end })
     s1:Space()
-    s1:Toggle({ Title = "Auto Reel", Value = true,
+    s1:Toggle({ Title = "Auto Perfect Bar", Value = true,
         Callback = function(v) State.AutoReel = v end })
 
     local s2 = TabAuto:Section({ Title = "Timing", Box = true, BoxBorder = true, Opened = true })
@@ -219,18 +243,22 @@ do
         Value = { Min = 0.03, Max = 0.2, Default = 0.06 },
         Callback = function(v) State.ShakeSpeed = v end })
     s2:Space()
-    s2:Slider({ Title = "Reel Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 2, Default = 0.4 },
-        Callback = function(v) State.ReelDelay = v end })
-    s2:Space()
     s2:Slider({ Title = "Cast Delay", Step = 0.1,
         Value = { Min = 0.5, Max = 5, Default = 1.5 },
         Callback = function(v) State.CastDelay = v end })
+    s2:Space()
+    s2:Slider({ Title = "Bite Wait (detik)", Step = 0.5,
+        Value = { Min = 2, Max = 15, Default = 5 },
+        Callback = function(v) State.BiteWait = v end })
+    s2:Space()
+    s2:Slider({ Title = "Perfect Threshold", Step = 0.05,
+        Value = { Min = 0.5, Max = 1, Default = 0.7 },
+        Callback = function(v) State.PerfectThreshold = v end })
 
     local s3 = TabAuto:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
     local statusText = s3:Section({ Title = "Idle", TextSize = 15, TextTransparency = 0.2 })
     task.spawn(function()
-        while task.wait(0.5) do
+        while task.wait(0.3) do
             pcall(function() statusText:SetTitle(State.Status) end)
         end
     end)
@@ -245,6 +273,7 @@ local TabFPS = Window:Tab({
 })
 do
     local fpsLabel = Instance.new("TextLabel")
+    fpsLabel.Name = "PallFisch_FPS"
     fpsLabel.Size = UDim2.new(0, 120, 0, 30)
     fpsLabel.Position = UDim2.new(0, 10, 0, 10)
     fpsLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -308,6 +337,15 @@ do
             end
         end,
     })
+    s3:Space()
+    s3:Button({
+        Title = "Reset Semua ke Normal", Justify = "Center",
+        Callback = function()
+            restoreLowTextures(); restoreParticles(); restoreShadows()
+            restoreSkybox(); restoreAtmosphere()
+            WindUI:Notify({ Title = "Reset", Content = "Efek visual normal." })
+        end,
+    })
 end
 
 --============================================================
@@ -348,51 +386,112 @@ do
     s:Toggle({ Title = "Anti-AFK", Value = true,
         Callback = function(v) State.AntiAFK = v end })
 end
-
 --============================================================
--- AUTO FISH — EVENT-DRIVEN ENGINE
+-- AUTO FISH ENGINE
 --============================================================
--- Status flag: apa yang lagi aktif
 local flags = {
-    shakeActive = false,
-    reelActive = false,
-    catchActive = false,
+    guncangActive = false,
+    barActive = false,
     castActive = false,
 }
 
--- Update flag saat GUI muncul/hilang
+-- Cari Guncang button
+local function findGuncangButton()
+    for _, path in ipairs({
+        {"shakeui", "safezone", "default"},
+        {"shakeui", "safezone"},
+    }) do
+        local node = findByPath(pg, path)
+        if node then
+            if node:IsA("GuiButton") and node.Visible then return node end
+            for _, c in ipairs(node:GetDescendants()) do
+                if c:IsA("GuiButton") and c.Visible then return c end
+            end
+        end
+    end
+    for _, gui in ipairs(pg:GetChildren()) do
+        for _, c in ipairs(gui:GetDescendants()) do
+            if c:IsA("GuiButton") and c.Visible then
+                local txt = (c.Text or ""):lower()
+                if txt:find("guncang") or txt:find("shake") then return c end
+            end
+        end
+    end
+    return nil
+end
+
+-- Cari reel container
+local function findReelContainer()
+    local reel = pg:FindFirstChild("reel")
+    if reel and reel.Visible then return reel end
+    return nil
+end
+
+-- Cari Handle (yang gerak naik-turun)
+local function findHandle()
+    local reel = findReelContainer()
+    if not reel then return nil end
+    for _, c in ipairs(reel:GetDescendants()) do
+        if c.Name == "Handle" and c:IsA("ImageLabel") and c.Visible then
+            return c
+        end
+    end
+    return nil
+end
+
+-- Cari bar track
+local function findBarTrack()
+    local reel = findReelContainer()
+    if not reel then return nil end
+    for _, c in ipairs(reel:GetDescendants()) do
+        if c.Name == "bar" and c:IsA("Frame") and c.Visible and c.AbsoluteSize.X > 20 then
+            return c
+        end
+    end
+    return nil
+end
+
+-- Hitung progress Handle (0 = kiri, 1 = kanan)
+local function getHandleProgress(handle, bar)
+    if not handle or not bar then return 0.5 end
+    local handleCenterX = handle.AbsolutePosition.X + handle.AbsoluteSize.X / 2
+    local barStartX = bar.AbsolutePosition.X
+    local barWidth = bar.AbsoluteSize.X
+    if barWidth <= 0 then return 0.5 end
+    return math.clamp((handleCenterX - barStartX) / barWidth, 0, 1)
+end
+
+-- Update flags
 task.spawn(function()
-    while task.wait(0.1) do
+    while task.wait(0.05) do
         if State.AutoFish then
-            -- Cek shake
-            local shake = findByPath(pg, {"shakeui", "safezone", "default"})
-            flags.shakeActive = shake ~= nil and shake.Visible ~= false
+            flags.guncangActive = findGuncangButton() ~= nil
+            flags.barActive = findHandle() ~= nil
 
-            -- Cek reel
-            local reel = findByPath(pg, {"reel", "bar", "fish"})
-            flags.reelActive = reel ~= nil and reel.Visible ~= false
-
-            -- Cek catch announcement
-            local catch = findByPath(pg, {"hud", "safezone", "announcements", "catch"})
-            flags.catchActive = catch ~= nil and catch.Visible ~= false
-
-            -- Cek bobber di workspace
             local char = LP.Character
             local rod = char and char:FindFirstChildOfClass("Tool")
-            if rod then
-                local bobber = rod:FindFirstChild("bobber")
-                flags.castActive = bobber ~= nil
-            else
-                flags.castActive = false
-            end
+            flags.castActive = rod and rod:FindFirstChild("bobber") ~= nil
         else
-            flags.shakeActive = false
-            flags.reelActive = false
-            flags.catchActive = false
+            flags.guncangActive = false
+            flags.barActive = false
             flags.castActive = false
         end
     end
 end)
+
+-- Tap rod icon (kanan bawah, dari screenshot)
+local function tapRodIcon()
+    local cam = workspace.CurrentCamera
+    local vp = cam.ViewportSize
+    tapAt(vp.X * 0.88, vp.Y * 0.72)
+end
+
+-- Tap di tengah layar (game izinin tap mana saja)
+local function tapAnywhere()
+    local cam = workspace.CurrentCamera
+    local vp = cam.ViewportSize
+    tapAt(vp.X * 0.5, vp.Y * 0.5)
+end
 
 -- Engine utama
 task.spawn(function()
@@ -401,59 +500,47 @@ task.spawn(function()
             State.Status = "Idle"
             task.wait(0.5)
         else
-            -- PRIORITY 1: Shake minigame
-            if flags.shakeActive and State.AutoShake then
-                State.Status = "🔴 Auto Shake"
-                local shake = findByPath(pg, {"shakeui", "safezone", "default"})
-                if shake then
-                    tapElement(shake)
+            -- 1. GUNCANG
+            if flags.guncangActive and State.AutoShake then
+                State.Status = "🔴 Guncang — spam tap"
+                local gb = findGuncangButton()
+                if gb then
+                    tapElement(gb)
                     task.wait(State.ShakeSpeed)
                 else
-                    task.wait(0.1)
+                    task.wait(0.05)
                 end
 
-            -- PRIORITY 2: Reel minigame
-            elseif flags.reelActive and State.AutoReel then
-                State.Status = "🟡 Auto Reel"
-                local reel = findByPath(pg, {"reel", "bar", "fish"})
-                if reel then
-                    tapElement(reel)
-                    task.wait(State.ReelDelay)
-                else
-                    task.wait(0.1)
-                end
+            -- 2. PERFECT BAR
+            elseif flags.barActive and State.AutoReel then
+                local handle = findHandle()
+                local bar = findBarTrack()
 
-            -- PRIORITY 3: Ikan baru ketangkep → tunggu bentar, cast lagi
-            elseif flags.catchActive then
-                State.Status = "🟢 Catch! Siap cast ulang"
-                task.wait(State.CastDelay)
+                if handle and bar then
+                    local prog = getHandleProgress(handle, bar)
+                    State.Status = string.format("🎯 Bar: %.0f%%", prog * 100)
 
-            -- PRIORITY 4: Nggak ada apa-apa → tap area mancing
-            else
-                State.Status = "⚪ Casting / tunggu bite"
-                -- Coba tap tombol fish kalau ada
-                local fishBtn = findByPath(pg, {"hud", "safezone", "fishButton"})
-                if not fishBtn then
-                    local hud = pg:FindFirstChild("hud")
-                    if hud then
-                        for _, c in ipairs(hud:GetDescendants()) do
-                            if (c:IsA("ImageButton") or c:IsA("TextButton")) and c.Visible
-                               and c.Name:lower():find("fish") then
-                                fishBtn = c; break
-                            end
-                        end
+                    if prog >= State.PerfectThreshold then
+                        tapAnywhere()
+                        task.wait(0.1)
+                    else
+                        task.wait(0.03)
                     end
+                else
+                    tapAnywhere()
+                    task.wait(0.1)
                 end
 
-                if fishBtn then
-                    tapElement(fishBtn)
-                else
-                    -- Fallback: tap tengah bawah layar (area fish button biasanya)
-                    local cam = workspace.CurrentCamera
-                    local vp = cam.ViewportSize
-                    tapAt(vp.X * 0.5, vp.Y * 0.85)
-                end
-                task.wait(0.3)
+            -- 3. NUNGGU BITE
+            elseif flags.castActive then
+                State.Status = string.format("🟢 Nunggu bite (%ds)", State.BiteWait)
+                task.wait(State.BiteWait)
+
+            -- 4. CAST ROD
+            else
+                State.Status = "⚪ Casting..."
+                tapRodIcon()
+                task.wait(State.CastDelay)
             end
         end
     end
@@ -477,10 +564,10 @@ end)
 -- NOTIF
 --============================================================
 WindUI:Notify({
-    Title = "Pall Fisch v0.1.0",
-    Content = "Auto Fish siap. Event-driven, no lag.",
+    Title = "Pall Fisch v0.2.0",
+    Content = "Auto Fish: Cast + Guncang + Perfect Bar.",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-FISCH] v0.1.0 loaded. Smooth Auto Fish aktif.")
+print("[PALL-FISCH] v0.2.0 loaded. Cast + Guncang + Perfect Bar.")
