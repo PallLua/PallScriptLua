@@ -1,12 +1,12 @@
 --[[
-    PALL — FISCH v5.0.0 (Instant Catch)
-    Logic  : myCompiler community script (verified remote)
-    Remotes:
-      - RE/EquipToolFromHotbar:FireServer()
-      - RF/ChargeFishingRod:InvokeServer(1)
-      - RF/RequestFishingMinigameStarted:InvokeServer(1, 1)
-      - RE/FishingCompleted:FireServer()
-      - RF/SellAllItems:InvokeServer()
+    PALL — FISCH v6.0.0 (Path Fixed — Instant Catch v2)
+    Remote:
+      packages.Net.RF/FishingRod/Cast  → InvokeServer
+      packages.Net.RF/Reel/Start       → InvokeServer
+      packages.Net.RE/Reel/Finish      → FireServer
+      events.rod_cast                  → Fallback
+      events.reelfinished              → Fallback
+      events.SellAll                   → InvokeServer
 --]]
 
 local Players = game:GetService("Players")
@@ -42,75 +42,76 @@ local Grey = Color3.fromHex("#83889E")
 local Purple = Color3.fromHex("#7775F2")
 
 --============================================================
--- NET FOLDER RESOLVER
+-- REMOTE RESOLVER (Path yang bener: RS.packages.Net)
 --============================================================
-local netFolder = nil
-
-local function findNetFolder()
-    if netFolder and netFolder.Parent then return netFolder end
-    -- Path utama: ReplicatedStorage.Packages._Index.<sleitnick_net>.net
-    local packages = RS:FindFirstChild("Packages")
-    if packages then
-        local index = packages:FindFirstChild("_Index")
-        if index then
-            for _, child in ipairs(index:GetChildren()) do
-                if child.Name:lower():find("sleitnick_net") or child.Name:lower():find("net") then
-                    local net = child:FindFirstChild("net")
-                    if net then
-                        netFolder = net
-                        return net
-                    end
-                end
-            end
-        end
-    end
-    -- Fallback: scan ReplicatedStorage untuk folder "net"
-    for _, desc in ipairs(RS:GetDescendants()) do
-        if desc:IsA("Folder") and desc.Name:lower() == "net" then
-            netFolder = desc
-            return desc
-        end
-    end
-    return nil
-end
-
-local function getNet(name)
-    local net = findNetFolder()
+local function getNetRemote(name)
+    local packages = RS:FindFirstChild("packages")
+    if not packages then return nil end
+    local net = packages:FindFirstChild("Net")
     if not net then return nil end
     return net:FindFirstChild(name)
 end
 
+local function getEventRemote(name)
+    local events = RS:FindFirstChild("events")
+    if not events then return nil end
+    return events:FindFirstChild(name)
+end
+
 --============================================================
--- INSTANT CATCH CORE
+-- INSTANT CATCH (multi-strategy)
 --============================================================
+local function tryInvoke(remote, ...)
+    if not remote then return false end
+    if not (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then return false end
+    local args = {...}
+    local ok = pcall(function()
+        if remote:IsA("RemoteFunction") then
+            remote:InvokeServer(table.unpack(args))
+        else
+            remote:FireServer(table.unpack(args))
+        end
+    end)
+    return ok
+end
+
 local function instantFish()
-    local net = findNetFolder()
-    if not net then return false, "net folder not found" end
+    local netCast = getNetRemote("RF/FishingRod/Cast")
+    local netReelStart = getNetRemote("RF/Reel/Start")
+    local netReelFinish = getNetRemote("RE/Reel/Finish")
 
-    local equip = net:FindFirstChild("RE/EquipToolFromHotbar")
-    local charge = net:FindFirstChild("RF/ChargeFishingRod")
-    local start = net:FindFirstChild("RF/RequestFishingMinigameStarted")
-    local complete = net:FindFirstChild("RE/FishingCompleted")
+    local legacyCast = getEventRemote("rod_cast")
+    local legacyReel = getEventRemote("reelfinished")
 
-    if not equip or not charge or not start or not complete then
-        return false, "remote missing"
+    -- Coba Set 1 (modern)
+    if netCast and netReelStart and netReelFinish then
+        tryInvoke(netCast, 1)
+        task.wait(0.02)
+        tryInvoke(netReelStart, 1)
+        task.wait(0.02)
+        tryInvoke(netReelFinish, 100, true)
+        return true, "modern"
     end
 
-    pcall(function() equip:FireServer() end)
-    task.wait(0.01)
-    pcall(function() charge:InvokeServer(1) end)
-    task.wait(0.01)
-    pcall(function() start:InvokeServer(1, 1) end)
-    task.wait(0.01)
-    pcall(function() complete:FireServer() end)
+    -- Coba Set 2 (legacy)
+    if legacyCast and legacyReel then
+        tryInvoke(legacyCast, 1)
+        task.wait(0.02)
+        tryInvoke(legacyReel, 100, true)
+        return true, "legacy"
+    end
 
-    return true, "ok"
+    return false, "remote tidak ditemukan"
 end
 
 local function sellAll()
-    local net = findNetFolder()
-    if not net then return false end
-    local sell = net:FindFirstChild("RF/SellAllItems")
+    local net = getEventRemote("SellAll")
+    if net then
+        pcall(function() net:InvokeServer() end)
+        return true
+    end
+    -- Fallback
+    local sell = getEventRemote("selleverything")
     if sell then
         pcall(function() sell:InvokeServer() end)
         return true
@@ -124,8 +125,8 @@ end
 local State = {
     AutoFish = false,
     AutoSell = false,
-    FishDelay = 1,
-    SellDelay = 1,
+    FishDelay = 0.5,
+    SellDelay = 2,
 
     AntiAFK = true,
     SpeedBoost = false,
@@ -136,6 +137,7 @@ local State = {
 
     Status = "Idle",
     FPS = 0,
+    LastMethod = "-",
 }
 
 local char, hrp, hum
@@ -148,7 +150,7 @@ refreshChar()
 LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
 
 --============================================================
--- AUTO FISH LOOP (INSTANT)
+-- AUTO FISH LOOP
 --============================================================
 task.spawn(function()
     while task.wait(State.FishDelay) do
@@ -160,7 +162,8 @@ task.spawn(function()
 
         local ok, msg = instantFish()
         if ok then
-            State.Status = "Instant catch ✓"
+            State.Status = "✓ Instant catch (" .. msg .. ")"
+            State.LastMethod = msg
         else
             State.Status = "❌ " .. msg
         end
@@ -168,13 +171,13 @@ task.spawn(function()
 end)
 
 --============================================================
--- AUTO SELL LOOP
+-- AUTO SELL
 --============================================================
 task.spawn(function()
     while task.wait(State.SellDelay) do
         if not State.AutoSell then continue end
         if sellAll() then
-            State.Status = "SellAll ✓"
+            State.Status = "💰 SellAll ✓"
         end
     end
 end)
@@ -218,7 +221,6 @@ local function updateFly()
         return
     end
     if hum then hum.PlatformStand = true end
-
     flyConn = RUN.RenderStepped:Connect(function()
         if not State.Fly then
             if hum then hum.PlatformStand = false end
@@ -280,13 +282,11 @@ task.spawn(function()
         if not State.ESP then clearESP() continue end
         clearESP()
         if not hrp then continue end
-
         local roots = {}
         for _, name in ipairs({ "active", "world", "Fishing", "fish", "Fish" }) do
             local f = WS:FindFirstChild(name)
             if f then table.insert(roots, f) end
         end
-
         for _, root in ipairs(roots) do
             for _, obj in ipairs(root:GetChildren()) do
                 if not hrp then break end
@@ -349,11 +349,11 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v5.0.0 Instant", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v6.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 -- TAB: AUTO FISH
 local TabFish = Window:Tab({
-    Title = "Auto Fish", Desc = "Instant Catch (Remote)",
+    Title = "Auto Fish", Desc = "Instant Catch",
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
@@ -361,22 +361,24 @@ do
     s:Toggle({ Title = "Auto Fish (Instant)", Value = false,
         Callback = function(v) State.AutoFish = v end })
     s:Space()
-    s:Slider({ Title = "Fish Loop Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 5, Default = 1 },
+    s:Slider({ Title = "Fish Delay", Step = 0.1,
+        Value = { Min = 0.1, Max = 5, Default = 0.5 },
         Callback = function(v) State.FishDelay = v end })
 
     local info = TabFish:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
     local statusTxt = info:Section({ Title = "Idle", TextSize = 15, TextTransparency = 0.3 })
     task.spawn(function()
         while task.wait(0.5) do
-            pcall(function() statusTxt:SetTitle(State.Status .. " | FPS: " .. State.FPS) end)
+            pcall(function()
+                statusTxt:SetTitle(State.Status .. "\nMethod: " .. State.LastMethod .. " | FPS: " .. State.FPS)
+            end)
         end
     end)
 end
 
 -- TAB: AUTO SELL
 local TabSell = Window:Tab({
-    Title = "Auto Sell", Desc = "SellAllItems",
+    Title = "Auto Sell", Desc = "SellAll",
     Icon = "solar:cart-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
@@ -384,8 +386,8 @@ do
     s:Toggle({ Title = "Auto Sell All", Value = false,
         Callback = function(v) State.AutoSell = v end })
     s:Space()
-    s:Slider({ Title = "Sell Delay", Step = 0.2,
-        Value = { Min = 0.2, Max = 5, Default = 1 },
+    s:Slider({ Title = "Sell Delay", Step = 0.5,
+        Value = { Min = 0.5, Max = 10, Default = 2 },
         Callback = function(v) State.SellDelay = v end })
 end
 
@@ -399,7 +401,7 @@ do
     s:Toggle({ Title = "Speed Boost (32)", Value = false,
         Callback = function(v) State.SpeedBoost = v end })
     s:Space()
-    s:Toggle({ Title = "Fly (WASD + Space/Q)", Value = false,
+    s:Toggle({ Title = "Fly", Value = false,
         Callback = function(v) State.Fly = v; updateFly() end })
     s:Space()
     s:Slider({ Title = "Fly Speed", Step = 5,
@@ -426,10 +428,10 @@ do
 end
 
 WindUI:Notify({
-    Title = "Pall Fisch v5.0.0",
-    Content = "Instant catch via verified remote.",
+    Title = "Pall Fisch v6.0.0",
+    Content = "Remote path fixed: packages.Net",
     Icon = "solar:bell-bold",
     Duration = 8,
 })
 
-print("[PALL-FISCH] v5.0.0 loaded. Instant catch active.")
+print("[PALL-FISCH] v6.0.0 loaded. Path: RS.packages.Net")
