@@ -79,30 +79,72 @@ local function tryCall(remote, ...)
     return ok
 end
 
+local function tryInvokeArgs(remote, label, ...)
+    if not remote then
+        print("    [" .. label .. "] remote nil")
+        return false
+    end
+    local args = {...}
+    local thread = coroutine.running()
+    local result, err = nil, nil
+    local done = false
+
+    task.spawn(function()
+        local ok, r = pcall(function()
+            if remote:IsA("RemoteFunction") then
+                return remote:InvokeServer(table.unpack(args))
+            else
+                remote:FireServer(table.unpack(args))
+                return "fired"
+            end
+        end)
+        if ok then result = r else err = r end
+        done = true
+    end)
+
+    local t0 = tick()
+    while not done and tick() - t0 < 2 do
+        task.wait(0.05)
+    end
+
+    if not done then
+        print("    [" .. label .. "] TIMEOUT (2s) — server nggak balas")
+        return false
+    end
+    if err then
+        print("    [" .. label .. "] ERROR: " .. tostring(err))
+        return false
+    end
+    print("    [" .. label .. "] OK — return: " .. tostring(result))
+    return true
+end
+
 local function instantFish()
     local cast = netRemote("RF/FishingRod/Cast")
     local reelStart = netRemote("RF/Reel/Start")
     local reelFinish = netRemote("RE/Reel/Finish")
 
-    if cast and reelStart and reelFinish then
-        print("[FISH] Fire modern: cast → reelStart → reelFinish")
-        tryCall(cast, 1)
-        task.wait(0.05)
-        tryCall(reelStart, 1)
-        task.wait(0.05)
-        tryCall(reelFinish, 100, true)
-        return true, "modern"
-    end
+    print("[FISH] ── Test Remote dengan variasi argumen ──")
 
-    local legacyCast = getEvt("rod_cast")
-    local legacyReel = getEvt("reelfinished")
-    if legacyCast and legacyReel then
-        print("[FISH] Fire legacy: rod_cast → reelfinished")
-        tryCall(legacyCast, 1)
-        task.wait(0.05)
-        tryCall(legacyReel, 100, true)
-        return true, "legacy"
-    end
+    -- Test setiap remote dengan 3 variasi argumen
+    tryInvokeArgs(cast, "Cast no-arg")
+    task.wait(0.2)
+    tryInvokeArgs(cast, "Cast (1)")
+    task.wait(0.2)
+    tryInvokeArgs(cast, "Cast (1,1)")
+    task.wait(0.2)
+
+    tryInvokeArgs(reelStart, "ReelStart no-arg")
+    task.wait(0.2)
+    tryInvokeArgs(reelStart, "ReelStart (1)")
+    task.wait(0.2)
+
+    tryInvokeArgs(reelFinish, "ReelFinish (100,true)")
+    task.wait(0.2)
+    tryInvokeArgs(reelFinish, "ReelFinish no-arg")
+
+    return true, "tested"
+end
 
     return false, "no remote"
 end
