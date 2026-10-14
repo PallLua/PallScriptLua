@@ -1,6 +1,7 @@
 --[[
-    PALL — FISCH v6.3.0
-    Fix: Auto Tap Reel Bar (client-side) + ReelFinish remote
+    PALL — FISCH v7.0.0
+    Logic  : NIGHT fisch_fixed.txt (state machine + expand bar)
+    UI     : WindUI
 --]]
 
 local Players = game:GetService("Players")
@@ -8,7 +9,6 @@ local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
 local RUN = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local VU = game:GetService("VirtualUser")
 local VIM = game:GetService("VirtualInputManager")
 
 local LP = Players.LocalPlayer
@@ -36,115 +36,31 @@ local Grey = Color3.fromHex("#83889E")
 local Purple = Color3.fromHex("#7775F2")
 
 --============================================================
+-- CLEAN OLD RUN
+--============================================================
+if _G.FISCH_RUNNING then
+    _G.FISCH_RUNNING = false
+    task.wait(0.5)
+end
+_G.FISCH_RUNNING = true
+
+--============================================================
 -- GLOBAL FLAGS
 --============================================================
-_G.AutoFish = false
-_G.AutoSell = false
-_G.AntiAFK = true
-_G.SpeedBoost = false
-_G.Fly = false
-_G.FlySpeed = 50
-_G.ESP = false
-_G.ESPRange = 300
-
---============================================================
--- TAP HELPER
---============================================================
-local function tapAt(x, y)
-    pcall(function()
-        VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        task.wait(0.02)
-        VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
-end
-
-local function holdAt(x, y, duration)
-    pcall(function()
-        VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        task.wait(duration)
-        VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
-end
-
---============================================================
--- REMOTE RESOLVER
---============================================================
-local function getNet()
-    local pkg = RS:FindFirstChild("packages")
-    if not pkg then return nil end
-    return pkg:FindFirstChild("Net")
-end
-
-local function getEvt(name)
-    local ev = RS:FindFirstChild("events")
-    if not ev then return nil end
-    return ev:FindFirstChild(name)
-end
-
-local function netRemote(name)
-    local net = getNet()
-    if not net then return nil end
-    return net:FindFirstChild(name)
-end
-
-local function tryCall(remote, ...)
-    if not remote then return false end
-    local args = {...}
-    local ok = pcall(function()
-        if remote:IsA("RemoteFunction") then
-            remote:InvokeServer(table.unpack(args))
-        elseif remote:IsA("RemoteEvent") then
-            remote:FireServer(table.unpack(args))
-        end
-    end)
-    return ok
-end
-
---============================================================
--- REEL BAR DETECTION
---============================================================
-local function findReelBar()
-    local reel = PG:FindFirstChild("reel")
-    if not reel then return nil end
-    if not reel.Visible then return nil end
-    local bar = reel:FindFirstChild("bar")
-    return bar
-end
-
-local function findHandle()
-    local reel = PG:FindFirstChild("reel")
-    if not reel then return nil end
-    return reel:FindFirstChild("Handle", true)
-end
-
---============================================================
--- INSTANT FISH (fixed)
---============================================================
-local function castOnly()
-    local cast = netRemote("RF/FishingRod/Cast")
-    if cast then
-        return tryCall(cast, 1)
-    end
-    local legacy = getEvt("rod_cast")
-    if legacy then
-        return tryCall(legacy, 1)
-    end
-    return false
-end
-
-local function reelStart()
-    local rs = netRemote("RF/Reel/Start")
-    if rs then return tryCall(rs, 1) end
-    return false
-end
-
-local function reelFinish()
-    local rf = netRemote("RE/Reel/Finish")
-    if rf then return tryCall(rf, 100, true) end
-    local legacy = getEvt("reelfinished")
-    if legacy then return tryCall(legacy, 100, true) end
-    return false
-end
+_G.AutoFish      = false
+_G.AutoReel      = false
+_G.ExpandBar     = true
+_G.AutoSell      = false
+_G.AutoQuest     = false
+_G.AutoCollect   = false
+_G.AntiAFK       = false
+_G.SpeedBoost    = false
+_G.AutoEquipBest = false
+_G.ESP           = false
+_G.FishRadar     = false
+_G.Fly           = false
+_G.FlySpeed      = 50
+_G.ESPRange      = 300
 
 --============================================================
 -- CHAR REF
@@ -152,8 +68,8 @@ end
 local char, hrp, hum
 local function refreshChar()
     char = LP.Character or LP.CharacterAdded:Wait()
-    hrp = char:WaitForChild("HumanoidRootPart", 5)
-    hum = char:WaitForChild("Humanoid", 5)
+    hrp  = char:WaitForChild("HumanoidRootPart", 5)
+    hum  = char:WaitForChild("Humanoid", 5)
 end
 refreshChar()
 LP.CharacterAdded:Connect(function()
@@ -162,68 +78,321 @@ LP.CharacterAdded:Connect(function()
 end)
 
 --============================================================
--- STATUS
+-- REMOTE CACHE
 --============================================================
-local statusStr = "Idle"
-local curFPS = 0
-local fishCount = 0
-local fishPhase = "idle"
+local remoteCache = {}
 
---============================================================
--- AUTO FISH LOOP (v2 — fix minigame)
---============================================================
-task.spawn(function()
-    local lastCast = 0
-    while true do
-        task.wait(0.1)
-
-        if not _G.AutoFish then
-            statusStr = "Idle (toggle OFF)"
-            fishPhase = "idle"
-            continue
+local function buildRemoteCache()
+    remoteCache = {}
+    for _, v in ipairs(RS:GetDescendants()) do
+        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+            local key = v.Name:lower()
+            if not remoteCache[key] then
+                remoteCache[key] = v
+            end
+            remoteCache[v.Name] = v
         end
+    end
+end
 
-        -- 1. Cek apakah minigame bar muncul
-        local bar = findReelBar()
-        if bar then
-            -- Sedang di minigame — tap bar terus buat isi progress
-            fishPhase = "minigame"
-            statusStr = "🎯 Isi bar (tap)"
-            local pos = bar.AbsolutePosition
-            local size = bar.AbsoluteSize
-            local cx = pos.X + size.X / 2
-            local cy = pos.Y + size.Y / 2
+buildRemoteCache()
 
-            -- Tap + drag handle dikit biar progress jalan
-            holdAt(cx, cy, 0.1)
-            task.wait(0.05)
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(30)
+        buildRemoteCache()
+    end
+end)
 
-            -- Kalau handle udah di atas 70%, finish
-            local handle = findHandle()
-            if handle and bar then
-                local hcx = handle.AbsolutePosition.X + handle.AbsoluteSize.X / 2
-                local bx = bar.AbsolutePosition.X
-                local bw = bar.AbsoluteSize.X
-                local prog = (hcx - bx) / bw
-                if prog >= 0.7 then
-                    reelFinish()
-                    fishCount = fishCount + 1
-                    statusStr = "✓ Catch #" .. fishCount
-                    task.wait(0.5)
+local function getRemote(name)
+    return remoteCache[name:lower()] or remoteCache[name]
+end
+
+local function fireRE(name, ...)
+    local r = getRemote(name)
+    if r and r:IsA("RemoteEvent") then
+        pcall(function() r:FireServer(...) end)
+        return true
+    end
+    return false
+end
+
+--============================================================
+-- ROD HELPERS
+--============================================================
+local rodTier = {
+    ["legendary"]=10, ["mythic"]=9, ["ancient"]=8,
+    ["divine"]=7, ["rare"]=6, ["uncommon"]=5, ["common"]=1,
+}
+
+local function getRodScore(tool)
+    local name = tool.Name:lower()
+    for tier, score in pairs(rodTier) do
+        if name:find(tier) then return score end
+    end
+    return 2
+end
+
+local function isRodTool(tool)
+    if not tool:IsA("Tool") then return false end
+    local n = tool.Name:lower()
+    return n:find("rod") or n:find("fishing") or n:find("pole")
+end
+
+local function findBestRod()
+    local best, bestScore = nil, -1
+    for _, src in ipairs({ LP:FindFirstChild("Backpack"), char }) do
+        if src then
+            for _, t in ipairs(src:GetChildren()) do
+                if isRodTool(t) then
+                    local s = getRodScore(t)
+                    if s > bestScore then
+                        bestScore = s
+                        best = t
+                    end
                 end
             end
-        else
-            -- Nggak ada bar — cast
-            local now = tick()
-            if now - lastCast >= 2 then
-                fishPhase = "casting"
-                statusStr = "🎣 Cast..."
-                castOnly()
-                lastCast = now
-                task.wait(0.5)
-                -- Mulai minigame (server)
-                reelStart()
+        end
+    end
+    return best
+end
+
+local function equippedRod()
+    if not char then return nil end
+    for _, t in ipairs(char:GetChildren()) do
+        if isRodTool(t) then return t end
+    end
+    return nil
+end
+
+local function equipRod(rod)
+    if not rod or not hum or not char then return end
+    if char:FindFirstChild(rod.Name) then return end
+    pcall(function() hum:EquipTool(rod) end)
+    task.wait(0.5)
+end
+
+--============================================================
+-- REEL BAR DETECTION
+--============================================================
+local reelBarRef = nil
+local reelBarScan = 0
+local REEL_BAR_CD = 2
+
+local REEL_BAR_NAMES = {
+    "ReelBar","reelBar","Reel","reel",
+    "FishBar","fishBar","CatchBar","catchBar",
+    "ProgressBar","progressBar","MinigameBar",
+    "WhiteBar","SliderBar","Bar","FishingBar",
+    "ClickBar","HoldBar","ReelFrame","FishFrame","Handle",
+}
+
+local function scanForReelBar()
+    for _, name in ipairs(REEL_BAR_NAMES) do
+        local found = PG:FindFirstChild(name, true)
+        if found and (found:IsA("Frame") or found:IsA("ImageLabel")) and found.Visible then
+            reelBarRef = found
+            return found
+        end
+    end
+    for _, gui in ipairs(PG:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            for _, obj in ipairs(gui:GetDescendants()) do
+                if (obj:IsA("Frame") or obj:IsA("ImageLabel")) and obj.Visible then
+                    local bc = obj.BackgroundColor3
+                    if bc.R > 0.8 and bc.G > 0.8 and bc.B > 0.8 then
+                        reelBarRef = obj
+                        return obj
+                    end
+                end
             end
+        end
+    end
+    return nil
+end
+
+local function getReelBar()
+    local now = tick()
+    if reelBarRef and reelBarRef.Parent then
+        return reelBarRef.Visible and reelBarRef or nil
+    end
+    if now - reelBarScan >= REEL_BAR_CD then
+        reelBarScan = now
+        reelBarRef = nil
+        return scanForReelBar()
+    end
+    return nil
+end
+
+--============================================================
+-- EXPAND REEL BAR
+--============================================================
+local expandedBars = {}
+
+local function expandReelBar()
+    if not _G.ExpandBar then return end
+    if not reelBarRef or not reelBarRef.Parent then return end
+    local barParent = reelBarRef.Parent
+    if not barParent then return end
+
+    for _, obj in ipairs(barParent:GetDescendants()) do
+        if (obj:IsA("Frame") or obj:IsA("ImageLabel")) and not expandedBars[obj] then
+            expandedBars[obj] = { size = obj.Size, pos = obj.Position }
+            pcall(function()
+                local origW = obj.Size.X.Scale
+                local origH = obj.Size.Y.Scale
+                local origOX = obj.Size.X.Offset
+                local origOY = obj.Size.Y.Offset
+                obj.Size = UDim2.new(
+                    origW,
+                    origOX > 0 and origOX * 3 or origOX,
+                    origH,
+                    origOY
+                )
+            end)
+        end
+    end
+end
+
+local function restoreReelBar()
+    for obj, orig in pairs(expandedBars) do
+        if obj and obj.Parent then
+            pcall(function()
+                obj.Size = orig.size
+                obj.Position = orig.pos
+            end)
+        end
+    end
+    expandedBars = {}
+end
+
+task.spawn(function()
+    local prev = false
+    while _G.FISCH_RUNNING do
+        task.wait(0.3)
+        if _G.ExpandBar ~= prev then
+            prev = _G.ExpandBar
+            if not _G.ExpandBar then restoreReelBar() end
+        end
+    end
+end)
+
+--============================================================
+-- REMOTE LISTS
+--============================================================
+local CAST_REMOTES  = {"castLine","CastLine","cast","Cast","castRod","startFishing"}
+local REEL_REMOTES  = {"reelIn","ReelIn","clickReel","ClickReel","reel","Reel","reelFish","pullRod"}
+local SELL_REMOTES  = {"sellFish","SellFish","sellAll","SellAll","sell","Sell","sellInventory"}
+local QUEST_REMOTES = {"claimQuest","ClaimQuest","acceptQuest","AcceptQuest","completeQuest","questClaim"}
+
+local function fireList(list, ...)
+    for _, name in ipairs(list) do
+        fireRE(name, ...)
+    end
+end
+
+--============================================================
+-- AUTO EQUIP BEST ROD
+--============================================================
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(5)
+        if not _G.AutoEquipBest then continue end
+        if not hum or not char then continue end
+        local best = findBestRod()
+        if best and not char:FindFirstChild(best.Name) then
+            equipRod(best)
+        end
+    end
+end)
+
+--============================================================
+-- AUTO FISH STATE MACHINE
+--============================================================
+local fishState = "idle"
+local lastCast = 0
+local CAST_CD = 2.5
+local BITE_TIMEOUT = 20
+
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(0.15)
+        if not _G.AutoFish then
+            fishState = "idle"
+            continue
+        end
+        if not char or not hrp or not hum then continue end
+        if hum.Health <= 0 then continue end
+
+        local now = tick()
+
+        if fishState == "idle" then
+            if now - lastCast < CAST_CD then continue end
+
+            local rod = equippedRod()
+            if not rod then
+                rod = findBestRod()
+                if rod then
+                    equipRod(rod)
+                    task.wait(0.3)
+                    rod = equippedRod()
+                end
+            end
+
+            if not rod then
+                task.wait(3)
+                continue
+            end
+
+            pcall(function() rod:Activate() end)
+            task.wait(0.1)
+            fireList(CAST_REMOTES)
+
+            fishState = "waiting"
+            lastCast = now
+
+        elseif fishState == "waiting" then
+            local bar = getReelBar()
+            if bar then
+                fishState = "reeling"
+                if _G.ExpandBar then
+                    task.delay(0.1, expandReelBar)
+                end
+            end
+            if now - lastCast >= BITE_TIMEOUT then
+                fishState = "idle"
+                lastCast = now - CAST_CD
+            end
+
+        elseif fishState == "reeling" then
+            local bar = getReelBar()
+            if bar then
+                fireList(REEL_REMOTES)
+                local rod = equippedRod()
+                if rod then pcall(function() rod:Activate() end) end
+                task.wait(0.06)
+            else
+                restoreReelBar()
+                fishState = "idle"
+                lastCast = tick()
+            end
+        end
+    end
+end)
+
+--============================================================
+-- AUTO REEL STANDALONE
+--============================================================
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(0.08)
+        if not _G.AutoReel then continue end
+        if _G.AutoFish then continue end
+        local bar = getReelBar()
+        if bar then
+            fireList(REEL_REMOTES)
+            local rod = equippedRod()
+            if rod then pcall(function() rod:Activate() end) end
         end
     end
 end)
@@ -231,30 +400,87 @@ end)
 --============================================================
 -- AUTO SELL
 --============================================================
+local lastSell = 0
 task.spawn(function()
-    while true do
-        task.wait(3)
-        if _G.AutoSell then
-            local s = getEvt("SellAll")
-            if s then
-                pcall(function() s:InvokeServer() end)
-                print("[FISH] SellAll fired")
+    while _G.FISCH_RUNNING do
+        task.wait(1)
+        if not _G.AutoSell then continue end
+        if tick() - lastSell < 6 then continue end
+        lastSell = tick()
+        fireList(SELL_REMOTES)
+        for key, r in pairs(remoteCache) do
+            if type(key) == "string" and key:find("sell") and r:IsA("RemoteFunction") then
+                pcall(function() r:InvokeServer() end)
             end
         end
     end
 end)
 
 --============================================================
--- ANTI-AFK
+-- AUTO QUEST
+--============================================================
+local lastQuest = 0
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(1)
+        if not _G.AutoQuest then continue end
+        if tick() - lastQuest < 10 then continue end
+        lastQuest = tick()
+        fireList(QUEST_REMOTES)
+    end
+end)
+
+--============================================================
+-- AUTO COLLECT
 --============================================================
 task.spawn(function()
-    while task.wait(60) do
-        if _G.AntiAFK then
-            pcall(function()
-                VU:CaptureController()
-                VU:ClickButton2(Vector2.new())
-            end)
+    while _G.FISCH_RUNNING do
+        task.wait(0.5)
+        if not _G.AutoCollect then continue end
+        if not hrp then continue end
+        local RANGE = 18
+        local folders = {
+            WS:FindFirstChild("Items"),
+            WS:FindFirstChild("Drops"),
+            WS:FindFirstChild("Pickups"),
+            WS:FindFirstChild("Loot"),
+        }
+        for _, folder in ipairs(folders) do
+            if not folder then continue end
+            for _, obj in ipairs(folder:GetChildren()) do
+                local pos
+                if obj:IsA("BasePart") then
+                    pos = obj.Position
+                elseif obj:IsA("Model") then
+                    local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                    if p then pos = p.Position end
+                end
+                if pos and (pos - hrp.Position).Magnitude <= RANGE then
+                    pcall(function() hrp.CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)) end)
+                    fireRE("collect")
+                    fireRE("pickup")
+                    fireRE("Collect")
+                end
+            end
         end
+    end
+end)
+
+--============================================================
+-- ANTI AFK
+--============================================================
+local lastAFK = 0
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(10)
+        if not _G.AntiAFK then continue end
+        if tick() - lastAFK < 180 then continue end
+        lastAFK = tick()
+        if not hum or not hrp then continue end
+        local d = Vector3.new(math.random(-2, 2), 0, math.random(-2, 2))
+        pcall(function() hum:MoveTo(hrp.Position + d) end)
+        task.wait(0.5)
+        pcall(function() hum:MoveTo(hrp.Position - d) end)
     end
 end)
 
@@ -262,12 +488,16 @@ end)
 -- SPEED BOOST
 --============================================================
 task.spawn(function()
-    while task.wait(0.5) do
+    local prev = false
+    while _G.FISCH_RUNNING do
+        task.wait(0.3)
         if not hum then continue end
-        if _G.SpeedBoost then
-            hum.WalkSpeed = 32
-        elseif hum.WalkSpeed == 32 then
-            hum.WalkSpeed = 16
+        if _G.SpeedBoost and not prev then
+            pcall(function() hum.WalkSpeed = 32 end)
+            prev = true
+        elseif not _G.SpeedBoost and prev then
+            pcall(function() hum.WalkSpeed = 16 end)
+            prev = false
         end
     end
 end)
@@ -279,21 +509,21 @@ local flyConn
 local function updateFly()
     if flyConn then flyConn:Disconnect(); flyConn = nil end
     if not _G.Fly then
-        if hum then hum.PlatformStand = false end
+        if hum then pcall(function() hum.PlatformStand = false end) end
         return
     end
-    if hum then hum.PlatformStand = true end
-
+    if hum then pcall(function() hum.PlatformStand = true end) end
     flyConn = RUN.RenderStepped:Connect(function()
         if not _G.Fly then
-            if hum then hum.PlatformStand = false end
+            if hum then pcall(function() hum.PlatformStand = false end) end
             if flyConn then flyConn:Disconnect(); flyConn = nil end
             return
         end
         if not hrp then return end
-        local cf = WS.CurrentCamera.CFrame
+        local cam = WS.CurrentCamera
+        local cf = cam.CFrame
         local move = Vector3.new(0, 0, 0)
-        local spd = _G.FlySpeed
+        local spd = _G.FlySpeed or 50
         if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
@@ -312,20 +542,37 @@ local function updateFly()
     end)
 end
 
+task.spawn(function()
+    local prev = false
+    while _G.FISCH_RUNNING do
+        task.wait(0.2)
+        if _G.Fly ~= prev then
+            prev = _G.Fly
+            updateFly()
+        end
+    end
+end)
+
 --============================================================
 -- ESP
 --============================================================
 local espBills = {}
-local function clearESP()
-    for _, b in ipairs(espBills) do pcall(function() b:Destroy() end) end
-    espBills = {}
+local espCache = {}
+
+local RARE_KW = {"legendary","mythic","ancient","divine","prismatic","event","rare","epic","ultra"}
+local function isRare(name)
+    local low = name:lower()
+    for _, k in ipairs(RARE_KW) do
+        if low:find(k) then return true end
+    end
+    return false
 end
 
 local function mkBill(adornee, text, color)
-    if not adornee then return end
+    if not adornee or espCache[adornee] then return end
     local bb = Instance.new("BillboardGui")
-    bb.Size = UDim2.fromOffset(140, 28)
-    bb.StudsOffset = Vector3.new(0, 3.5, 0)
+    bb.Size = UDim2.fromOffset(150, 32)
+    bb.StudsOffset = Vector3.new(0, 4, 0)
     bb.AlwaysOnTop = true
     bb.Adornee = adornee
     bb.Parent = WS
@@ -337,34 +584,110 @@ local function mkBill(adornee, text, color)
     lbl.TextColor3 = color
     lbl.TextSize = 12
     lbl.Font = Enum.Font.GothamBold
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
     table.insert(espBills, bb)
+    espCache[adornee] = true
+end
+
+local function clearESP()
+    for _, b in ipairs(espBills) do
+        pcall(function() b:Destroy() end)
+    end
+    espBills = {}
+    espCache = {}
 end
 
 task.spawn(function()
-    while task.wait(2) do
-        if not _G.ESP then clearESP() continue end
-        clearESP()
-        if not hrp then continue end
-        local roots = {}
-        for _, name in ipairs({ "active", "world", "Fishing", "fish", "Fish" }) do
-            local f = WS:FindFirstChild(name)
-            if f then table.insert(roots, f) end
+    while _G.FISCH_RUNNING do
+        task.wait(3)
+        if not _G.ESP then
+            clearESP()
+            continue
         end
-        for _, root in ipairs(roots) do
-            for _, obj in ipairs(root:GetChildren()) do
+        if not hrp then continue end
+        clearESP()
+
+        local range = _G.ESPRange or 300
+        local hrpPos = hrp.Position
+
+        local scanTargets = { WS }
+        for _, c in ipairs(WS:GetChildren()) do
+            if c:IsA("Folder") or c:IsA("Model") then
+                table.insert(scanTargets, c)
+            end
+        end
+
+        for _, container in ipairs(scanTargets) do
+            for _, obj in ipairs(container:GetChildren()) do
                 if not hrp then break end
-                local pos
-                if obj:IsA("BasePart") then pos = obj.Position
+                local name = obj.Name
+                local nameLow = name:lower()
+                local pos, adornee
+                if obj:IsA("BasePart") then
+                    pos = obj.Position
+                    adornee = obj
                 elseif obj:IsA("Model") then
                     local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
-                    if p then pos = p.Position end
+                    if p then
+                        pos = p.Position
+                        adornee = p
+                    end
                 end
-                if not pos then continue end
-                if (pos - hrp.Position).Magnitude > _G.ESPRange then continue end
-                if obj.Name:lower():find("fish") then
-                    local adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")) or obj
-                    mkBill(adornee, "🐟 " .. obj.Name, Color3.fromRGB(100, 200, 255))
+                if not pos or not adornee then continue end
+                if (pos - hrpPos).Magnitude > range then continue end
+
+                if nameLow:find("spot") or nameLow:find("bobber") or nameLow:find("buoy") then
+                    mkBill(adornee, "🎣 " .. name, Color3.fromRGB(0, 255, 150))
+                elseif nameLow:find("fish") and not nameLow:find("rod") and not nameLow:find("script") then
+                    if isRare(name) then
+                        mkBill(adornee, "⭐ " .. name, Color3.fromRGB(255, 200, 0))
+                    else
+                        mkBill(adornee, "🐟 " .. name, Color3.fromRGB(100, 200, 255))
+                    end
+                elseif nameLow:find("treasure") or nameLow:find("chest") then
+                    mkBill(adornee, "💰 " .. name, Color3.fromRGB(255, 220, 50))
                 end
+            end
+        end
+    end
+end)
+
+--============================================================
+-- FISH RADAR
+--============================================================
+local notified = {}
+task.spawn(function()
+    while _G.FISCH_RUNNING do
+        task.wait(4)
+        if not _G.FishRadar then
+            notified = {}
+            continue
+        end
+        if not hrp then continue end
+        for _, obj in ipairs(WS:GetDescendants()) do
+            if not isRare(obj.Name) then continue end
+            if not obj.Name:lower():find("fish") then continue end
+            local pos
+            if obj:IsA("BasePart") then
+                pos = obj.Position
+            elseif obj:IsA("Model") then
+                local p = obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")
+                if p then pos = p.Position end
+            end
+            if pos and (pos - hrp.Position).Magnitude < 200 then
+                if not notified[obj] then
+                    notified[obj] = true
+                    pcall(function()
+                        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                            Text = "[RADAR] 🌟 RARE: " .. obj.Name,
+                            Color = Color3.fromRGB(255, 200, 0),
+                            FontSize = Enum.FontSize.Size18,
+                        })
+                    end)
+                end
+            else
+                notified[obj] = nil
             end
         end
     end
@@ -384,7 +707,7 @@ fpsLabel.TextSize = 14
 fpsLabel.Text = "FPS: --"
 fpsLabel.Parent = PG
 
-local frames, lastTime = 0, tick()
+local frames, lastTime, curFPS = 0, tick(), 0
 RUN.RenderStepped:Connect(function()
     frames = frames + 1
     if tick() - lastTime >= 1 then
@@ -416,106 +739,119 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v6.3.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v7.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
+--============================================================
 -- TAB: AUTO FISH
+--============================================================
 local TabFish = Window:Tab({
-    Title = "Auto Fish", Desc = "Cast + Minigame + Finish",
+    Title = "Auto Fish", Desc = "State machine + Expand Bar",
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
     local s = TabFish:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
-
-    s:Toggle({
-        Title = "Auto Fish",
-        Value = false,
-        Callback = function(v)
-            _G.AutoFish = v
-            print("[PALL-FISCH] AutoFish = " .. tostring(v))
-        end,
-    })
-
+    s:Toggle({ Title = "Auto Fish", Value = false,
+        Callback = function(v) _G.AutoFish = v end })
     s:Space()
-
-    s:Button({
-        Title = "▶ Test Fire Sekali",
-        Justify = "Center",
-        Callback = function()
-            print("[PALL-FISCH] Test cast + reelStart + reelFinish")
-            castOnly()
-            task.wait(0.3)
-            reelStart()
-            task.wait(0.3)
-            reelFinish()
-            print("[PALL-FISCH] Test done")
-        end,
-    })
+    s:Toggle({ Title = "Auto Reel (standalone)", Value = false,
+        Callback = function(v) _G.AutoReel = v end })
+    s:Space()
+    s:Toggle({ Title = "Expand Reel Bar", Value = true,
+        Callback = function(v) _G.ExpandBar = v end })
 
     local info = TabFish:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
     local statusTxt = info:Section({ Title = "Idle", TextSize = 14, TextTransparency = 0.2 })
     task.spawn(function()
-        while task.wait(0.5) do
+        while _G.FISCH_RUNNING do
+            task.wait(0.5)
             pcall(function()
-                statusTxt:SetTitle(statusStr .. "\nPhase: " .. fishPhase .. " | Catches: " .. fishCount .. " | FPS: " .. curFPS)
+                local rod = equippedRod()
+                statusTxt:SetTitle(
+                    "State: " .. fishState ..
+                    "\nRod: " .. (rod and rod.Name or "none") ..
+                    " | FPS: " .. curFPS
+                )
             end)
         end
     end)
 end
 
+--============================================================
 -- TAB: AUTO SELL
+--============================================================
 local TabSell = Window:Tab({
-    Title = "Auto Sell", Desc = "SellAll",
+    Title = "Auto Sell", Desc = "Sell remotes",
     Icon = "solar:cart-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
     local s = TabSell:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({
-        Title = "Auto Sell All", Value = false,
-        Callback = function(v) _G.AutoSell = v end,
-    })
+    s:Toggle({ Title = "Auto Sell", Value = false,
+        Callback = function(v) _G.AutoSell = v end })
 end
 
+--============================================================
 -- TAB: PLAYER
+--============================================================
 local TabPlayer = Window:Tab({
     Title = "Player", Desc = "Movement",
     Icon = "solar:user-bold", IconColor = Blue, IconShape = "Square", Border = true,
 })
 do
     local s = TabPlayer:Section({ Title = "Movement", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({ Title = "Auto Equip Best Rod", Value = false,
+        Callback = function(v) _G.AutoEquipBest = v end })
+    s:Space()
     s:Toggle({ Title = "Speed Boost (32)", Value = false,
         Callback = function(v) _G.SpeedBoost = v end })
     s:Space()
     s:Toggle({ Title = "Fly", Value = false,
-        Callback = function(v) _G.Fly = v; updateFly() end })
+        Callback = function(v) _G.Fly = v end })
     s:Space()
     s:Slider({ Title = "Fly Speed", Step = 5,
         Value = { Min = 10, Max = 300, Default = 50 },
         Callback = function(v) _G.FlySpeed = v end })
     s:Space()
-    s:Toggle({ Title = "Anti-AFK", Value = true,
+    s:Toggle({ Title = "Anti-AFK", Value = false,
         Callback = function(v) _G.AntiAFK = v end })
 end
 
--- TAB: VISUAL
-local TabVisual = Window:Tab({
-    Title = "Visual", Desc = "ESP",
-    Icon = "solar:eye-bold", IconColor = Purple, IconShape = "Square", Border = true,
+--============================================================
+-- TAB: EXTRA
+--============================================================
+local TabExtra = Window:Tab({
+    Title = "Extra", Desc = "Quest, Collect, Visual",
+    Icon = "solar:star-bold", IconColor = Purple, IconShape = "Square", Border = true,
 })
 do
-    local s = TabVisual:Section({ Title = "ESP", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "ESP Fish", Value = false,
+    local s1 = TabExtra:Section({ Title = "Auto Actions", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Auto Quest", Value = false,
+        Callback = function(v) _G.AutoQuest = v end })
+    s1:Space()
+    s1:Toggle({ Title = "Auto Collect", Value = false,
+        Callback = function(v) _G.AutoCollect = v end })
+
+    local s2 = TabExtra:Section({ Title = "Visual", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({ Title = "ESP Fish", Value = false,
         Callback = function(v) _G.ESP = v end })
-    s:Space()
-    s:Slider({ Title = "ESP Range", Step = 50,
+    s2:Space()
+    s2:Slider({ Title = "ESP Range", Step = 50,
         Value = { Min = 50, Max = 1000, Default = 300 },
         Callback = function(v) _G.ESPRange = v end })
+    s2:Space()
+    s2:Toggle({ Title = "Fish Radar", Value = false,
+        Callback = function(v) _G.FishRadar = v end })
 end
 
+--============================================================
+-- NOTIF
+--============================================================
 WindUI:Notify({
-    Title = "Pall Fisch v6.3.0",
-    Content = "Fix: auto tap minigame bar.",
+    Title = "Pall Fisch v7.0.0",
+    Content = "State machine + Expand Bar. Equip rod dulu!",
     Icon = "solar:bell-bold",
     Duration = 8,
 })
 
-print("[PALL-FISCH] v6.3.0 loaded. Auto tap bar aktif.")
+print("════════════════════════════════════════════")
+print("[PALL-FISCH] v7.0.0 loaded. Logic: NIGHT state machine.")
+print("════════════════════════════════════════════")
