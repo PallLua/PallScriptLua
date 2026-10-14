@@ -1,12 +1,5 @@
 --[[
-    PALL — FISCH v6.0.0 (Path Fixed — Instant Catch v2)
-    Remote:
-      packages.Net.RF/FishingRod/Cast  → InvokeServer
-      packages.Net.RF/Reel/Start       → InvokeServer
-      packages.Net.RE/Reel/Finish      → FireServer
-      events.rod_cast                  → Fallback
-      events.reelfinished              → Fallback
-      events.SellAll                   → InvokeServer
+    PALL — FISCH v6.1.0 (Debug + _G flags)
 --]]
 
 local Players = game:GetService("Players")
@@ -15,7 +8,6 @@ local WS = game:GetService("Workspace")
 local RUN = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local VU = game:GetService("VirtualUser")
-local Lighting = game:GetService("Lighting")
 
 local LP = Players.LocalPlayer
 local PG = LP:WaitForChild("PlayerGui")
@@ -42,33 +34,45 @@ local Grey = Color3.fromHex("#83889E")
 local Purple = Color3.fromHex("#7775F2")
 
 --============================================================
--- REMOTE RESOLVER (Path yang bener: RS.packages.Net)
+-- GLOBAL FLAGS (dari NIGHT, proven works)
 --============================================================
-local function getNetRemote(name)
-    local packages = RS:FindFirstChild("packages")
-    if not packages then return nil end
-    local net = packages:FindFirstChild("Net")
-    if not net then return nil end
-    return net:FindFirstChild(name)
-end
-
-local function getEventRemote(name)
-    local events = RS:FindFirstChild("events")
-    if not events then return nil end
-    return events:FindFirstChild(name)
-end
+_G.AutoFish = false
+_G.AutoSell = false
+_G.AntiAFK = true
+_G.SpeedBoost = false
+_G.Fly = false
+_G.FlySpeed = 50
+_G.ESP = false
+_G.ESPRange = 300
 
 --============================================================
--- INSTANT CATCH (multi-strategy)
+-- REMOTE RESOLVER
 --============================================================
-local function tryInvoke(remote, ...)
+local function getNet()
+    local pkg = RS:FindFirstChild("packages")
+    return pkg and pkg:FindFirstChild("Net")
+end
+
+local function getEvt(name)
+    local ev = RS:FindFirstChild("events")
+    return ev and ev:FindFirstChild(name)
+end
+
+local function netRemote(name)
+    local net = getNet()
+    return net and net:FindFirstChild(name)
+end
+
+--============================================================
+-- INSTANT CATCH
+--============================================================
+local function tryCall(remote, ...)
     if not remote then return false end
-    if not (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then return false end
     local args = {...}
     local ok = pcall(function()
         if remote:IsA("RemoteFunction") then
             remote:InvokeServer(table.unpack(args))
-        else
+        elseif remote:IsA("RemoteEvent") then
             remote:FireServer(table.unpack(args))
         end
     end)
@@ -76,70 +80,45 @@ local function tryInvoke(remote, ...)
 end
 
 local function instantFish()
-    local netCast = getNetRemote("RF/FishingRod/Cast")
-    local netReelStart = getNetRemote("RF/Reel/Start")
-    local netReelFinish = getNetRemote("RE/Reel/Finish")
+    local cast = netRemote("RF/FishingRod/Cast")
+    local reelStart = netRemote("RF/Reel/Start")
+    local reelFinish = netRemote("RE/Reel/Finish")
 
-    local legacyCast = getEventRemote("rod_cast")
-    local legacyReel = getEventRemote("reelfinished")
-
-    -- Coba Set 1 (modern)
-    if netCast and netReelStart and netReelFinish then
-        tryInvoke(netCast, 1)
-        task.wait(0.02)
-        tryInvoke(netReelStart, 1)
-        task.wait(0.02)
-        tryInvoke(netReelFinish, 100, true)
+    if cast and reelStart and reelFinish then
+        print("[FISH] Fire modern: cast → reelStart → reelFinish")
+        tryCall(cast, 1)
+        task.wait(0.05)
+        tryCall(reelStart, 1)
+        task.wait(0.05)
+        tryCall(reelFinish, 100, true)
         return true, "modern"
     end
 
-    -- Coba Set 2 (legacy)
+    local legacyCast = getEvt("rod_cast")
+    local legacyReel = getEvt("reelfinished")
     if legacyCast and legacyReel then
-        tryInvoke(legacyCast, 1)
-        task.wait(0.02)
-        tryInvoke(legacyReel, 100, true)
+        print("[FISH] Fire legacy: rod_cast → reelfinished")
+        tryCall(legacyCast, 1)
+        task.wait(0.05)
+        tryCall(legacyReel, 100, true)
         return true, "legacy"
     end
 
-    return false, "remote tidak ditemukan"
+    return false, "no remote"
 end
 
 local function sellAll()
-    local net = getEventRemote("SellAll")
-    if net then
-        pcall(function() net:InvokeServer() end)
-        return true
-    end
-    -- Fallback
-    local sell = getEventRemote("selleverything")
-    if sell then
-        pcall(function() sell:InvokeServer() end)
+    local s = getEvt("SellAll")
+    if s then
+        pcall(function() s:InvokeServer() end)
         return true
     end
     return false
 end
 
 --============================================================
--- STATE
+-- CHAR REF
 --============================================================
-local State = {
-    AutoFish = false,
-    AutoSell = false,
-    FishDelay = 0.5,
-    SellDelay = 2,
-
-    AntiAFK = true,
-    SpeedBoost = false,
-    Fly = false,
-    FlySpeed = 50,
-    ESP = false,
-    ESPRange = 300,
-
-    Status = "Idle",
-    FPS = 0,
-    LastMethod = "-",
-}
-
 local char, hrp, hum
 local function refreshChar()
     char = LP.Character or LP.CharacterAdded:Wait()
@@ -150,34 +129,43 @@ refreshChar()
 LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
 
 --============================================================
--- AUTO FISH LOOP
+-- AUTO FISH LOOP (fixed)
 --============================================================
+local statusStr = "Idle"
+local lastMethod = "-"
+local fishCount = 0
+
 task.spawn(function()
-    while task.wait(State.FishDelay) do
-        if not State.AutoFish then
-            State.Status = "Idle"
+    while true do
+        task.wait(0.5)
+        if not _G.AutoFish then
+            statusStr = "Idle (toggle OFF)"
             continue
         end
-        if not char or not hum then continue end
-
+        statusStr = "Auto fish ON — calling remote..."
         local ok, msg = instantFish()
         if ok then
-            State.Status = "✓ Instant catch (" .. msg .. ")"
-            State.LastMethod = msg
+            fishCount = fishCount + 1
+            statusStr = "✓ Catch #" .. fishCount .. " (" .. msg .. ")"
+            lastMethod = msg
+            print("[FISH] Catch success #" .. fishCount)
         else
-            State.Status = "❌ " .. msg
+            statusStr = "❌ " .. msg
+            print("[FISH] Failed: " .. msg)
         end
     end
 end)
 
 --============================================================
--- AUTO SELL
+-- AUTO SELL LOOP
 --============================================================
 task.spawn(function()
-    while task.wait(State.SellDelay) do
-        if not State.AutoSell then continue end
-        if sellAll() then
-            State.Status = "💰 SellAll ✓"
+    while true do
+        task.wait(2)
+        if _G.AutoSell then
+            if sellAll() then
+                print("[FISH] SellAll called")
+            end
         end
     end
 end)
@@ -187,7 +175,7 @@ end)
 --============================================================
 task.spawn(function()
     while task.wait(60) do
-        if State.AntiAFK then
+        if _G.AntiAFK then
             pcall(function()
                 VU:CaptureController()
                 VU:ClickButton2(Vector2.new())
@@ -202,7 +190,7 @@ end)
 task.spawn(function()
     while task.wait(0.5) do
         if not hum then continue end
-        if State.SpeedBoost then
+        if _G.SpeedBoost then
             hum.WalkSpeed = 32
         elseif hum.WalkSpeed == 32 then
             hum.WalkSpeed = 16
@@ -216,13 +204,13 @@ end)
 local flyConn
 local function updateFly()
     if flyConn then flyConn:Disconnect(); flyConn = nil end
-    if not State.Fly then
+    if not _G.Fly then
         if hum then hum.PlatformStand = false end
         return
     end
     if hum then hum.PlatformStand = true end
     flyConn = RUN.RenderStepped:Connect(function()
-        if not State.Fly then
+        if not _G.Fly then
             if hum then hum.PlatformStand = false end
             flyConn:Disconnect(); flyConn = nil
             return
@@ -230,7 +218,7 @@ local function updateFly()
         if not hrp then return end
         local cf = WS.CurrentCamera.CFrame
         local move = Vector3.new(0, 0, 0)
-        local spd = State.FlySpeed
+        local spd = _G.FlySpeed
         if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
@@ -250,7 +238,7 @@ local function updateFly()
 end
 
 --============================================================
--- ESP (optimized)
+-- ESP
 --============================================================
 local espBills = {}
 local function clearESP()
@@ -279,7 +267,7 @@ end
 
 task.spawn(function()
     while task.wait(2) do
-        if not State.ESP then clearESP() continue end
+        if not _G.ESP then clearESP() continue end
         clearESP()
         if not hrp then continue end
         local roots = {}
@@ -297,9 +285,8 @@ task.spawn(function()
                     if p then pos = p.Position end
                 end
                 if not pos then continue end
-                if (pos - hrp.Position).Magnitude > State.ESPRange then continue end
-                local n = obj.Name:lower()
-                if n:find("fish") then
+                if (pos - hrp.Position).Magnitude > _G.ESPRange then continue end
+                if obj.Name:lower():find("fish") then
                     local adornee = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildOfClass("BasePart")) or obj
                     mkBill(adornee, "🐟 " .. obj.Name, Color3.fromRGB(100, 200, 255))
                 end
@@ -322,12 +309,12 @@ fpsLabel.TextSize = 14
 fpsLabel.Text = "FPS: --"
 fpsLabel.Parent = PG
 
-local frames, lastTime = 0, tick()
+local frames, lastTime, curFPS = 0, tick(), 0
 RUN.RenderStepped:Connect(function()
     frames = frames + 1
     if tick() - lastTime >= 1 then
-        State.FPS = frames
-        fpsLabel.Text = "FPS: " .. frames
+        curFPS = frames
+        fpsLabel.Text = "FPS: " .. curFPS
         frames = 0; lastTime = tick()
     end
 end)
@@ -349,7 +336,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v6.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v6.1.0 Debug", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 -- TAB: AUTO FISH
 local TabFish = Window:Tab({
@@ -357,20 +344,33 @@ local TabFish = Window:Tab({
     Icon = "solar:fish-bold", IconColor = Green, IconShape = "Square", Border = true,
 })
 do
-    local s = TabFish:Section({ Title = "Instant Fishing", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Auto Fish (Instant)", Value = false,
-        Callback = function(v) State.AutoFish = v end })
+    local s = TabFish:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({
+        Title = "Auto Fish (Instant)",
+        Value = false,
+        Callback = function(v)
+            _G.AutoFish = v
+            print("[PALL-FISCH] AutoFish toggle = " .. tostring(v))
+        end,
+    })
     s:Space()
-    s:Slider({ Title = "Fish Delay", Step = 0.1,
-        Value = { Min = 0.1, Max = 5, Default = 0.5 },
-        Callback = function(v) State.FishDelay = v end })
+    s:Button({
+        Title = "▶ Test Fire Remote Sekali",
+        Justify = "Center",
+        Callback = function()
+            print("[PALL-FISCH] Manual test button clicked")
+            local ok, msg = instantFish()
+            print("[PALL-FISCH] Manual result:", ok, msg)
+            WindUI:Notify({ Title = "Test", Content = ok and ("OK: " .. msg) or ("Gagal: " .. msg) })
+        end,
+    })
 
     local info = TabFish:Section({ Title = "Status", Box = true, BoxBorder = true, Opened = true })
-    local statusTxt = info:Section({ Title = "Idle", TextSize = 15, TextTransparency = 0.3 })
+    local statusTxt = info:Section({ Title = "Idle", TextSize = 14, TextTransparency = 0.2 })
     task.spawn(function()
         while task.wait(0.5) do
             pcall(function()
-                statusTxt:SetTitle(State.Status .. "\nMethod: " .. State.LastMethod .. " | FPS: " .. State.FPS)
+                statusTxt:SetTitle(statusStr .. "\nMethod: " .. lastMethod .. " | Catches: " .. fishCount .. " | FPS: " .. curFPS)
             end)
         end
     end)
@@ -382,13 +382,15 @@ local TabSell = Window:Tab({
     Icon = "solar:cart-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
-    local s = TabSell:Section({ Title = "Auto Sell", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Auto Sell All", Value = false,
-        Callback = function(v) State.AutoSell = v end })
-    s:Space()
-    s:Slider({ Title = "Sell Delay", Step = 0.5,
-        Value = { Min = 0.5, Max = 10, Default = 2 },
-        Callback = function(v) State.SellDelay = v end })
+    local s = TabSell:Section({ Title = "Control", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({
+        Title = "Auto Sell All",
+        Value = false,
+        Callback = function(v)
+            _G.AutoSell = v
+            print("[PALL-FISCH] AutoSell = " .. tostring(v))
+        end,
+    })
 end
 
 -- TAB: PLAYER
@@ -399,17 +401,17 @@ local TabPlayer = Window:Tab({
 do
     local s = TabPlayer:Section({ Title = "Movement", Box = true, BoxBorder = true, Opened = true })
     s:Toggle({ Title = "Speed Boost (32)", Value = false,
-        Callback = function(v) State.SpeedBoost = v end })
+        Callback = function(v) _G.SpeedBoost = v; print("[PALL-FISCH] Speed = " .. tostring(v)) end })
     s:Space()
     s:Toggle({ Title = "Fly", Value = false,
-        Callback = function(v) State.Fly = v; updateFly() end })
+        Callback = function(v) _G.Fly = v; updateFly(); print("[PALL-FISCH] Fly = " .. tostring(v)) end })
     s:Space()
     s:Slider({ Title = "Fly Speed", Step = 5,
         Value = { Min = 10, Max = 300, Default = 50 },
-        Callback = function(v) State.FlySpeed = v end })
+        Callback = function(v) _G.FlySpeed = v end })
     s:Space()
     s:Toggle({ Title = "Anti-AFK", Value = true,
-        Callback = function(v) State.AntiAFK = v end })
+        Callback = function(v) _G.AntiAFK = v end })
 end
 
 -- TAB: VISUAL
@@ -420,18 +422,22 @@ local TabVisual = Window:Tab({
 do
     local s = TabVisual:Section({ Title = "ESP", Box = true, BoxBorder = true, Opened = true })
     s:Toggle({ Title = "ESP Fish", Value = false,
-        Callback = function(v) State.ESP = v end })
+        Callback = function(v) _G.ESP = v end })
     s:Space()
     s:Slider({ Title = "ESP Range", Step = 50,
         Value = { Min = 50, Max = 1000, Default = 300 },
-        Callback = function(v) State.ESPRange = v end })
+        Callback = function(v) _G.ESPRange = v end })
 end
 
 WindUI:Notify({
-    Title = "Pall Fisch v6.0.0",
-    Content = "Remote path fixed: packages.Net",
+    Title = "Pall Fisch v6.1.0 Debug",
+    Content = "Ada tombol 'Test Fire Remote Sekali'. Coba klik!",
     Icon = "solar:bell-bold",
-    Duration = 8,
+    Duration = 10,
 })
 
-print("[PALL-FISCH] v6.0.0 loaded. Path: RS.packages.Net")
+print("════════════════════════════════════════════")
+print("[PALL-FISCH] v6.1.0 Debug loaded.")
+print("[PALL-FISCH] Klik toggle Auto Fish → lihat console.")
+print("[PALL-FISCH] Atau klik tombol 'Test Fire Remote Sekali'.")
+print("════════════════════════════════════════════")
