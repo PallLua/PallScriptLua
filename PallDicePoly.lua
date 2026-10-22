@@ -1,6 +1,6 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v0.4.2 (UI Fix)
+    PALL — DICE POLY v0.5.1 (Clean & Lean)
     Author  : ENI (for Pall)
     ═══════════════════════════════════════════════════════════
 --]]
@@ -8,10 +8,7 @@
 print("[PALL-DICE] Memulai eksekusi script...")
 
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
@@ -29,14 +26,13 @@ else
         return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
     end)
     if not ok then error("[PALL-DICE] Gagal load WindUI.") end
-    WindUI = result
-    _G.PallWindUI = WindUI
+    WindUI = _G.PallWindUI or result
 end
 
 local Green = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
-local Blue = Color3.fromHex("#257AF7")
 local Grey = Color3.fromHex("#83889E")
+local Red    = Color3.fromHex("#EF4F1D")
 
 --============================================================
 -- FLAGS & STATE
@@ -51,36 +47,17 @@ local State = {
     AutoRoll = false,
     AutoPlay = false,
     RollHoldTime = 0.3,
-    SpeedBoost = false,
-    Fly = false,
-    FlySpeed = 50,
     AntiAFK = true,
 }
 
 local CodesList = {
-    "1000PLAYER",
-    "AMSSRBLHGSHARKAM",
-    "200CCU",
-    "RPRXDICEOPOLY",
-    "5CHEST",
-    "WHENYAH",
-    "250LIKESRESTOCKUGC"
+    "1000PLAYER", "AMSSRBLHGSHARKAM", "200CCU",
+    "RPRXDICEOPOLY", "5CHEST", "WHENYAH", "250LIKESRESTOCKUGC"
 }
 
 --============================================================
 -- UTILITY
 --============================================================
-local char, hrp, hum
--- PENTING: Jangan block script, jalanin di background
-task.spawn(function()
-    while _G.PALL_DICE_RUNNING do
-        char = LP.Character or LP.CharacterAdded:Wait()
-        hrp = char:WaitForChild("HumanoidRootPart", 5)
-        hum = char:WaitForChild("Humanoid", 5)
-        task.wait(2) -- Update terus kalau mati/respawn
-    end
-end)
-
 local function tapAt(x, y)
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
@@ -108,21 +85,24 @@ end
 --============================================================
 -- REDEEM CODE SYSTEM
 --============================================================
-local function getRedeemRemote()
+local function getAllRedeemRemotes()
+    local remotes = {}
     for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
         if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
             local n = v.Name:lower()
-            if n:find("code") or n:find("redeem") or n:find("promo") then
-                return v
+            if n:find("code") or n:find("redeem") or n:find("promo") or n:find("claim") then
+                table.insert(remotes, v)
             end
         end
     end
-    return nil
+    return remotes
 end
 
 local function redeemCode(codeStr)
-    local remote = getRedeemRemote()
-    if remote then
+    local remotes = getAllRedeemRemotes()
+    local success = false
+    
+    for _, remote in ipairs(remotes) do
         local ok = pcall(function()
             if remote:IsA("RemoteFunction") then
                 remote:InvokeServer(codeStr)
@@ -130,9 +110,9 @@ local function redeemCode(codeStr)
                 remote:FireServer(codeStr)
             end
         end)
-        return ok
+        if ok then success = true end
     end
-    return false
+    return success
 end
 
 --============================================================
@@ -143,9 +123,8 @@ local function findRollButton()
         if gui:IsA("ScreenGui") and gui.Enabled then
             for _, obj in ipairs(gui:GetDescendants()) do
                 if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible then
-                    local txt = ""
-                    pcall(function() txt = obj.Text:upper() end)
-                    if txt == "ROLL" or txt:find("ROLL") or obj.Name:lower() == "roll" then
+                    local n = obj.Name:lower()
+                    if n:find("roll") then
                         return obj
                     end
                 end
@@ -173,7 +152,7 @@ local function findPlayButton()
 end
 
 --============================================================
--- WINDOW UI (DIJALANKAN PALING ATAS)
+-- WINDOW UI
 --============================================================
 print("[PALL-DICE] Membuat Window UI...")
 local Window = WindUI:CreateWindow({
@@ -194,7 +173,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.4.2", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v0.5.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: MAIN
@@ -214,6 +193,7 @@ do
     local s2 = TabMain:Section({ Title = "In-Game", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({
         Title = "Auto Roll (Hold & Release)",
+        Desc = "Nahan tombol ROLL otomatis",
         Value = false,
         Callback = function(v) State.AutoRoll = v end,
     })
@@ -222,6 +202,12 @@ do
         Title = "Hold Duration", Step = 0.05,
         Value = { Min = 0.1, Max = 2, Default = 0.3 },
         Callback = function(v) State.RollHoldTime = v end,
+    })
+    s2:Space()
+    s2:Toggle({
+        Title = "Anti-AFK", 
+        Value = true, 
+        Callback = function(v) State.AntiAFK = v end 
     })
 end
 
@@ -234,11 +220,6 @@ local TabCodes = Window:Tab({
 })
 do
     local s = TabCodes:Section({ Title = "Redeem Codes", Box = true, BoxBorder = true, Opened = true })
-    s:Section({
-        Title = "Klik tombol di bawah untuk klaim semua kode dari Discord.",
-        TextSize = 12, TextTransparency = 0.3,
-    })
-    s:Space()
     s:Button({
         Title = "Redeem Semua Kode",
         Justify = "Center",
@@ -248,7 +229,7 @@ do
                 for i, code in ipairs(CodesList) do
                     local success = redeemCode(code)
                     if success then
-                        print("[DICE] Redeemed: " .. code)
+                        print("[DICE] Mencoba redeem: " .. code)
                     else
                         print("[DICE] Gagal redeem: " .. code)
                     end
@@ -258,28 +239,36 @@ do
             end)
         end,
     })
+    
+    s:Space()
+    s:Button({
+        Title = "Scan Remote Redeem (Debug)",
+        Justify = "Center",
+        Color = Red,
+        Callback = function()
+            print("════════ REMOTE SCAN ════════")
+            local remotes = getAllRedeemRemotes()
+            if #remotes > 0 then
+                for _, r in ipairs(remotes) do
+                    print("[" .. r.ClassName .. "] " .. r.Name)
+                end
+            else
+                print("Nggak ada remote yang namanya mengandung 'code', 'redeem', atau 'claim'.")
+                print("Coba cek manual semua remote di bawah ini:")
+                for _, v in ipairs(ReplicatedStorage:GetChildren()) do
+                    if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                        print("-> " .. v.Name)
+                    end
+                end
+            end
+            print("═════════════════════════════")
+            WindUI:Notify({ Title = "Scanner", Content = "Cek console Delta!" })
+        end,
+    })
 end
 
 --============================================================
--- TAB: PLAYER
---============================================================
-local TabPlayer = Window:Tab({
-    Title = "Player", Desc = "Movement",
-    Icon = "solar:user-bold", IconColor = Blue, IconShape = "Square", Border = true,
-})
-do
-    local s = TabPlayer:Section({ Title = "Movement", Box = true, BoxBorder = true, Opened = true })
-    s:Toggle({ Title = "Speed Boost (32)", Value = false, Callback = function(v) State.SpeedBoost = v end })
-    s:Space()
-    s:Toggle({ Title = "Fly (WASD)", Value = false, Callback = function(v) State.Fly = v end })
-    s:Space()
-    s:Slider({ Title = "Fly Speed", Step = 5, Value = { Min = 10, Max = 300, Default = 50 }, Callback = function(v) State.FlySpeed = v end })
-    s:Space()
-    s:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
-end
-
---============================================================
--- AUTO LOOPS (BACKGROUND)
+-- AUTO LOOPS
 --============================================================
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
@@ -298,6 +287,7 @@ task.spawn(function()
         if not State.AutoRoll then continue end
         local rollBtn = findRollButton()
         if rollBtn then
+            print("[DICE] Nemu tombol roll, hold...")
             holdElement(rollBtn, State.RollHoldTime)
             task.wait(2)
         end
@@ -316,64 +306,11 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    local prev = false
-    while _G.PALL_DICE_RUNNING do
-        task.wait(0.5)
-        if not hum then continue end
-        if State.SpeedBoost and not prev then
-            hum.WalkSpeed = 32; prev = true
-        elseif not State.SpeedBoost and prev then
-            hum.WalkSpeed = 16; prev = false
-        end
-    end
-end)
-
-local flyConn
-task.spawn(function()
-    local prev = false
-    while _G.PALL_DICE_RUNNING do
-        task.wait(0.2)
-        if State.Fly ~= prev then
-            prev = State.Fly
-            if flyConn then flyConn:Disconnect(); flyConn = nil end
-            
-            if not State.Fly then
-                if hum then pcall(function() hum.PlatformStand = false end) end
-            else
-                if hum then pcall(function() hum.PlatformStand = true end) end
-                flyConn = RunService.RenderStepped:Connect(function()
-                    if not State.Fly or not hrp then return end
-                    local cf = Workspace.CurrentCamera.CFrame
-                    local move = Vector3.new(0, 0, 0)
-                    local spd = State.FlySpeed
-                    
-                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cf.RightVector end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0,1,0) end
-                    
-                    if move.Magnitude > 0.01 then move = move.Unit * spd end
-                    pcall(function()
-                        hrp.Velocity = move
-                        hrp.AssemblyLinearVelocity = move
-                    end)
-                end)
-            end
-        end
-    end
-end)
-
---============================================================
--- NOTIF
---============================================================
 WindUI:Notify({
-    Title = "Pall Dice v0.4.2",
-    Content = "UI berhasil dimuat! Cek tab Codes.",
+    Title = "Pall Dice v0.5.1",
+    Content = "Bersih & Ringan. Auto Roll siap!",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v0.4.2 loaded perfectly.")
+print("[PALL-DICE] v0.5.1 loaded.")
