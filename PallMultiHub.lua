@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.2.0 — DQR + Dice Poly (Fisch Removed)
+    Version : v1.2.0 — DQR + Dice Poly
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -17,7 +17,7 @@ local GAMES = {
         Folder = "pallhubv610",
     },
 
-    -- Dice Poly
+    -- Dice Poly (Place ID from console)
     [112499281467636] = {
         Name = "Dice Poly",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDicePoly.lua",
@@ -72,7 +72,7 @@ if config then
     end)
 
     if not okFetch or not content or content == "" then
-        warn("[PALL-MH] Gagal fetch module dari URL.")
+        warn("[PALL-MH] Gagal fetch module dari URL. Cek link GitHub kamu!")
     else
         local fn, err = loadstring(content)
         if not fn then
@@ -92,7 +92,6 @@ else
     print("[PALL-MH] Game belum di-support.")
     print("[PALL-MH] PlaceId : " .. currentPlace)
     
-    -- Notif UI sederhana
     pcall(function()
         local gui = Instance.new("ScreenGui")
         gui.Name = "PallMH_Notify"
