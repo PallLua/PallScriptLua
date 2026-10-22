@@ -1,7 +1,8 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v0.5.1 (Clean & Lean)
+    PALL — DICE POLY v0.6.0
     Author  : ENI (for Pall)
+    Fixes   : Auto Roll (Hold), Auto Redeem (GUI Mode)
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -46,7 +47,7 @@ _G.PALL_DICE_RUNNING = true
 local State = {
     AutoRoll = false,
     AutoPlay = false,
-    RollHoldTime = 0.3,
+    RollHoldTime = 1.5, -- Ditingkatkan jadi 1.5 detik biar makin mantap
     AntiAFK = true,
 }
 
@@ -56,7 +57,7 @@ local CodesList = {
 }
 
 --============================================================
--- UTILITY
+-- UTILITY (HOLD & RELEASE PAKAI MOUSE1)
 --============================================================
 local function tapAt(x, y)
     pcall(function()
@@ -66,53 +67,71 @@ local function tapAt(x, y)
     end)
 end
 
-local function holdAt(x, y, duration)
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        task.wait(duration)
-        VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
-end
-
 local function holdElement(el, duration)
     if not el or not el.Visible then return false end
     local pos = el.AbsolutePosition
     local size = el.AbsoluteSize
-    holdAt(pos.X + (size.X / 2), pos.Y + (size.Y / 2), duration)
+    local cx = pos.X + (size.X / 2)
+    local cy = pos.Y + (size.Y / 2)
+    
+    pcall(function()
+        -- Pindahin kursor dulu
+        VirtualInputManager:SendMouseMoveEvent(cx, cy, game)
+        task.wait(0.05)
+        -- Tekan tahan
+        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+        task.wait(duration)
+        -- Lepas
+        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
+    end)
     return true
 end
 
 --============================================================
--- REDEEM CODE SYSTEM
+-- AUTO REDEEM (GUI BASED)
 --============================================================
-local function getAllRedeemRemotes()
-    local remotes = {}
-    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-            local n = v.Name:lower()
-            if n:find("code") or n:find("redeem") or n:find("promo") or n:find("claim") then
-                table.insert(remotes, v)
+local function redeemViaGUI()
+    local successCount = 0
+    local guiFound = false
+    
+    for _, gui in ipairs(PG:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, obj in ipairs(gui:GetDescendants()) do
+                if obj:IsA("TextBox") then
+                    guiFound = true
+                    print("[DICE] NemU TextBox kode: " .. obj.Name)
+                    
+                    for _, code in ipairs(CodesList) do
+                        obj.Text = code
+                        task.wait(0.1)
+                        
+                        -- Cari tombol redeem di dekat TextBox
+                        local parent = obj.Parent
+                        local btn = parent:FindFirstChild("Redeem", true) or parent:FindFirstChild("Claim", true) or parent:FindFirstChild("Submit", true)
+                        
+                        if btn and (btn:IsA("TextButton") or btn:IsA("ImageButton")) then
+                            local bPos = btn.AbsolutePosition
+                            local bSize = btn.AbsoluteSize
+                            tapAt(bPos.X + bSize.X/2, bPos.Y + bSize.Y/2)
+                            successCount = successCount + 1
+                        else
+                            -- Kalau nggak ada tombol, coba pencet Enter
+                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+                        end
+                        task.wait(1.5)
+                    end
+                end
             end
         end
     end
-    return remotes
-end
-
-local function redeemCode(codeStr)
-    local remotes = getAllRedeemRemotes()
-    local success = false
     
-    for _, remote in ipairs(remotes) do
-        local ok = pcall(function()
-            if remote:IsA("RemoteFunction") then
-                remote:InvokeServer(codeStr)
-            else
-                remote:FireServer(codeStr)
-            end
-        end)
-        if ok then success = true end
+    if not guiFound then
+        WindUI:Notify({ Title = "Redeem", Content = "Buka menu Codes di game dulu, baru klik ini!" })
+        print("[DICE] TextBox kode nggak ketemu. Pastikan menu redeem sedang terbuka.")
+    else
+        WindUI:Notify({ Title = "Redeem", Content = "Mencoba " .. successCount .. " kode via GUI." })
     end
-    return success
 end
 
 --============================================================
@@ -173,7 +192,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.5.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v0.6.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: MAIN
@@ -193,22 +212,17 @@ do
     local s2 = TabMain:Section({ Title = "In-Game", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({
         Title = "Auto Roll (Hold & Release)",
-        Desc = "Nahan tombol ROLL otomatis",
         Value = false,
         Callback = function(v) State.AutoRoll = v end,
     })
     s2:Space()
     s2:Slider({
-        Title = "Hold Duration", Step = 0.05,
-        Value = { Min = 0.1, Max = 2, Default = 0.3 },
+        Title = "Hold Duration (detik)", Step = 0.1,
+        Value = { Min = 0.5, Max = 3, Default = 1.5 },
         Callback = function(v) State.RollHoldTime = v end,
     })
     s2:Space()
-    s2:Toggle({
-        Title = "Anti-AFK", 
-        Value = true, 
-        Callback = function(v) State.AntiAFK = v end 
-    })
+    s2:Toggle({ Title = "Anti-AFK", Value = true, Callback = function(v) State.AntiAFK = v end })
 end
 
 --============================================================
@@ -219,50 +233,17 @@ local TabCodes = Window:Tab({
     Icon = "solar:ticket-bold", IconColor = Yellow, IconShape = "Square", Border = true,
 })
 do
-    local s = TabCodes:Section({ Title = "Redeem Codes", Box = true, BoxBorder = true, Opened = true })
-    s:Button({
-        Title = "Redeem Semua Kode",
-        Justify = "Center",
-        Callback = function()
-            WindUI:Notify({ Title = "Codes", Content = "Memproses kode..." })
-            task.spawn(function()
-                for i, code in ipairs(CodesList) do
-                    local success = redeemCode(code)
-                    if success then
-                        print("[DICE] Mencoba redeem: " .. code)
-                    else
-                        print("[DICE] Gagal redeem: " .. code)
-                    end
-                    task.wait(1.5)
-                end
-                WindUI:Notify({ Title = "Codes", Content = "Selesai! Cek chat game." })
-            end)
-        end,
+    local s = TabCodes:Section({ Title = "Redeem Codes (GUI Mode)", Box = true, BoxBorder = true, Opened = true })
+    s:Section({
+        Title = "PENTING: Buka menu 'Codes' di dalam game dulu (sampai kotak ketiknya kelihatan), baru klik tombol ini.",
+        TextSize = 12, TextTransparency = 0.2,
     })
-    
     s:Space()
     s:Button({
-        Title = "Scan Remote Redeem (Debug)",
+        Title = "Redeem via GUI",
         Justify = "Center",
-        Color = Red,
         Callback = function()
-            print("════════ REMOTE SCAN ════════")
-            local remotes = getAllRedeemRemotes()
-            if #remotes > 0 then
-                for _, r in ipairs(remotes) do
-                    print("[" .. r.ClassName .. "] " .. r.Name)
-                end
-            else
-                print("Nggak ada remote yang namanya mengandung 'code', 'redeem', atau 'claim'.")
-                print("Coba cek manual semua remote di bawah ini:")
-                for _, v in ipairs(ReplicatedStorage:GetChildren()) do
-                    if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-                        print("-> " .. v.Name)
-                    end
-                end
-            end
-            print("═════════════════════════════")
-            WindUI:Notify({ Title = "Scanner", Content = "Cek console Delta!" })
+            redeemViaGUI()
         end,
     })
 end
@@ -287,9 +268,9 @@ task.spawn(function()
         if not State.AutoRoll then continue end
         local rollBtn = findRollButton()
         if rollBtn then
-            print("[DICE] Nemu tombol roll, hold...")
+            print("[DICE] Nahan tombol ROLL selama " .. State.RollHoldTime .. " detik...")
             holdElement(rollBtn, State.RollHoldTime)
-            task.wait(2)
+            task.wait(3) -- Jeda nunggu hasil dadu
         end
     end
 end)
@@ -307,10 +288,10 @@ task.spawn(function()
 end)
 
 WindUI:Notify({
-    Title = "Pall Dice v0.5.1",
-    Content = "Bersih & Ringan. Auto Roll siap!",
+    Title = "Pall Dice v0.6.0",
+    Content = "Auto Roll & Redeem Fixed!",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v0.5.1 loaded.")
+print("[PALL-DICE] v0.6.0 loaded.")
