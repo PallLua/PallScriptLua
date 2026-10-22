@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.2.0 — DQR + Dice Poly
+    Version : v1.3.0 — Support DQR Multi-Place (Lobby + Dungeon)
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -10,14 +10,21 @@
 -- DAFTAR GAME
 --============================================================
 local GAMES = {
-    -- Dungeon Quest Reborn
+    -- Dungeon Quest Reborn (LOBBY)
     [77649408247578] = {
-        Name = "Dungeon Quest Reborn",
+        Name = "Dungeon Quest Reborn (Lobby)",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDQR.lua",
         Folder = "pallhubv610",
     },
 
-    -- Dice Poly (Place ID from console)
+    -- Dungeon Quest Reborn (DUNGEON)
+    [85776757589518] = {
+        Name = "Dungeon Quest Reborn (Dungeon)",
+        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDQR.lua",
+        Folder = "pallhubv610",
+    },
+
+    -- Dice Poly
     [112499281467636] = {
         Name = "Dice Poly",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDicePoly.lua",
