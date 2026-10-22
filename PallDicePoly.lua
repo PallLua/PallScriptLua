@@ -1,6 +1,6 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v1.6.2 (Instant 1-Click Auto Buy)
+    PALL — DICE POLY v1.7.0 (Hold & Release Auto Buy)
     Author  : ENI (for Pall)
     ═══════════════════════════════════════════════════════════
 --]]
@@ -61,7 +61,7 @@ local CodesList = {
 }
 
 --============================================================
--- UTILITY
+-- UTILITY (SAMA KAYAK SEBELUMNYA)
 --============================================================
 local function tapElement(el)
     if not el or not el.Visible then return false end
@@ -119,44 +119,32 @@ local function holdElement(el, duration)
 end
 
 --============================================================
--- INSTANT AUTO BUY (1-CLICK, NO CONFIRMATION)
+-- AUTO BUY (HOLD & RELEASE MODE)
 --============================================================
 local function processAutoBuy()
     for _, gui in ipairs(PG:GetDescendants()) do
-        -- Cek TextLabel atau TextButton yang lagi kelihatan
-        if (gui:IsA("TextLabel") or gui:IsA("TextButton")) and gui.Visible then
+        if (gui:IsA("TextLabel") or gui:IsA("TextButton") or gui:IsA("ImageButton")) and gui.Visible then
             local text = ""
             pcall(function() text = gui.Text end)
             local lowerText = text:lower()
             
-            -- Cari teks "buy" (contoh: "Buy 200K")
+            -- Cukup deteksi kata "buy" atau "beli"
             if lowerText:find("buy") or lowerText:find("beli") then
-                print("[DICE] Auto Buy: Nemu teks '" .. text .. "'! Eksekusi klik...")
+                -- Cari tombol yang bisa diklik (TextButton/ImageButton)
+                local clickable = gui
+                local depth = 0
+                while clickable and not (clickable:IsA("TextButton") or clickable:IsA("ImageButton")) and depth < 3 do
+                    clickable = clickable.Parent
+                    depth = depth + 1
+                end
                 
-                -- Klik langsung di posisi teks tersebut (karena sistemnya 1x klik)
-                local pos = gui.AbsolutePosition
-                local size = gui.AbsoluteSize
-                local cx = pos.X + (size.X / 2)
-                local cy = pos.Y + (size.Y / 2)
-                
-                -- 1. Klik pakai Virtual Input
-                pcall(function()
-                    VirtualInputManager:SendMouseMoveEvent(cx, cy, game)
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
-                end)
-                
-                -- 2. Klik pakai GetConnections (kalau teksnya nerima event klik)
-                pcall(function()
-                    if getconnections then
-                        for _, c in ipairs(getconnections(gui.MouseButton1Click)) do c:Fire() end
-                        for _, c in ipairs(getconnections(gui.MouseButton1Down)) do c:Fire() end
-                    end
-                end)
-                
-                return true
+                if clickable and clickable.Visible then
+                    print("[DICE] Auto Buy: Nemu teks '" .. text .. "'. Hold & Release...")
+                    -- TAHAN SELAMA 0.5 DETIK, LALU LEPAS
+                    holdElement(clickable, 0.5) 
+                    task.wait(1.5) -- Tunggu animasi beli selesai
+                    return true
+                end
             end
         end
     end
@@ -272,7 +260,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.6.2", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.7.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local TabMain = Window:Tab({ Title = "Main", Desc = "Auto Play & Roll", Icon = "solar:home-2-bold", IconColor = Green, IconShape = "Square", Border = true })
 do
@@ -298,7 +286,7 @@ end
 local TabEco = Window:Tab({ Title = "Economy", Desc = "Auto Buy & Bail", Icon = "solar:wallet-money-bold", IconColor = Yellow, IconShape = "Square", Border = true })
 do
     local s1 = TabEco:Section({ Title = "Auto Buy Land", Box = true, BoxBorder = true, Opened = true })
-    s1:Toggle({ Title = "Auto Buy Tanah (1-Click)", Value = false, Callback = function(v) State.AutoBuyLand = v end })
+    s1:Toggle({ Title = "Auto Buy Tanah (Hold & Release)", Value = false, Callback = function(v) State.AutoBuyLand = v end })
     
     local s2 = TabEco:Section({ Title = "Auto Bail (Penjara)", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({ Title = "Auto Bayar Bail", Value = false, Callback = function(v) State.AutoBail = v end })
@@ -342,10 +330,9 @@ task.spawn(function()
         task.wait(1.5) -- Jeda ngecek biar gak spam
         if not State.AutoBuyLand or State.isActionBusy or State.isHolding then continue end
         
-        -- Langsung klik tanpa mikir!
         if processAutoBuy() then
             State.isActionBusy = true
-            task.wait(1) -- Jeda bentar setelah beli
+            task.wait(1) 
             State.isActionBusy = false
         end
     end
@@ -372,5 +359,5 @@ task.spawn(function()
     end
 end)
 
-WindUI:Notify({ Title = "Pall Dice v1.6.2", Content = "Instant 1-Click Auto Buy Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-DICE] v1.6.2 loaded.")
+WindUI:Notify({ Title = "Pall Dice v1.7.0", Content = "Hold & Release Auto Buy Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-DICE] v1.7.0 loaded.")
