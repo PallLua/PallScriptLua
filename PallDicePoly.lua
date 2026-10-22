@@ -1,8 +1,7 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v0.4.0
+    PALL — DICE POLY v0.4.1 (Clean & Fixed)
     Author  : ENI (for Pall)
-    Notes   : Auto Roll (Hold), Auto Play, Auto Redeem Codes.
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -36,11 +35,9 @@ local Green = Color3.fromHex("#10C550")
 local Yellow = Color3.fromHex("#ECA201")
 local Blue = Color3.fromHex("#257AF7")
 local Grey = Color3.fromHex("#83889E")
-local Purple = Color3.fromHex("#7775F2")
-local Red = Color3.fromHex("#EF4F1D")
 
 --============================================================
--- CLEAN OLD & FLAGS
+-- FLAGS & STATE
 --============================================================
 if _G.PALL_DICE_RUNNING then
     _G.PALL_DICE_RUNNING = false
@@ -52,14 +49,12 @@ local State = {
     AutoRoll = false,
     AutoPlay = false,
     RollHoldTime = 0.3,
-    
     SpeedBoost = false,
     Fly = false,
     FlySpeed = 50,
     AntiAFK = true,
 }
 
--- Daftar kode dari Discord
 local CodesList = {
     "1000PLAYER",
     "AMSSRBLHGSHARKAM",
@@ -71,8 +66,17 @@ local CodesList = {
 }
 
 --============================================================
--- UTILITY (TAP, HOLD, CHAR)
+-- UTILITY
 --============================================================
+local char, hrp, hum
+local function refreshChar()
+    char = LP.Character or LP.CharacterAdded:Wait()
+    hrp = char:WaitForChild("HumanoidRootPart", 5)
+    hum = char:WaitForChild("Humanoid", 5)
+end
+refreshChar()
+LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
+
 local function tapAt(x, y)
     pcall(function()
         VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
@@ -97,19 +101,9 @@ local function holdElement(el, duration)
     return true
 end
 
-local char, hrp, hum
-local function refreshChar()
-    char = LP.Character or LP.CharacterAdded:Wait()
-    hrp = char:WaitForChild("HumanoidRootPart", 5)
-    hum = char:WaitForChild("Humanoid", 5)
-end
-refreshChar()
-LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
-
 --============================================================
--- REDEEM CODE LOGIC
+-- REDEEM CODE SYSTEM
 --============================================================
--- Cari remote yang berkaitan dengan kode
 local function getRedeemRemote()
     for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
         if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
@@ -122,7 +116,6 @@ local function getRedeemRemote()
     return nil
 end
 
--- Fungsi eksekusi redeem
 local function redeemCode(codeStr)
     local remote = getRedeemRemote()
     if remote then
@@ -134,13 +127,8 @@ local function redeemCode(codeStr)
             end
         end)
         return ok
-    else
-        -- Fallback jika remote tidak ketemu, pakai fitur Roblox bawaan
-        pcall(function()
-            game:GetService("GuiService"):OpenGamePage() -- Nggak akan works, cuma placeholder
-        end)
-        return false
     end
+    return false
 end
 
 --============================================================
@@ -190,7 +178,6 @@ task.spawn(function()
         local btn = findPlayButton()
         if btn then
             tapAt(btn.AbsolutePosition.X + btn.AbsoluteSize.X/2, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y/2)
-            print("[DICE] Play button clicked")
         end
     end
 end)
@@ -201,7 +188,6 @@ task.spawn(function()
         if not State.AutoRoll then continue end
         local rollBtn = findRollButton()
         if rollBtn then
-            print("[DICE] Holding ROLL...")
             holdElement(rollBtn, State.RollHoldTime)
             task.wait(2)
         end
@@ -220,7 +206,6 @@ task.spawn(function()
     end
 end)
 
--- Speed Boost
 task.spawn(function()
     local prev = false
     while _G.PALL_DICE_RUNNING do
@@ -234,7 +219,6 @@ task.spawn(function()
     end
 end)
 
--- Fly
 local flyConn
 local function updateFly()
     if flyConn then flyConn:Disconnect(); flyConn = nil end
@@ -279,7 +263,7 @@ task.spawn(function()
             prev = State.Fly
             updateFly()
         end
-    end)
+    end
 end)
 
 --============================================================
@@ -303,10 +287,10 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v0.4.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
--- TAB: MAIN (LOBBY & GAME)
+-- TAB: MAIN
 --============================================================
 local TabMain = Window:Tab({
     Title = "Main", Desc = "Auto Play & Roll",
@@ -323,20 +307,19 @@ do
     local s2 = TabMain:Section({ Title = "In-Game", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({
         Title = "Auto Roll (Hold & Release)",
-        Desc = "Tahan tombol ROLL otomatis",
         Value = false,
         Callback = function(v) State.AutoRoll = v end,
     })
     s2:Space()
     s2:Slider({
-        Title = "Hold Duration (detik)", Step = 0.05,
+        Title = "Hold Duration", Step = 0.05,
         Value = { Min = 0.1, Max = 2, Default = 0.3 },
         Callback = function(v) State.RollHoldTime = v end,
     })
 end
 
 --============================================================
--- TAB: CODES (REDEEM)
+-- TAB: CODES
 --============================================================
 local TabCodes = Window:Tab({
     Title = "Codes", Desc = "Auto Redeem",
@@ -344,15 +327,13 @@ local TabCodes = Window:Tab({
 })
 do
     local s = TabCodes:Section({ Title = "Redeem Codes", Box = true, BoxBorder = true, Opened = true })
-    
     s:Section({
         Title = "Klik tombol di bawah untuk klaim semua kode dari Discord.",
         TextSize = 12, TextTransparency = 0.3,
     })
     s:Space()
-    
     s:Button({
-        Title = "Redeem Semua Kode Sekarang",
+        Title = "Redeem Semua Kode",
         Justify = "Center",
         Callback = function()
             WindUI:Notify({ Title = "Codes", Content = "Memproses kode..." })
@@ -364,39 +345,10 @@ do
                     else
                         print("[DICE] Gagal redeem: " .. code)
                     end
-                    task.wait(1.5) -- Jeda antar redeem biar server nggak nge-flag
+                    task.wait(1.5)
                 end
-                WindUI:Notify({ Title = "Codes", Content = "Selesai! Cek chat/console." })
+                WindUI:Notify({ Title = "Codes", Content = "Selesai! Cek chat game." })
             end)
-        end,
-    })
-end
-
---============================================================
--- TAB: SMART PREDICT
---============================================================
-local TabPredict = Window:Tab({
-    Title = "Smart Predict", Desc = "Cek Papan",
-    Icon = "solar:eye-bold", IconColor = Yellow, IconShape = "Square", Border = true,
-})
-do
-    local s = TabPredict:Section({ Title = "Board Scanner", Box = true, BoxBorder = true, Opened = true })
-    s:Button({
-        Title = "Baca Papan (Read Board)",
-        Justify = "Center",
-        Callback = function()
-            local board = Workspace:FindFirstChild("GameBoard")
-            if not board then return end
-            local tiles = board:FindFirstChild("Tiles")
-            if not tiles then return end
-            print("════════ BOARD INFO ════════")
-            for _, tile in ipairs(tiles:GetChildren()) do
-                local idx = tile:GetAttribute("TileIndex")
-                local tType = tile:GetAttribute("TileType")
-                if idx and tType then print("[" .. idx .. "] " .. tType) end
-            end
-            print("════════════════════════════")
-            WindUI:Notify({ Title = "Board", Content = "Cek console Delta!" })
         end,
     })
 end
@@ -423,10 +375,10 @@ end
 -- NOTIF
 --============================================================
 WindUI:Notify({
-    Title = "Pall Dice v0.4.0",
-    Content = "Auto Redeem Code siap! Cek tab Codes.",
+    Title = "Pall Dice v0.4.1",
+    Content = "Script Fixed! Cek tab Codes.",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v0.4.0 loaded. Redeem code aktif.")
+print("[PALL-DICE] v0.4.1 loaded perfectly.")
