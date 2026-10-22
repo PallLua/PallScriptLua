@@ -1,6 +1,6 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v1.3.0 (Smart Economy)
+    PALL — DICE POLY v1.4.0 (Blind Auto Buy)
     Author  : ENI (for Pall)
     ═══════════════════════════════════════════════════════════
 --]]
@@ -50,9 +50,8 @@ local State = {
     SmartPredict = false,
     PredictTarget = "EVEN",
     
-    -- Fitur Ekonomi Baru
+    -- Fitur Ekonomi
     AutoBuyLand = false,
-    MaxBuyPrice = 500000, -- Default batas harga 500K
     AutoBail = false,
     
     -- State internal buat ngunci biar gak tabrakan
@@ -123,17 +122,31 @@ local function holdElement(el, duration)
     return true
 end
 
--- Cari tombol berdasarkan teks (buat Beli & Bail)
-local function findButtonByKeywords(keywords)
+--============================================================
+-- PENCARI TOMBOL (BLIND MODE)
+--============================================================
+-- Cari tombol Beli (Ngecek teks di tombol & di dalam tombol)
+local function findBuyButton()
     for _, gui in ipairs(PG:GetChildren()) do
         if gui:IsA("ScreenGui") and gui.Enabled then
             for _, obj in ipairs(gui:GetDescendants()) do
                 if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible then
-                    local txt = ""
-                    pcall(function() txt = obj.Text:upper() end)
-                    for _, kw in ipairs(keywords) do
-                        if txt:find(kw) then
-                            return obj
+                    local text = ""
+                    pcall(function() text = obj.Text end)
+                    local ut = text:upper()
+                    
+                    if ut:find("BUY") or ut:find("BELI") or ut:find("PURCHASE") then
+                        return obj
+                    end
+                    
+                    -- Cek teks di dalam tombol (TextLabel)
+                    for _, child in ipairs(obj:GetChildren()) do
+                        if child:IsA("TextLabel") and child.Visible then
+                            local ctext = child.Text
+                            local cut = ctext:upper()
+                            if cut:find("BUY") or cut:find("BELI") or cut:find("PURCHASE") then
+                                return obj
+                            end
                         end
                     end
                 end
@@ -143,46 +156,41 @@ local function findButtonByKeywords(keywords)
     return nil
 end
 
--- Cek apakah ada popup jail
-local function isJailed()
-    local bailKeywords = {"BAIL", "PAY", "BAYAR", "RELEASE", "BEBAS"}
-    return findButtonByKeywords(bailKeywords)
-end
-
--- Cek apakah ada popup beli tanah dan harganya masuk akal
-local function getBuyableLand()
-    local buyKeywords = {"BUY", "PURCHASE", "BELI"}
-    local buyBtn = findButtonByKeywords(buyKeywords)
-    
-    if buyBtn then
-        -- Coba baca harga dari teks tombolnya (misal: "Buy $ 200K" atau "Buy 200,000")
-        local txt = buyBtn.Text:upper()
-        local priceStr = txt:match("%d+") -- Ambil angka pertama
-        if priceStr then
-            -- Bersihin format K (misal 200K jadi 200000)
-            local multiplier = 1
-            if txt:find("K") then multiplier = 1000 end
-            if txt:find("M") then multiplier = 1000000 end
-            
-            local numericPrice = tonumber(priceStr) * multiplier
-            if numericPrice and numericPrice <= State.MaxBuyPrice then
-                return buyBtn
+local function findBailButton()
+    for _, gui in ipairs(PG:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled then
+            for _, obj in ipairs(gui:GetDescendants()) do
+                if (obj:IsA("TextButton") or obj:IsA("ImageButton")) and obj.Visible then
+                    local text = ""
+                    pcall(function() text = obj.Text end)
+                    local ut = text:upper()
+                    
+                    if ut:find("BAIL") or ut:find("PAY") or ut:find("BAYAR") or ut:find("BEBAS") then
+                        return obj
+                    end
+                    
+                    for _, child in ipairs(obj:GetChildren()) do
+                        if child:IsA("TextLabel") and child.Visible then
+                            local ctext = child.Text
+                            local cut = ctext:upper()
+                            if cut:find("BAIL") or cut:find("PAY") or cut:find("BAYAR") then
+                                return obj
+                            end
+                        end
+                    end
+                end
             end
-        else
-            -- Kalau nggak ada angka, anggap aman buat beli
-            return buyBtn
         end
     end
     return nil
 end
 
 --============================================================
--- AUTO REDEEM
+-- AUTO REDEEM & FINDERS (SAMA SEPERTI SEBELUMNYA)
 --============================================================
 local function redeemViaGUI()
     local successCount = 0
     local guiFound = false
-    
     for _, gui in ipairs(PG:GetChildren()) do
         if gui:IsA("ScreenGui") and gui.Enabled then
             for _, obj in ipairs(gui:GetDescendants()) do
@@ -206,7 +214,6 @@ local function redeemViaGUI()
             end
         end
     end
-    
     if not guiFound then
         WindUI:Notify({ Title = "Redeem", Content = "Buka menu Codes di game dulu!" })
     else
@@ -214,9 +221,6 @@ local function redeemViaGUI()
     end
 end
 
---============================================================
--- GUI FINDERS (ROLL & PREDICT)
---============================================================
 local function findRollButton()
     local gameUI = PG:FindFirstChild("GameUI")
     if not gameUI then return nil end
@@ -279,7 +283,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.3.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: MAIN
@@ -308,7 +312,6 @@ do
         Value = { Min = 0.2, Max = 3, Default = 1.0 },
         Callback = function(v) State.RollHoldTime = v end,
     })
-    
     s2:Space()
     s2:Button({
         Title = "⚠️ Force Release (Darurat)",
@@ -349,22 +352,15 @@ local TabEco = Window:Tab({
 do
     local s1 = TabEco:Section({ Title = "Auto Buy Land", Box = true, BoxBorder = true, Opened = true })
     s1:Toggle({
-        Title = "Auto Buy Tanah Kosong",
+        Title = "Auto Buy Tanah (Blind Mode)",
+        Desc = "Langsung beli tanpa cek harga",
         Value = false,
         Callback = function(v) State.AutoBuyLand = v end,
-    })
-    s1:Space()
-    s1:Slider({
-        Title = "Maksimal Harga Beli", Step = 10000,
-        Desc = "Tanah di atas harga ini nggak akan dibeli",
-        Value = { Min = 50000, Max = 5000000, Default = 500000 },
-        Callback = function(v) State.MaxBuyPrice = v end,
     })
     
     local s2 = TabEco:Section({ Title = "Auto Bail (Penjara)", Box = true, BoxBorder = true, Opened = true })
     s2:Toggle({
         Title = "Auto Bayar Bail",
-        Desc = "Otomatis keluar penjara dengan bayar",
         Value = false,
         Callback = function(v) State.AutoBail = v end,
     })
@@ -390,7 +386,6 @@ end
 -- AUTO LOOPS (EKSEKUSI)
 --============================================================
 
--- 1. Anti AFK
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
         task.wait(60)
@@ -403,7 +398,6 @@ task.spawn(function()
     end
 end)
 
--- 2. Auto Play (Lobby)
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
         task.wait(1)
@@ -413,35 +407,35 @@ task.spawn(function()
     end
 end)
 
--- 3. Auto Bail (Prioritas Utama)
+-- 3. Auto Bail
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
         task.wait(1)
         if not State.AutoBail or State.isActionBusy then continue end
         
-        local bailBtn = isJailed()
+        local bailBtn = findBailButton()
         if bailBtn then
             State.isActionBusy = true
             print("[DICE] Masuk Penjara! Mencoba bayar Bail...")
             tapElement(bailBtn)
-            task.wait(2) -- Tunggu animasi bebas
+            task.wait(2)
             State.isActionBusy = false
         end
     end
 end)
 
--- 4. Auto Buy Land (Prioritas Kedua)
+-- 4. Auto Buy Land (BLIND MODE)
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
-        task.wait(1)
+        task.wait(0.5)
         if not State.AutoBuyLand or State.isActionBusy or State.isHolding then continue end
         
-        local buyBtn = getBuyableLand()
+        local buyBtn = findBuyButton()
         if buyBtn then
             State.isActionBusy = true
-            print("[DICE] Tanah Kosong Terdeteksi! Membeli...")
+            print("[DICE] Auto Buy: Tombol beli terdeteksi! Langsung eksekusi.")
             tapElement(buyBtn)
-            task.wait(1.5) -- Tunggu animasi beli
+            task.wait(1.5) -- Jeda animasi
             State.isActionBusy = false
         end
     end
@@ -451,15 +445,12 @@ end)
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
         task.wait(0.5)
-        
-        -- KUNCI UTAMA: Jangan roll kalau lagi nahan, lagi beli, atau lagi di penjara
         if not State.AutoRoll or State.isHolding or State.isActionBusy then continue end
         
         local rollBtn = findRollButton()
         if rollBtn then
-            State.isActionBusy = true -- Kunci aksi lain selama nge-roll
+            State.isActionBusy = true
             
-            -- Predict
             if State.SmartPredict then
                 local predictBtn = findPredictButton(State.PredictTarget)
                 if predictBtn then
@@ -469,26 +460,24 @@ task.spawn(function()
                 end
             end
             
-            -- Roll
             print("[DICE] Nahan ROLL...")
             holdElement(rollBtn, State.RollHoldTime)
             
-            -- Tunggu hasil
             task.wait(3.5)
             forceReleaseSafe(rollBtn)
             
             print("[DICE] Selesai satu putaran.")
-            State.isActionBusy = false -- Buka kunci
+            State.isActionBusy = false
             task.wait(1)
         end
     end
 end)
 
 WindUI:Notify({
-    Title = "Pall Dice v1.3.0",
-    Content = "Smart Economy: Auto Buy & Auto Bail Added!",
+    Title = "Pall Dice v1.4.0",
+    Content = "Auto Buy Blind Mode Active!",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v1.3.0 loaded.")
+print("[PALL-DICE] v1.4.0 loaded.")
