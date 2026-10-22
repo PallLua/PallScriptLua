@@ -1,6 +1,6 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v0.9.0 (Perfect Release)
+    PALL — DICE POLY v1.0.0 (Anti-Nabrak)
     Author  : ENI (for Pall)
     ═══════════════════════════════════════════════════════════
 --]]
@@ -45,7 +45,7 @@ _G.PALL_DICE_RUNNING = true
 local State = {
     AutoRoll = false,
     AutoPlay = false,
-    RollHoldTime = 1.0, -- Waktu tahan tombol sebelum dilepas
+    RollHoldTime = 1.0,
     AntiAFK = true,
     SmartPredict = false,
     PredictTarget = "EVEN"
@@ -56,9 +56,13 @@ local CodesList = {
     "RPRXDICEOPOLY", "5CHEST", "WHENYAH", "250LIKESRESTOCKUGC"
 }
 
+-- Flag internal buat nahan script biar nggak tabrakan
+local isBusy = false 
+
 --============================================================
--- UTILITY (KLIK & HOLD PAKAI MOUSE + GETCONNECTIONS)
+-- UTILITY
 --============================================================
+-- Fungsi TAP (Buat Even/ODD, Play, dll)
 local function tapElement(el)
     if not el or not el.Visible then return false end
     local pos = el.AbsolutePosition
@@ -76,54 +80,50 @@ local function tapElement(el)
     return true
 end
 
+-- Fungsi HOLD (Khusus buat RollButton, pakai GetConnections)
 local function holdElement(el, duration)
     if not el or not el.Visible then return false end
-    local pos = el.AbsolutePosition
-    local size = el.AbsoluteSize
-    local cx = pos.X + (size.X / 2)
-    local cy = pos.Y + (size.Y / 2)
+    local success = false
     
-    -- 1. Pindahin kursor ke tengah tombol
-    pcall(function()
-        VirtualInputManager:SendMouseMoveEvent(cx, cy, game)
-    end)
-    task.wait(0.1)
-    
-    -- 2. TEKAN (HOLD) pakai Mouse Fisik
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
-    end)
-    
-    -- 3. TEKAN (HOLD) pakai GUI Event (Biar yakin)
+    -- Eksekusi pakai event GUI langsung (Paling ampuh untuk game ini)
     pcall(function()
         if getconnections then
-            for _, c in ipairs(getconnections(el.MouseButton1Down)) do c:Fire() end
-        end
-    end)
-    
-    print("[DICE] Menahan tombol selama " .. duration .. " detik...")
-    task.wait(duration)
-    
-    -- 4. LEPAS (RELEASE) pakai Mouse Fisik
-    pcall(function()
-        VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
-    end)
-    
-    -- 5. LEPAS (RELEASE) pakai GUI Event (Biar yakin)
-    pcall(function()
-        if getconnections then
-            -- Kadang game butuh event Up, kadang butuh Click (kalau Up gak ada)
+            local downConns = getconnections(el.MouseButton1Down)
             local upConns = getconnections(el.MouseButton1Up)
-            if #upConns > 0 then
-                for _, c in ipairs(upConns) do c:Fire() end
-            else
-                local clickConns = getconnections(el.MouseButton1Click)
-                for _, c in ipairs(clickConns) do c:Fire() end
+            
+            if #downConns > 0 then
+                -- 1. Tahan
+                for _, c in ipairs(downConns) do c:Fire() end
+                task.wait(duration)
+                
+                -- 2. Lepas
+                if #upConns > 0 then
+                    for _, c in ipairs(upConns) do c:Fire() end
+                else
+                    -- Kalau game pakai sistem Click, bukan Up
+                    local clickConns = getconnections(el.MouseButton1Click)
+                    for _, c in ipairs(clickConns) do c:Fire() end
+                end
+                success = true
             end
         end
     end)
-    
-    print("[DICE] Tombol dilepas!")
+
+    -- Fallback kalau getconnections gagal
+    if not success then
+        local pos = el.AbsolutePosition
+        local size = el.AbsoluteSize
+        local cx = pos.X + (size.X / 2)
+        local cy = pos.Y + (size.Y / 2)
+        
+        pcall(function()
+            VirtualInputManager:SendMouseMoveEvent(cx, cy, game)
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 0)
+            task.wait(duration)
+            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 0)
+        end)
+    end
     return true
 end
 
@@ -236,7 +236,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.9.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: MAIN
@@ -323,26 +323,39 @@ end)
 
 task.spawn(function()
     while _G.PALL_DICE_RUNNING do
-        task.wait(2)
-        if not State.AutoRoll then continue end
+        task.wait(0.5)
         
-        -- Smart Predict Logic
-        if State.SmartPredict then
-            local predictBtn = findPredictButton(State.PredictTarget)
-            if predictBtn then
-                print("[DICE] Smart Predict: Ngeklik " .. State.PredictTarget .. "...")
-                tapElement(predictBtn)
-                task.wait(1) -- Jeda sebelum roll
-            end
-        end
+        -- Cegah tabrakan: Kalau lagi sibuk roll, skip dulu
+        if not State.AutoRoll or isBusy then continue end
         
         local rollBtn = findRollButton()
         if rollBtn then
+            isBusy = true -- Kunci proses
+            
+            -- 1. Tahap Predict
+            if State.SmartPredict then
+                local predictBtn = findPredictButton(State.PredictTarget)
+                if predictBtn then
+                    print("[DICE] Smart Predict: Ngeklik " .. State.PredictTarget .. "...")
+                    tapElement(predictBtn)
+                    -- Kasih waktu 2 detik biar UI game nggak kaget/nabrak
+                    task.wait(2) 
+                end
+            end
+            
+            -- 2. Tahap Roll
+            print("[DICE] Nahan tombol ROLL...")
             holdElement(rollBtn, State.RollHoldTime)
             
-            -- Tunggu dadu berhenti muter (5 detik)
-            print("[DICE] Nunggu dadu berhenti...")
-            task.wait(5) 
+            -- 3. Tunggu dadu berhenti muter (6 detik)
+            print("[DICE] Nunggu hasil dadu...")
+            task.wait(6)
+            
+            print("[DICE] Selesai satu putaran. Siap giliran berikutnya.")
+            isBusy = false -- Buka kunci
+            
+            -- Jeda ekstra sebelum ngecek giliran lagi
+            task.wait(1)
         end
     end
 end)
@@ -360,10 +373,10 @@ task.spawn(function()
 end)
 
 WindUI:Notify({
-    Title = "Pall Dice v0.9.0",
-    Content = "Auto Release Fixed!",
+    Title = "Pall Dice v1.0.0",
+    Content = "Anti-Nabrak System Active!",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v0.9.0 loaded.")
+print("[PALL-DICE] v1.0.0 loaded.")
