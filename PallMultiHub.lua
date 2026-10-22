@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.1.0 — DQR + Fisch
+    Version : v1.2.0 — DQR + Dice Poly (Fisch Removed)
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -17,11 +17,11 @@ local GAMES = {
         Folder = "pallhubv610",
     },
 
-    -- Fisch
-    [131716211654599] = {
-        Name = "Fisch",
-        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallFisch.lua",
-        Folder = "pallfisch",
+    -- Dice Poly
+    [112499281467636] = {
+        Name = "Dice Poly",
+        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDicePoly.lua",
+        Folder = "palldice",
     },
 }
 
@@ -73,7 +73,6 @@ if config then
 
     if not okFetch or not content or content == "" then
         warn("[PALL-MH] Gagal fetch module dari URL.")
-        warn("[PALL-MH] URL: " .. config.URL)
     else
         local fn, err = loadstring(content)
         if not fn then
@@ -92,11 +91,8 @@ else
     print("═══════════════════════════════════════════")
     print("[PALL-MH] Game belum di-support.")
     print("[PALL-MH] PlaceId : " .. currentPlace)
-    print("[PALL-MH] GameId  : " .. currentGameId)
-    print("[PALL-MH] Tambahkan PlaceId di atas ke tabel GAMES.")
-    print("═══════════════════════════════════════════")
-
-    -- Notif munculin info
+    
+    -- Notif UI sederhana
     pcall(function()
         local gui = Instance.new("ScreenGui")
         gui.Name = "PallMH_Notify"
@@ -129,7 +125,7 @@ else
         body.Size = UDim2.new(1, -20, 0, 60)
         body.Position = UDim2.new(0, 10, 0, 40)
         body.BackgroundTransparency = 1
-        body.Text = "Game belum di-support.\nPlaceId: " .. currentPlace .. "\nTambah ke tabel GAMES."
+        body.Text = "Game belum di-support.\nPlaceId: " .. currentPlace
         body.TextColor3 = Color3.fromRGB(200, 200, 210)
         body.TextSize = 12
         body.Font = Enum.Font.Gotham
