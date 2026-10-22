@@ -1,9 +1,11 @@
 --[[
     ═══════════════════════════════════════════════════════════
-    PALL — DICE POLY v0.4.1 (Clean & Fixed)
+    PALL — DICE POLY v0.4.2 (UI Fix)
     Author  : ENI (for Pall)
     ═══════════════════════════════════════════════════════════
 --]]
+
+print("[PALL-DICE] Memulai eksekusi script...")
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -69,13 +71,15 @@ local CodesList = {
 -- UTILITY
 --============================================================
 local char, hrp, hum
-local function refreshChar()
-    char = LP.Character or LP.CharacterAdded:Wait()
-    hrp = char:WaitForChild("HumanoidRootPart", 5)
-    hum = char:WaitForChild("Humanoid", 5)
-end
-refreshChar()
-LP.CharacterAdded:Connect(function() task.wait(0.8) refreshChar() end)
+-- PENTING: Jangan block script, jalanin di background
+task.spawn(function()
+    while _G.PALL_DICE_RUNNING do
+        char = LP.Character or LP.CharacterAdded:Wait()
+        hrp = char:WaitForChild("HumanoidRootPart", 5)
+        hum = char:WaitForChild("Humanoid", 5)
+        task.wait(2) -- Update terus kalau mati/respawn
+    end
+end)
 
 local function tapAt(x, y)
     pcall(function()
@@ -169,106 +173,9 @@ local function findPlayButton()
 end
 
 --============================================================
--- AUTO LOOPS
+-- WINDOW UI (DIJALANKAN PALING ATAS)
 --============================================================
-task.spawn(function()
-    while _G.PALL_DICE_RUNNING do
-        task.wait(1)
-        if not State.AutoPlay then continue end
-        local btn = findPlayButton()
-        if btn then
-            tapAt(btn.AbsolutePosition.X + btn.AbsoluteSize.X/2, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y/2)
-        end
-    end
-end)
-
-task.spawn(function()
-    while _G.PALL_DICE_RUNNING do
-        task.wait(1)
-        if not State.AutoRoll then continue end
-        local rollBtn = findRollButton()
-        if rollBtn then
-            holdElement(rollBtn, State.RollHoldTime)
-            task.wait(2)
-        end
-    end
-end)
-
-task.spawn(function()
-    while _G.PALL_DICE_RUNNING do
-        task.wait(60)
-        if State.AntiAFK then
-            pcall(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new())
-            end)
-        end
-    end
-end)
-
-task.spawn(function()
-    local prev = false
-    while _G.PALL_DICE_RUNNING do
-        task.wait(0.5)
-        if not hum then continue end
-        if State.SpeedBoost and not prev then
-            hum.WalkSpeed = 32; prev = true
-        elseif not State.SpeedBoost and prev then
-            hum.WalkSpeed = 16; prev = false
-        end
-    end
-end)
-
-local flyConn
-local function updateFly()
-    if flyConn then flyConn:Disconnect(); flyConn = nil end
-    if not State.Fly then
-        if hum then pcall(function() hum.PlatformStand = false end) end
-        return
-    end
-    if hum then pcall(function() hum.PlatformStand = true end) end
-    
-    flyConn = RunService.RenderStepped:Connect(function()
-        if not State.Fly then
-            if hum then pcall(function() hum.PlatformStand = false end) end
-            if flyConn then flyConn:Disconnect(); flyConn = nil end
-            return
-        end
-        if not hrp then return end
-        
-        local cf = Workspace.CurrentCamera.CFrame
-        local move = Vector3.new(0, 0, 0)
-        local spd = State.FlySpeed
-        
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cf.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0,1,0) end
-        
-        if move.Magnitude > 0.01 then move = move.Unit * spd end
-        pcall(function()
-            hrp.Velocity = move
-            hrp.AssemblyLinearVelocity = move
-        end)
-    end)
-end
-
-task.spawn(function()
-    local prev = false
-    while _G.PALL_DICE_RUNNING do
-        task.wait(0.2)
-        if State.Fly ~= prev then
-            prev = State.Fly
-            updateFly()
-        end
-    end
-end)
-
---============================================================
--- WINDOW UI
---============================================================
+print("[PALL-DICE] Membuat Window UI...")
 local Window = WindUI:CreateWindow({
     Title = "Pall x Dice Poly",
     Folder = "palldice",
@@ -287,7 +194,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v0.4.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v0.4.2", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: MAIN
@@ -372,13 +279,101 @@ do
 end
 
 --============================================================
+-- AUTO LOOPS (BACKGROUND)
+--============================================================
+task.spawn(function()
+    while _G.PALL_DICE_RUNNING do
+        task.wait(1)
+        if not State.AutoPlay then continue end
+        local btn = findPlayButton()
+        if btn then
+            tapAt(btn.AbsolutePosition.X + btn.AbsoluteSize.X/2, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y/2)
+        end
+    end
+end)
+
+task.spawn(function()
+    while _G.PALL_DICE_RUNNING do
+        task.wait(1)
+        if not State.AutoRoll then continue end
+        local rollBtn = findRollButton()
+        if rollBtn then
+            holdElement(rollBtn, State.RollHoldTime)
+            task.wait(2)
+        end
+    end
+end)
+
+task.spawn(function()
+    while _G.PALL_DICE_RUNNING do
+        task.wait(60)
+        if State.AntiAFK then
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    end
+end)
+
+task.spawn(function()
+    local prev = false
+    while _G.PALL_DICE_RUNNING do
+        task.wait(0.5)
+        if not hum then continue end
+        if State.SpeedBoost and not prev then
+            hum.WalkSpeed = 32; prev = true
+        elseif not State.SpeedBoost and prev then
+            hum.WalkSpeed = 16; prev = false
+        end
+    end
+end)
+
+local flyConn
+task.spawn(function()
+    local prev = false
+    while _G.PALL_DICE_RUNNING do
+        task.wait(0.2)
+        if State.Fly ~= prev then
+            prev = State.Fly
+            if flyConn then flyConn:Disconnect(); flyConn = nil end
+            
+            if not State.Fly then
+                if hum then pcall(function() hum.PlatformStand = false end) end
+            else
+                if hum then pcall(function() hum.PlatformStand = true end) end
+                flyConn = RunService.RenderStepped:Connect(function()
+                    if not State.Fly or not hrp then return end
+                    local cf = Workspace.CurrentCamera.CFrame
+                    local move = Vector3.new(0, 0, 0)
+                    local spd = State.FlySpeed
+                    
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + cf.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - cf.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - cf.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cf.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Q) then move = move - Vector3.new(0,1,0) end
+                    
+                    if move.Magnitude > 0.01 then move = move.Unit * spd end
+                    pcall(function()
+                        hrp.Velocity = move
+                        hrp.AssemblyLinearVelocity = move
+                    end)
+                end)
+            end
+        end
+    end
+end)
+
+--============================================================
 -- NOTIF
 --============================================================
 WindUI:Notify({
-    Title = "Pall Dice v0.4.1",
-    Content = "Script Fixed! Cek tab Codes.",
+    Title = "Pall Dice v0.4.2",
+    Content = "UI berhasil dimuat! Cek tab Codes.",
     Icon = "solar:bell-bold",
     Duration = 6,
 })
 
-print("[PALL-DICE] v0.4.1 loaded perfectly.")
+print("[PALL-DICE] v0.4.2 loaded perfectly.")
