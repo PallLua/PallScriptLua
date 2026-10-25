@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL — UNIVERSAL COMBAT (ESP + Aimbot + Silent Aim)
     Author  : ENI (for Pall)
-    Notes   : Delta Android compatible. Gunakan dengan bijak.
+    Version : v1.0.1 (Auto-Clean ESP)
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -56,10 +56,10 @@ local State = {
     
     -- Aimbot
     AimbotEnabled = false,
-    AimbotFOV = 150, -- Radius layar
+    AimbotFOV = 150,
     AimbotSmooth = 0.15,
     AimbotTargetPart = "Head",
-    AimbotType = "Camera", -- Camera / Mouse
+    AimbotType = "Camera",
     
     -- Silent Aim
     SilentAimEnabled = false,
@@ -71,7 +71,7 @@ local State = {
 }
 
 --============================================================
--- ESP DRAWING (Pakai Drawing API Delta, ringan & mulus)
+-- ESP DRAWING & AUTO-CLEANUP
 --============================================================
 local Drawings = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 
@@ -90,6 +90,16 @@ local function isAlly(plr)
     return false
 end
 
+-- Fungsi buat hapus ESP satu player (kalau mati/keluar)
+local function removePlayerESP(plr)
+    for _, t in pairs(Drawings) do
+        if t[plr] then
+            pcall(function() t[plr]:Remove() end)
+            t[plr] = nil
+        end
+    end
+end
+
 local function drawESP()
     if not State.ESPEnabled then
         clearDrawings()
@@ -99,17 +109,41 @@ local function drawESP()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
+    -- ========================================================
+    -- CLEANUP: Hapus ESP musuh yang udah mati atau keluar game
+    -- ========================================================
+    for plr, _ in pairs(Drawings.Boxes) do
+        local hasLeft = not plr.Parent
+        local isDead = false
+        
+        if not hasLeft then
+            local char = plr.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            if not char or not hum or hum.Health <= 0 then
+                isDead = true
+            end
+        end
+        
+        if hasLeft or isDead then
+            removePlayerESP(plr)
+        end
+    end
+
+    -- ========================================================
+    -- LOOP: Gambar ESP untuk musuh yang masih hidup
+    -- ========================================================
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LP and plr.Character and not isAlly(plr) then
             local char = plr.Character
             local root = char:FindFirstChild("HumanoidRootPart")
             local hum = char:FindFirstChild("Humanoid")
             
+            -- Cek kalau musuh masih hidup & valid
             if root and hum and hum.Health > 0 then
                 local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
                 
                 if onScreen then
-                    local distance = (LP.Character.HumanoidRootPart.Position - root.Position).Magnitude
+                    local distance = (hrp.Position - root.Position).Magnitude
                     local sizeY = math.clamp(1000 / screenPos.Z, 20, 100)
                     local sizeX = sizeY / 2
 
@@ -185,7 +219,7 @@ local function drawESP()
                         tracer.Visible = true
                     end
                 else
-                    -- Sembunyiin kalau di luar layar
+                    -- Sembunyiin kalau di luar layar (tapi jangan dihapus dulu)
                     for _, t in pairs(Drawings) do
                         if t[plr] then t[plr].Visible = false end
                     end
@@ -225,10 +259,8 @@ local function getClosestTarget(fovRadius)
 end
 
 RunService.RenderStepped:Connect(function()
-    -- Jalanin ESP
     drawESP()
 
-    -- Aimbot Logic
     if State.AimbotEnabled then
         local target = getClosestTarget(State.AimbotFOV)
         State.CurrentTarget = target
@@ -259,7 +291,6 @@ mt.__namecall = newcclosure(function(self, ...)
         local remoteName = self.Name:lower()
         local isCombatRemote = false
         
-        -- Cek apakah nama remote ada di filter
         for kw in string.gmatch(State.SilentAimFilter, "[^,]+") do
             if remoteName:find(kw:match("^%s*(.-)%s*$")) then
                 isCombatRemote = true
@@ -272,7 +303,6 @@ mt.__namecall = newcclosure(function(self, ...)
             if target and target.Character then
                 local targetPart = target.Character:FindFirstChild(State.AimbotTargetPart) or target.Character:FindFirstChild("HumanoidRootPart")
                 
-                -- Loop argumen yang dikirim, kalau ada CFrame atau Instance lawan, ganti ke target
                 for i, v in pairs(args) do
                     if typeof(v) == "CFrame" and targetPart then
                         args[i] = targetPart.CFrame
@@ -308,7 +338,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.0.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.0.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 --============================================================
 -- TAB: ESP
@@ -353,5 +383,5 @@ do
     s2:Input({ Title = "Remote Filter (koma)", Value = "shoot,fire,attack,hit,damage,click", Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Universal Combat", Content = "ESP & Aimbot Loaded!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.0.0 loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.0.1", Content = "Auto-Clean ESP Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-UNIV] v1.0.1 loaded.")
