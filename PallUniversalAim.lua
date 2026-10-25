@@ -1,9 +1,8 @@
 --[[
 	PALL — UNIVERSAL COMBAT
-	Version : v1.4.0 (MM2-Compat Silent Aim + Crash Fixes)
+	Version : v1.5.0 (MM2-Style Silent Aim: Raycast + Arg Rewrite)
 --]]
 
--- Detach previous run.
 if _G.PallCombat and _G.PallCombat.Cleanup then
 	pcall(_G.PallCombat.Cleanup)
 end
@@ -12,7 +11,6 @@ end
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
 local workspaceService = game:GetService("Workspace")
-
 local localPlayer = playersService.LocalPlayer
 
 -- Load WindUI.
@@ -52,12 +50,28 @@ local State = {
 	AimbotShowFOV = true,
 
 	SilentAimEnabled = false,
-	SilentAimFOV = 200,
+	SilentAimFOV = 250,
 	SilentAimShowFOV = true,
-	SilentAimMode = "Mouse Hijack",
+	SilentAimMode = "Combined (Recommended)",
+	SilentAimFilter = "shoot,fire,attack,hit,damage,click,sword,slash,swing,throw,knife,tool",
 
 	VisiblePlayers = {},
 }
+
+local SILENT_MODES = {
+	"Combined (Recommended)",
+	"Raycast Only",
+	"Arg Rewrite Only",
+	"Mouse Hijack",
+	"Character Aim",
+}
+
+local function modeActive(...)
+	for _, m in ipairs({ ... }) do
+		if State.SilentAimMode == m then return true end
+	end
+	return false
+end
 
 -- FOV circles.
 local fovCircle = Drawing.new("Circle")
@@ -74,7 +88,7 @@ silentFovCircle.Filled = false
 silentFovCircle.Transparency = 1
 silentFovCircle.Visible = false
 
--- Draw buckets, never reassigned.
+-- Draw buckets (never reassigned).
 local drawBuckets = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 
 local function removePlayerDrawings(plr)
@@ -268,73 +282,219 @@ local function renderESP()
 	end
 end
 
--- Camera aim: safe lerp with optional prediction.
-local function applyCameraAim(target)
-	local camera = workspaceService.CurrentCamera
-	if not camera then return end
-	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-	if not part then return end
-	local targetPos = predictPosition(part, State.AimbotPrediction)
-	local delta = targetPos - camera.CFrame.Position
-	if delta.Magnitude < 0.05 then return end
-	pcall(function()
-		local goal = CFrame.lookAt(camera.CFrame.Position, targetPos)
-		camera.CFrame = camera.CFrame:Lerp(goal, math.clamp(State.AimbotSmooth, 0.01, 1))
-	end)
+-- Get current silent target in FOV.
+local function getSilentTarget()
+	if not State.SilentAimEnabled then return nil end
+	return pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
 end
 
--- Silent Aim - Mouse Hijack (primary, MM2-compatible).
-local mouse = localPlayer:GetMouse()
-local mouseHookInstalled = false
+-- Get the target's aim part with prediction applied.
+local function getTargetAimPoint(target)
+	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
+	if not part then return nil, nil end
+	return part, predictPosition(part, State.AimbotPrediction)
+end
 
-local function installMouseSilentAim()
-	if mouseHookInstalled then return end
-	local ok, err = pcall(function()
-		hookmetamethod(mouse, "__index", function(self, key)
-			if State.SilentAimEnabled and State.SilentAimMode == "Mouse Hijack" then
-				local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
-				if target then
-					local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-					if part then
-						if key == "Hit" then
-							return CFrame.new(part.Position)
-						elseif key == "Target" then
-							return part
+-- Raycast hook: extend/redirect client hit-detection ray to target.
+local raycastHooked = false
+do
+	local ok = pcall(function()
+		local oldRaycast = hookfunction(workspaceService.Raycast, newcclosure(function(self, origin, direction, params, ...)
+			if not State.SilentAimEnabled or not modeActive("Combined (Recommended)", "Raycast Only") then
+				return oldRaycast(self, origin, direction, params, ...)
+			end
+			if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then
+				return oldRaycast(self, origin, direction, params, ...)
+			end
+
+			-- Run original first.
+			local originalResult = oldRaycast(self, origin, direction, params, ...)
+
+			-- Bail if no target.
+			local target = getSilentTarget()
+			if not target then
+				return originalResult
+			end
+			local aimPart, aimPos = getTargetAimPoint(target)
+			if not aimPart or not aimPos then
+				return originalResult
+			end
+
+			-- If original already hit the target, pass through.
+			if originalResult and originalResult.Instance and originalResult.Instance:IsDescendantOf(target.character) then
+				return originalResult
+			end
+
+			-- Redirect ray at target (extend range so it can reach at distance).
+			local toTarget = aimPos - origin
+			local distToTarget = toTarget.Magnitude
+			if distToTarget < 0.1 then
+				return originalResult
+			end
+			local extendedLength = math.max(direction.Magnitude, distToTarget + 10)
+			local newDir = toTarget.Unit * extendedLength
+			local newResult = oldRaycast(self, origin, newDir, params, ...)
+			return newResult or originalResult
+		end))
+		raycastHooked = oldRaycast ~= nil
+	end)
+	if not ok then
+		warn("[PALL-UNIV] Raycast hook gagal.")
+	end
+end
+
+-- Namecall hook: rewrite FireServer/InvokeServer args to target.
+local namecallHooked = false
+do
+	local ok = pcall(function()
+		local oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+			if not State.SilentAimEnabled or not modeActive("Combined (Recommended)", "Arg Rewrite Only") then
+				return oldNamecall(self, ...)
+			end
+			local method = getnamecallmethod()
+			if method ~= "FireServer" and method ~= "InvokeServer" then
+				return oldNamecall(self, ...)
+			end
+			if typeof(self) ~= "Instance" then
+				return oldNamecall(self, ...)
+			end
+			local okName, remoteName = pcall(function() return self.Name:lower() end)
+			if not okName or not remoteName then
+				return oldNamecall(self, ...)
+			end
+			local matched = false
+			for kw in State.SilentAimFilter:gmatch("[^,]+") do
+				local trimmed = kw:match("^%s*(.-)%s*$")
+				if trimmed ~= "" and remoteName:find(trimmed, 1, true) then
+					matched = true
+					break
+				end
+			end
+			if not matched then
+				return oldNamecall(self, ...)
+			end
+
+			local target = getSilentTarget()
+			if not target then
+				return oldNamecall(self, ...)
+			end
+			local aimPart, aimPos = getTargetAimPoint(target)
+			if not aimPart then
+				return oldNamecall(self, ...)
+			end
+
+			local args = { ... }
+			local changed = false
+			for i, v in ipairs(args) do
+				local vType = typeof(v)
+				if vType == "CFrame" then
+					args[i] = CFrame.new(aimPos)
+					changed = true
+				elseif vType == "Vector3" then
+					args[i] = aimPos
+					changed = true
+				elseif vType == "Instance" then
+					if v:IsA("Player") and v ~= localPlayer then
+						args[i] = target.player
+						changed = true
+					elseif v:IsA("Model") and v:FindFirstChild("Humanoid") then
+						args[i] = target.character
+						changed = true
+					elseif v:IsA("BasePart") then
+						local sameName = target.character:FindFirstChild(v.Name)
+						if sameName and sameName:IsA("BasePart") then
+							args[i] = sameName
+							changed = true
+						end
+					end
+				elseif vType == "table" then
+					for k, inner in pairs(v) do
+						local iType = typeof(inner)
+						if iType == "Vector3" then
+							v[k] = aimPos
+							changed = true
+						elseif iType == "CFrame" then
+							v[k] = CFrame.new(aimPos)
+							changed = true
 						end
 					end
 				end
 			end
-			return getrawmetatable(mouse).__index(self, key)
-		end)
+			if not changed then
+				return oldNamecall(self, ...)
+			end
+			return oldNamecall(self, table.unpack(args))
+		end))
+		namecallHooked = oldNamecall ~= nil
 	end)
-	if ok then
-		mouseHookInstalled = true
-	else
-		warn("[PALL-UNIV] Mouse hijack gagal:", tostring(err))
+	if not ok then
+		warn("[PALL-UNIV] Namecall hook gagal.")
 	end
 end
 
--- Silent Aim - Character Aim (fallback, aggressive).
+-- Mouse hijack (fallback).
+local mouse = localPlayer:GetMouse()
+local mouseHijackHooked = false
+do
+	local ok = pcall(function()
+		local oldIndex
+		oldIndex = hookmetamethod(mouse, "__index", newcclosure(function(self, key)
+			if State.SilentAimEnabled and modeActive("Mouse Hijack") then
+				local target = getSilentTarget()
+				if target then
+					local aimPart, aimPos = getTargetAimPoint(target)
+					if aimPart then
+						if key == "Hit" then
+							return CFrame.new(aimPos)
+						elseif key == "Target" then
+							return aimPart
+						end
+					end
+				end
+			end
+			return oldIndex(self, key)
+		end))
+		mouseHijackHooked = oldIndex ~= nil
+	end)
+	if not ok then
+		warn("[PALL-UNIV] Mouse hijack gagal.")
+	end
+end
+
+-- Camera aim.
+local function applyCameraAim(target)
+	local camera = workspaceService.CurrentCamera
+	if not camera then return end
+	local aimPart, aimPos = getTargetAimPoint(target)
+	if not aimPart then return end
+	local delta = aimPos - camera.CFrame.Position
+	if delta.Magnitude < 0.05 then return end
+	pcall(function()
+		local goal = CFrame.lookAt(camera.CFrame.Position, aimPos)
+		camera.CFrame = camera.CFrame:Lerp(goal, math.clamp(State.AimbotSmooth, 0.01, 1))
+	end)
+end
+
+-- Character aim (fallback silent aim).
 local function applyCharacterAim()
-	if not (State.SilentAimEnabled and State.SilentAimMode == "Character Aim") then
+	if not (State.SilentAimEnabled and modeActive("Character Aim")) then
 		return
 	end
-	local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
+	local target = getSilentTarget()
 	if not target then return end
 	local char = localPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
-	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-	if not part then return end
-	local oldCF = hrp.CFrame
-	local lookTarget = Vector3.new(part.Position.X, oldCF.Position.Y, part.Position.Z)
-	if (lookTarget - oldCF.Position).Magnitude < 0.1 then return end
+	local aimPart, aimPos = getTargetAimPoint(target)
+	if not aimPart then return end
+	local flatTarget = Vector3.new(aimPos.X, hrp.Position.Y, aimPos.Z)
+	if (flatTarget - hrp.Position).Magnitude < 0.1 then return end
 	pcall(function()
-		hrp.CFrame = CFrame.lookAt(oldCF.Position, lookTarget)
+		hrp.CFrame = CFrame.lookAt(hrp.Position, flatTarget)
 	end)
 end
 
--- Render loop (pcall-guarded).
+-- Render loop.
 local renderConn = runService.RenderStepped:Connect(function()
 	local ok, err = pcall(function()
 		local camera = workspaceService.CurrentCamera
@@ -412,7 +572,7 @@ local Window = WindUI:CreateWindow({
 	},
 	Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.5.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
 do
@@ -452,12 +612,14 @@ do
 	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
 	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
 	s2:Space()
-	s2:Dropdown({ Title = "Mode", Values = { "Mouse Hijack", "Character Aim" }, Value = "Mouse Hijack", Callback = function(v) State.SilentAimMode = v end })
+	s2:Dropdown({ Title = "Mode", Values = SILENT_MODES, Value = "Combined (Recommended)", Callback = function(v) State.SilentAimMode = v end })
 	s2:Space()
-	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 200 }, Callback = function(v) State.SilentAimFOV = v end })
+	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 250 }, Callback = function(v) State.SilentAimFOV = v end })
 	s2:Space()
 	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
+	s2:Space()
+	s2:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.4.0", Content = "MM2-Compat + Crash Fixes", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.4.0 loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.5.0", Content = "Raycast + Arg Rewrite Silent Aim", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-UNIV] v1.5.0 loaded. Raycast:", raycastHooked, "Namecall:", namecallHooked, "Mouse:", mouseHijackHooked)
