@@ -1,9 +1,9 @@
 --[[
-	PALL — UNIVERSAL COMBAT (ESP + Aimbot + Silent Aim)
-	Version : v1.3.0 (Shared-Visibility + Anti-Force-Close)
+	PALL — UNIVERSAL COMBAT
+	Version : v1.4.0 (MM2-Compat Silent Aim + Crash Fixes)
 --]]
 
--- Detach instance lama kalau re-execute.
+-- Detach previous run.
 if _G.PallCombat and _G.PallCombat.Cleanup then
 	pcall(_G.PallCombat.Cleanup)
 end
@@ -11,7 +11,6 @@ end
 -- Services.
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
-local userInputService = game:GetService("UserInputService")
 local workspaceService = game:GetService("Workspace")
 
 local localPlayer = playersService.LocalPlayer
@@ -23,7 +22,7 @@ if not WindUI then
 		return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 	end)
 	if not ok then
-		return warn("[PALL-UNIV] Gagal load WindUI.")
+		return warn("[PALL-UNIV] Gagal load WindUI:", tostring(result))
 	end
 	WindUI = _G.PallWindUI or result
 end
@@ -49,112 +48,80 @@ local State = {
 	AimbotFOV = 150,
 	AimbotSmooth = 0.15,
 	AimbotTargetPart = "Head",
+	AimbotPrediction = 0,
 	AimbotShowFOV = true,
 
 	SilentAimEnabled = false,
 	SilentAimFOV = 200,
 	SilentAimShowFOV = true,
-	SilentAimFilter = "shoot,fire,attack,hit,damage,click",
+	SilentAimMode = "Mouse Hijack",
 
 	VisiblePlayers = {},
-	CurrentTarget = nil,
-	CurrentSilentTarget = nil,
 }
 
--- Drawing containers.
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Color = WHITE
-FOVCircle.Filled = false
-FOVCircle.Transparency = 1
-FOVCircle.Visible = false
+-- FOV circles.
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1
+fovCircle.Color = WHITE
+fovCircle.Filled = false
+fovCircle.Transparency = 1
+fovCircle.Visible = false
 
-local SilentFOVCircle = Drawing.new("Circle")
-SilentFOVCircle.Thickness = 1
-SilentFOVCircle.Color = YELLOW
-SilentFOVCircle.Filled = false
-SilentFOVCircle.Transparency = 1
-SilentFOVCircle.Visible = false
+local silentFovCircle = Drawing.new("Circle")
+silentFovCircle.Thickness = 1
+silentFovCircle.Color = YELLOW
+silentFovCircle.Filled = false
+silentFovCircle.Transparency = 1
+silentFovCircle.Visible = false
 
--- Per-category drawing storage. NEVER reassign this table.
-local drawBuckets = {
-	Boxes = {},
-	Names = {},
-	Healths = {},
-	Distances = {},
-	Tracers = {},
-}
+-- Draw buckets, never reassigned.
+local drawBuckets = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 
----Remove a single player's drawing entries across every bucket.
----@param plr Player
 local function removePlayerDrawings(plr)
 	for _, bucket in pairs(drawBuckets) do
 		local obj = bucket[plr]
 		if obj then
-			pcall(function()
-				obj:Remove()
-			end)
+			pcall(function() obj:Remove() end)
 			bucket[plr] = nil
 		end
 	end
 end
 
----Clear every drawing, destroying the objects but keeping the bucket tables alive.
 local function clearAllDrawings()
 	for _, bucket in pairs(drawBuckets) do
 		for key, obj in pairs(bucket) do
-			pcall(function()
-				obj:Remove()
-			end)
+			pcall(function() obj:Remove() end)
 			bucket[key] = nil
 		end
 	end
 end
 
----Lazy-create a drawing object for a player in the given bucket.
----@param bucket table
----@param plr Player
----@param drawType string
----@param configure function
 local function ensureDrawing(bucket, plr, drawType, configure)
-	if bucket[plr] then
-		return bucket[plr]
-	end
+	if bucket[plr] then return bucket[plr] end
 	local ok, obj = pcall(Drawing.new, drawType)
-	if not ok or not obj then
-		return nil
-	end
+	if not ok or not obj then return nil end
 	configure(obj)
 	bucket[plr] = obj
 	return obj
 end
 
----Whether plr should be excluded by the team check.
----@param plr Player
 local function isAlly(plr)
-	if not State.ESPTeamCheck then
-		return false
-	end
-	if plr.Team and localPlayer.Team and plr.Team == localPlayer.Team then
-		return true
-	end
+	if not State.ESPTeamCheck then return false end
+	if plr.Team and localPlayer.Team and plr.Team == localPlayer.Team then return true end
 	return false
 end
 
----Build the per-frame visibility list used by ESP, Aimbot, and Silent Aim.
 local function computeVisiblePlayers()
 	local result = {}
 	local camera = workspaceService.CurrentCamera
+	if not camera then return result end
 	local char = localPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not (camera and hrp) then
-		return result
-	end
+	if not hrp then return result end
 
 	local viewport = camera.ViewportSize
 	local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
 	local myPos = hrp.Position
-	local maxDist = State.ESPMaxDistance
 
 	for _, plr in ipairs(playersService:GetPlayers()) do
 		if plr ~= localPlayer and not isAlly(plr) then
@@ -164,9 +131,8 @@ local function computeVisiblePlayers()
 				local hum = targetChar:FindFirstChild("Humanoid")
 				if root and hum and hum.Health > 0 then
 					local distance = (myPos - root.Position).Magnitude
-					if distance <= maxDist then
+					if distance <= State.ESPMaxDistance then
 						local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
-						-- Z > 0 ensures the target is in front of the camera, not mirrored behind.
 						if onScreen and screenPos.Z > 0 then
 							local screenVec = Vector2.new(screenPos.X, screenPos.Y)
 							table.insert(result, {
@@ -185,13 +151,9 @@ local function computeVisiblePlayers()
 			end
 		end
 	end
-
 	return result
 end
 
----Pick the entry with the smallest center distance within fovRadius.
----@param list table
----@param fovRadius number
 local function pickClosestInFov(list, fovRadius)
 	local closest, best = nil, fovRadius
 	for _, entry in ipairs(list) do
@@ -203,20 +165,23 @@ local function pickClosestInFov(list, fovRadius)
 	return closest
 end
 
----Render ESP from the visible list (already filtered).
+local function predictPosition(part, predictionTime)
+	if predictionTime <= 0 then return part.Position end
+	local ok, velocity = pcall(function() return part.AssemblyLinearVelocity end)
+	if not ok or not velocity then return part.Position end
+	return part.Position + velocity * predictionTime
+end
+
 local function renderESP()
 	if not State.ESPEnabled then
 		clearAllDrawings()
 		return
 	end
-
 	local camera = workspaceService.CurrentCamera
 	if not camera then
 		clearAllDrawings()
 		return
 	end
-
-	-- Track which players currently have a rendered entry this frame.
 	local rendered = {}
 	for _, entry in ipairs(State.VisiblePlayers) do
 		rendered[entry.player] = true
@@ -224,11 +189,9 @@ local function renderESP()
 		local screenPos = entry.screenPos
 		local distance = entry.distance
 		local hum = entry.humanoid
-
 		local sizeY = math.clamp(1000 / screenPos.Z, 20, 100)
 		local sizeX = sizeY / 2
 
-		-- Box.
 		if State.ESPBox then
 			local box = ensureDrawing(drawBuckets.Boxes, plr, "Square", function(o)
 				o.Thickness = 1
@@ -242,7 +205,6 @@ local function renderESP()
 			end
 		end
 
-		-- Name.
 		if State.ESPName then
 			local name = ensureDrawing(drawBuckets.Names, plr, "Text", function(o)
 				o.Size = 16
@@ -257,7 +219,6 @@ local function renderESP()
 			end
 		end
 
-		-- Health.
 		if State.ESPHealth then
 			local hp = ensureDrawing(drawBuckets.Healths, plr, "Text", function(o)
 				o.Size = 14
@@ -272,7 +233,6 @@ local function renderESP()
 			end
 		end
 
-		-- Distance.
 		if State.ESPDistance then
 			local dist = ensureDrawing(drawBuckets.Distances, plr, "Text", function(o)
 				o.Size = 12
@@ -287,7 +247,6 @@ local function renderESP()
 			end
 		end
 
-		-- Tracer.
 		if State.ESPTracer then
 			local tracer = ensureDrawing(drawBuckets.Tracers, plr, "Line", function(o)
 				o.Thickness = 1
@@ -300,161 +259,140 @@ local function renderESP()
 			end
 		end
 	end
-
-	-- Hide anything rendered last frame but no longer visible this frame.
 	for _, bucket in pairs(drawBuckets) do
 		for plr, obj in pairs(bucket) do
 			if not rendered[plr] then
-				pcall(function()
-					obj.Visible = false
-				end)
+				pcall(function() obj.Visible = false end)
 			end
 		end
 	end
 end
 
--- Reusable filter check for silent aim remotes.
-local function shouldSilentAim(remoteName)
-	local lowered = remoteName:lower()
-	for kw in State.SilentAimFilter:gmatch("[^,]+") do
-		local trimmed = kw:match("^%s*(.-)%s*$")
-		if trimmed ~= "" and lowered:find(trimmed, 1, true) then
-			return true
-		end
-	end
-	return false
-end
-
--- Silently rewrite positional args to target CFrame / position / character.
-local function rewriteArgsToTarget(args, targetCharacter, targetPart)
-	for i, v in pairs(args) do
-		local valueType = typeof(v)
-		if valueType == "CFrame" and targetPart then
-			args[i] = targetPart.CFrame
-		elseif valueType == "Vector3" and targetPart then
-			args[i] = targetPart.Position
-		elseif valueType == "Instance" and v:IsA("Model") and v:FindFirstChild("Humanoid") then
-			args[i] = targetCharacter
-		end
-	end
-end
-
--- Install silent aim namecall hook.
-local rawMeta = getrawmetatable(game)
-local oldNamecall = rawMeta.__namecall
-setreadonly(rawMeta, false)
-
-rawMeta.__namecall = newcclosure(function(self, ...)
-	local method = getnamecallmethod()
-	if State.SilentAimEnabled and (method == "FireServer" or method == "InvokeServer") then
-		local ok, isCombat = pcall(shouldSilentAim, self.Name)
-		if ok and isCombat then
-			local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
-			if target then
-				local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-				local args = { ... }
-				rewriteArgsToTarget(args, target.character, part)
-				return oldNamecall(self, table.unpack(args))
-			end
-		end
-	end
-	return oldNamecall(self, ...)
-end)
-
-setreadonly(rawMeta, true)
-
--- Render loop: single source of truth per frame.
-local renderConn = runService.RenderStepped:Connect(function()
+-- Camera aim: safe lerp with optional prediction.
+local function applyCameraAim(target)
 	local camera = workspaceService.CurrentCamera
-	if not camera then
+	if not camera then return end
+	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
+	if not part then return end
+	local targetPos = predictPosition(part, State.AimbotPrediction)
+	local delta = targetPos - camera.CFrame.Position
+	if delta.Magnitude < 0.05 then return end
+	pcall(function()
+		local goal = CFrame.lookAt(camera.CFrame.Position, targetPos)
+		camera.CFrame = camera.CFrame:Lerp(goal, math.clamp(State.AimbotSmooth, 0.01, 1))
+	end)
+end
+
+-- Silent Aim - Mouse Hijack (primary, MM2-compatible).
+local mouse = localPlayer:GetMouse()
+local mouseHookInstalled = false
+
+local function installMouseSilentAim()
+	if mouseHookInstalled then return end
+	local ok, err = pcall(function()
+		hookmetamethod(mouse, "__index", function(self, key)
+			if State.SilentAimEnabled and State.SilentAimMode == "Mouse Hijack" then
+				local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
+				if target then
+					local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
+					if part then
+						if key == "Hit" then
+							return CFrame.new(part.Position)
+						elseif key == "Target" then
+							return part
+						end
+					end
+				end
+			end
+			return getrawmetatable(mouse).__index(self, key)
+		end)
+	end)
+	if ok then
+		mouseHookInstalled = true
+	else
+		warn("[PALL-UNIV] Mouse hijack gagal:", tostring(err))
+	end
+end
+
+-- Silent Aim - Character Aim (fallback, aggressive).
+local function applyCharacterAim()
+	if not (State.SilentAimEnabled and State.SilentAimMode == "Character Aim") then
 		return
 	end
+	local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
+	if not target then return end
+	local char = localPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
+	if not part then return end
+	local oldCF = hrp.CFrame
+	local lookTarget = Vector3.new(part.Position.X, oldCF.Position.Y, part.Position.Z)
+	if (lookTarget - oldCF.Position).Magnitude < 0.1 then return end
+	pcall(function()
+		hrp.CFrame = CFrame.lookAt(oldCF.Position, lookTarget)
+	end)
+end
 
-	-- Refresh visible list once per frame.
-	State.VisiblePlayers = computeVisiblePlayers()
+-- Render loop (pcall-guarded).
+local renderConn = runService.RenderStepped:Connect(function()
+	local ok, err = pcall(function()
+		local camera = workspaceService.CurrentCamera
+		if not camera then return end
 
-	-- ESP render.
-	renderESP()
+		State.VisiblePlayers = computeVisiblePlayers()
+		renderESP()
 
-	-- FOV circles.
-	local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+		local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
-	if State.AimbotShowFOV and State.AimbotEnabled then
-		FOVCircle.Position = center
-		FOVCircle.Radius = State.AimbotFOV
-		FOVCircle.Visible = true
-	else
-		FOVCircle.Visible = false
-	end
+		if State.AimbotShowFOV and State.AimbotEnabled then
+			fovCircle.Position = center
+			fovCircle.Radius = State.AimbotFOV
+			fovCircle.Visible = true
+		else
+			fovCircle.Visible = false
+		end
 
-	if State.SilentAimShowFOV and State.SilentAimEnabled then
-		SilentFOVCircle.Position = center
-		SilentFOVCircle.Radius = State.SilentAimFOV
-		SilentFOVCircle.Visible = true
-	else
-		SilentFOVCircle.Visible = false
-	end
+		if State.SilentAimShowFOV and State.SilentAimEnabled then
+			silentFovCircle.Position = center
+			silentFovCircle.Radius = State.SilentAimFOV
+			silentFovCircle.Visible = true
+		else
+			silentFovCircle.Visible = false
+		end
 
-	-- Aimbot: pick from visible list, must be inside aimbot FOV.
-	if State.AimbotEnabled then
-		local target = pickClosestInFov(State.VisiblePlayers, State.AimbotFOV)
-		State.CurrentTarget = target
-		if target then
-			local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-			if part then
-				camera.CFrame = camera.CFrame:Lerp(
-					CFrame.new(camera.CFrame.Position, part.Position),
-					State.AimbotSmooth
-				)
+		if State.AimbotEnabled then
+			local target = pickClosestInFov(State.VisiblePlayers, State.AimbotFOV)
+			if target then
+				applyCameraAim(target)
 			end
 		end
-	else
-		State.CurrentTarget = nil
+
+		applyCharacterAim()
+	end)
+	if not ok then
+		warn("[PALL-UNIV] render:", tostring(err))
 	end
 end)
 
--- Cleanup listeners for player/character removal.
-local playerRemovingConn = playersService.PlayerRemoving:Connect(function(plr)
-	removePlayerDrawings(plr)
-end)
-
-local charRemovingConns = {}
-local function bindCharacterCleanup(plr)
-	local conn
-	conn = plr.CharacterRemoving:Connect(function()
-		removePlayerDrawings(plr)
-	end)
-	charRemovingConns[plr] = conn
+-- Cleanup.
+local function bindPlayerCleanup(plr)
+	plr.CharacterRemoving:Connect(function() removePlayerDrawings(plr) end)
 end
 for _, plr in ipairs(playersService:GetPlayers()) do
-	bindCharacterCleanup(plr)
+	bindPlayerCleanup(plr)
 end
-local playerAddedConn = playersService.PlayerAdded:Connect(bindCharacterCleanup)
+local playerAddedConn = playersService.PlayerAdded:Connect(bindPlayerCleanup)
+local playerRemovingConn = playersService.PlayerRemoving:Connect(function(plr) removePlayerDrawings(plr) end)
 
--- Cleanup registry so re-execution can tear down previous run.
 _G.PallCombat = {
 	Cleanup = function()
-		pcall(function()
-			renderConn:Disconnect()
-		end)
-		pcall(function()
-			playerRemovingConn:Disconnect()
-		end)
-		pcall(function()
-			playerAddedConn:Disconnect()
-		end)
-		for _, conn in pairs(charRemovingConns) do
-			pcall(function()
-				conn:Disconnect()
-			end)
-		end
+		pcall(function() renderConn:Disconnect() end)
+		pcall(function() playerAddedConn:Disconnect() end)
+		pcall(function() playerRemovingConn:Disconnect() end)
 		clearAllDrawings()
-		pcall(function()
-			FOVCircle:Remove()
-		end)
-		pcall(function()
-			SilentFOVCircle:Remove()
-		end)
+		pcall(function() fovCircle:Remove() end)
+		pcall(function() silentFovCircle:Remove() end)
 	end,
 }
 
@@ -469,15 +407,12 @@ local Window = WindUI:CreateWindow({
 		Title = "Open Pall Combat",
 		CornerRadius = UDim.new(1, 0),
 		StrokeThickness = 3,
-		Enabled = true,
-		Draggable = true,
-		OnlyMobile = false,
-		Scale = 0.5,
+		Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
 		Color = ColorSequence.new(Color3.fromHex("#FF4F4F"), Color3.fromHex("#FF9F1C")),
 	},
 	Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.3.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.4.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
 do
@@ -510,17 +445,19 @@ do
 	s1:Space()
 	s1:Slider({ Title = "Smoothness", Step = 0.05, Value = { Min = 0.05, Max = 1, Default = 0.15 }, Callback = function(v) State.AimbotSmooth = v end })
 	s1:Space()
+	s1:Slider({ Title = "Prediction (Lead Shot)", Step = 0.01, Value = { Min = 0, Max = 0.5, Default = 0 }, Callback = function(v) State.AimbotPrediction = v end })
+	s1:Space()
 	s1:Dropdown({ Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Torso" }, Value = "Head", Callback = function(v) State.AimbotTargetPart = v end })
 
 	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
 	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
 	s2:Space()
+	s2:Dropdown({ Title = "Mode", Values = { "Mouse Hijack", "Character Aim" }, Value = "Mouse Hijack", Callback = function(v) State.SilentAimMode = v end })
+	s2:Space()
 	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 200 }, Callback = function(v) State.SilentAimFOV = v end })
 	s2:Space()
 	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
-	s2:Space()
-	s2:Input({ Title = "Remote Filter (koma)", Value = "shoot,fire,attack,hit,damage,click", Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.3.0", Content = "Shared-Visibility + Anti Force-Close", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.3.0 loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.4.0", Content = "MM2-Compat + Crash Fixes", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-UNIV] v1.4.0 loaded.")
