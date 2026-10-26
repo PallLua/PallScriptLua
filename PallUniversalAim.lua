@@ -1,34 +1,37 @@
 --[[
 	PALL — UNIVERSAL COMBAT
-	Version : v1.4.2 (Diagnostic - toggleable hooks)
+	Version : v1.6.0 (Crash-Free + Long Range)
 --]]
 
 if _G.PallCombat and _G.PallCombat.Cleanup then
 	pcall(_G.PallCombat.Cleanup)
 end
 
+-- Services.
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
 local workspaceService = game:GetService("Workspace")
 local localPlayer = playersService.LocalPlayer
 
+-- Load WindUI.
 local WindUI = _G.PallWindUI
 if not WindUI then
 	local ok, result = pcall(function()
 		return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 	end)
 	if not ok then
-		return warn("[PALL-UNIV] Gagal load WindUI:", tostring(result))
+		return warn("[PALL] WindUI gagal:", tostring(result))
 	end
 	WindUI = _G.PallWindUI or result
 end
 
+-- Constants.
 local GREEN = Color3.fromHex("#10C550")
 local RED = Color3.fromHex("#EF4F1D")
 local WHITE = Color3.fromRGB(255, 255, 255)
 local YELLOW = Color3.fromRGB(255, 200, 60)
 
--- State with sub-toggles for silent aim.
+-- State.
 local State = {
 	ESPEnabled = false,
 	ESPBox = true,
@@ -37,7 +40,7 @@ local State = {
 	ESPDistance = true,
 	ESPTracer = false,
 	ESPTeamCheck = true,
-	ESPMaxDistance = 1000,
+	ESPMaxDistance = 2000,
 
 	AimbotEnabled = false,
 	AimbotFOV = 150,
@@ -47,35 +50,20 @@ local State = {
 	AimbotShowFOV = true,
 
 	SilentAimEnabled = false,
-	SilentAimFOV = 300,
+	SilentAimFOV = 400,
 	SilentAimShowFOV = true,
-	SilentAimFilter = "shoot,fire,attack,hit,damage,click,sword,slash,swing,throw,knife,gun,weapon,tool,tag,touch",
-
-	-- Sub-toggles (each hook can be enabled/disabled separately).
-	SpoofHit = true,        -- mouse.Hit / mouse.Target
-	SpoofRayProps = false,  -- mouse.X / Y / UnitRay / Origin (risky, off by default)
-	RewriteArgs = true,     -- namecall FireServer arg rewrite
-	UseCharacterAim = false,-- rotate character toward target (server-side raycast fallback)
+	SilentAimPrediction = 0,
+	SpoofHit = true,
+	SpoofRay = true,
+	UseCharacterAim = false,
 
 	VisiblePlayers = {},
 	CachedSilentTarget = nil,
 	CachedSilentAimPart = nil,
 	CachedSilentAimPos = nil,
-	FilterArray = {},
 }
 
-local function rebuildFilter()
-	local out = {}
-	for kw in State.SilentAimFilter:gmatch("[^,]+") do
-		local trimmed = kw:match("^%s*(.-)%s*$")
-		if trimmed ~= "" then
-			table.insert(out, trimmed:lower())
-		end
-	end
-	State.FilterArray = out
-end
-rebuildFilter()
-
+-- FOV circles.
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 1
 fovCircle.Color = WHITE
@@ -90,6 +78,7 @@ silentFovCircle.Filled = false
 silentFovCircle.Transparency = 1
 silentFovCircle.Visible = false
 
+-- Drawing buckets.
 local drawBuckets = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 
 local function removePlayerDrawings(plr)
@@ -133,7 +122,6 @@ local function computeVisiblePlayers()
 	local char = localPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return result end
-
 	local viewport = camera.ViewportSize
 	local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
 	local myPos = hrp.Position
@@ -152,13 +140,8 @@ local function computeVisiblePlayers()
 						if onScreen and screenPos.Z > 0 then
 							local screenVec = Vector2.new(screenPos.X, screenPos.Y)
 							table.insert(result, {
-								player = plr,
-								character = targetChar,
-								root = root,
-								humanoid = hum,
-								distance = distance,
-								screenPos = screenPos,
-								screenVec = screenVec,
+								player = plr, character = targetChar, root = root,
+								humanoid = hum, distance = distance, screenPos = screenPos,
 								centerDist = (screenVec - center).Magnitude,
 							})
 						end
@@ -200,7 +183,7 @@ local function refreshSilentTarget()
 	if target then
 		local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
 		State.CachedSilentAimPart = part
-		State.CachedSilentAimPos = part and predictPosition(part, State.AimbotPrediction) or nil
+		State.CachedSilentAimPos = part and predictPosition(part, State.SilentAimPrediction) or nil
 	else
 		State.CachedSilentAimPart = nil
 		State.CachedSilentAimPos = nil
@@ -239,7 +222,6 @@ local function renderESP()
 				box.Visible = true
 			end
 		end
-
 		if State.ESPName then
 			local name = ensureDrawing(drawBuckets.Names, plr, "Text", function(o)
 				o.Size = 16
@@ -253,7 +235,6 @@ local function renderESP()
 				name.Visible = true
 			end
 		end
-
 		if State.ESPHealth then
 			local hp = ensureDrawing(drawBuckets.Healths, plr, "Text", function(o)
 				o.Size = 14
@@ -267,7 +248,6 @@ local function renderESP()
 				hp.Visible = true
 			end
 		end
-
 		if State.ESPDistance then
 			local dist = ensureDrawing(drawBuckets.Distances, plr, "Text", function(o)
 				o.Size = 12
@@ -281,7 +261,6 @@ local function renderESP()
 				dist.Visible = true
 			end
 		end
-
 		if State.ESPTracer then
 			local tracer = ensureDrawing(drawBuckets.Tracers, plr, "Line", function(o)
 				o.Thickness = 1
@@ -309,8 +288,7 @@ local function applyCameraAim(target)
 	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
 	if not part then return end
 	local aimPos = predictPosition(part, State.AimbotPrediction)
-	local delta = aimPos - camera.CFrame.Position
-	if delta.Magnitude < 0.05 then return end
+	if (aimPos - camera.CFrame.Position).Magnitude < 0.05 then return end
 	pcall(function()
 		local goal = CFrame.lookAt(camera.CFrame.Position, aimPos)
 		camera.CFrame = camera.CFrame:Lerp(goal, math.clamp(State.AimbotSmooth, 0.01, 1))
@@ -331,29 +309,110 @@ local function applyCharacterAim()
 	end)
 end
 
--- Mouse hook (split into safe vs risky).
+-- ============================================================
+-- UI FIRST (so UI is visible even if hooks fail/crash later).
+-- ============================================================
+local Window = WindUI:CreateWindow({
+	Title = "Pall Combat v1.6",
+	Folder = "palluniv",
+	Icon = "solar:target-bold",
+	NewElements = true,
+	HideSearchBar = false,
+	OpenButton = {
+		Title = "Open Pall Combat",
+		CornerRadius = UDim.new(1, 0),
+		StrokeThickness = 3,
+		Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
+		Color = ColorSequence.new(Color3.fromHex("#FF4F4F"), Color3.fromHex("#FF9F1C")),
+	},
+	Topbar = { Height = 44, ButtonsType = "Mac" },
+})
+Window:Tag({ Title = "v1.6.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+
+local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
+do
+	local s = tabESP:Section({ Title = "ESP Settings", Box = true, BoxBorder = true, Opened = true })
+	s:Toggle({ Title = "Aktifkan ESP", Value = false, Callback = function(v) State.ESPEnabled = v end })
+	s:Space()
+	s:Slider({ Title = "Jarak ESP (m)", Step = 100, Value = { Min = 100, Max = 5000, Default = 2000 }, Callback = function(v) State.ESPMaxDistance = v end })
+	s:Space()
+	s:Toggle({ Title = "Box", Value = true, Callback = function(v) State.ESPBox = v end })
+	s:Space()
+	s:Toggle({ Title = "Name", Value = true, Callback = function(v) State.ESPName = v end })
+	s:Space()
+	s:Toggle({ Title = "Health", Value = true, Callback = function(v) State.ESPHealth = v end })
+	s:Space()
+	s:Toggle({ Title = "Distance", Value = true, Callback = function(v) State.ESPDistance = v end })
+	s:Space()
+	s:Toggle({ Title = "Tracer", Value = false, Callback = function(v) State.ESPTracer = v end })
+	s:Space()
+	s:Toggle({ Title = "Team Check", Value = true, Callback = function(v) State.ESPTeamCheck = v end })
+end
+
+local tabAim = Window:Tab({ Title = "Aimbot", Desc = "Auto Aim", Icon = "solar:crosshair-bold", IconColor = RED, IconShape = "Square", Border = true })
+do
+	local s1 = tabAim:Section({ Title = "Aimbot Settings", Box = true, BoxBorder = true, Opened = true })
+	s1:Toggle({ Title = "Aktifkan Aimbot", Value = false, Callback = function(v) State.AimbotEnabled = v end })
+	s1:Space()
+	s1:Slider({ Title = "FOV", Step = 10, Value = { Min = 50, Max = 500, Default = 150 }, Callback = function(v) State.AimbotFOV = v end })
+	s1:Space()
+	s1:Toggle({ Title = "Tampilkan FOV", Value = true, Callback = function(v) State.AimbotShowFOV = v end })
+	s1:Space()
+	s1:Slider({ Title = "Smoothness", Step = 0.05, Value = { Min = 0.05, Max = 1, Default = 0.15 }, Callback = function(v) State.AimbotSmooth = v end })
+	s1:Space()
+	s1:Slider({ Title = "Prediction", Step = 0.01, Value = { Min = 0, Max = 0.5, Default = 0 }, Callback = function(v) State.AimbotPrediction = v end })
+	s1:Space()
+	s1:Dropdown({ Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Torso" }, Value = "Head", Callback = function(v) State.AimbotTargetPart = v end })
+
+	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
+	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
+	s2:Space()
+	s2:Slider({ Title = "Silent FOV", Step = 10, Value = { Min = 50, Max = 1200, Default = 400 }, Callback = function(v) State.SilentAimFOV = v end })
+	s2:Space()
+	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
+	s2:Space()
+	s2:Slider({ Title = "Silent Prediction", Step = 0.01, Value = { Min = 0, Max = 0.5, Default = 0 }, Callback = function(v) State.SilentAimPrediction = v end })
+
+	local s3 = tabAim:Section({ Title = "Silent Aim - Hooks", Box = true, BoxBorder = true, Opened = true })
+	s3:Toggle({ Title = "Spoof mouse.Hit / Target", Value = true, Callback = function(v) State.SpoofHit = v end })
+	s3:Space()
+	s3:Toggle({ Title = "Spoof mouse.UnitRay / Origin", Value = true, Callback = function(v) State.SpoofRay = v end })
+	s3:Space()
+	s3:Toggle({ Title = "Character Aim (rotate char)", Value = false, Callback = function(v) State.UseCharacterAim = v end })
+end
+
+WindUI:Notify({ Title = "Pall Combat v1.6", Content = "UI loaded. Installing hooks...", Icon = "solar:bell-bold", Duration = 4 })
+
+-- ============================================================
+-- HOOKS (installed after UI, each in pcall).
+-- ============================================================
+local hookStatus = { mouse = false }
+
+-- Mouse hook: spoof Hit/Target/UnitRay/Origin so client-side raycast
+-- sees the target regardless of where the player taps.
 do
 	local ok, err = pcall(function()
 		local mouse = localPlayer:GetMouse()
 		if not mouse then return end
-		local originalIndex = getrawmetatable(mouse).__index
-		if not originalIndex then return end
+		local rawMeta = getrawmetatable(mouse)
+		if not rawMeta or not rawMeta.__index then return end
+		local originalIndex = rawMeta.__index
 
 		hookmetamethod(mouse, "__index", newcclosure(function(self, key)
 			if State.SilentAimEnabled then
 				local aimPos = State.CachedSilentAimPos
 				local aimPart = State.CachedSilentAimPart
 				if aimPos and aimPart then
-					-- SAFE spoofs.
-					if State.SpoofHit and (key == "Hit" or key == "Target") then
+					-- Hit & Target (covers most game-side hit detection).
+					if State.SpoofHit then
 						if key == "Hit" then
 							return CFrame.new(aimPos)
-						else
+						elseif key == "Target" then
 							return aimPart
 						end
 					end
-					-- RISKY spoofs (toggled).
-					if State.SpoofRayProps then
+					-- UnitRay & Origin (covers games that raycast manually from cursor).
+					if State.SpoofRay then
 						local camera = workspaceService.CurrentCamera
 						if camera then
 							if key == "UnitRay" then
@@ -363,11 +422,6 @@ do
 								end
 							elseif key == "Origin" then
 								return camera.CFrame.Position
-							elseif key == "X" or key == "Y" then
-								local sp, onScreen = camera:WorldToViewportPoint(aimPos)
-								if onScreen then
-									return key == "X" and sp.X or sp.Y
-								end
 							end
 						end
 					end
@@ -375,87 +429,10 @@ do
 			end
 			return originalIndex(self, key)
 		end))
+		hookStatus.mouse = true
 	end)
 	if not ok then
-		warn("[PALL-UNIV] Mouse hook gagal:", tostring(err))
-	end
-end
-
--- Namecall arg rewrite.
-do
-	local remoteMatchCache = setmetatable({}, { __mode = "k" })
-	local function remoteMatches(remote)
-		local cached = remoteMatchCache[remote]
-		if cached ~= nil then return cached end
-		local ok, name = pcall(function() return remote.Name:lower() end)
-		if not ok or not name then
-			remoteMatchCache[remote] = false
-			return false
-		end
-		local filters = State.FilterArray
-		for i = 1, #filters do
-			if name:find(filters[i], 1, true) then
-				remoteMatchCache[remote] = true
-				return true
-			end
-		end
-		remoteMatchCache[remote] = false
-		return false
-	end
-
-	local ok, err = pcall(function()
-		local oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-			if not (State.SilentAimEnabled and State.RewriteArgs) then
-				return oldNamecall(self, ...)
-			end
-			local method = getnamecallmethod()
-			if method ~= "FireServer" and method ~= "InvokeServer" then
-				return oldNamecall(self, ...)
-			end
-			if typeof(self) ~= "Instance" then
-				return oldNamecall(self, ...)
-			end
-			if not remoteMatches(self) then
-				return oldNamecall(self, ...)
-			end
-			local target = State.CachedSilentTarget
-			local aimPos = State.CachedSilentAimPos
-			if not target or not aimPos then
-				return oldNamecall(self, ...)
-			end
-
-			local args = { ... }
-			local changed = false
-			for i = 1, #args do
-				local v = args[i]
-				local vType = typeof(v)
-				if vType == "Vector3" then
-					args[i] = aimPos
-					changed = true
-				elseif vType == "Instance" then
-					if v:IsA("Player") and v ~= localPlayer then
-						args[i] = target.player
-						changed = true
-					elseif v:IsA("Model") and v:FindFirstChild("Humanoid") then
-						args[i] = target.character
-						changed = true
-					elseif v:IsA("BasePart") then
-						local sameName = target.character:FindFirstChild(v.Name)
-						if sameName and sameName:IsA("BasePart") then
-							args[i] = sameName
-							changed = true
-						end
-					end
-				end
-			end
-			if not changed then
-				return oldNamecall(self, ...)
-			end
-			return oldNamecall(self, table.unpack(args))
-		end))
-	end)
-	if not ok then
-		warn("[PALL-UNIV] Namecall hook gagal:", tostring(err))
+		warn("[PALL] Mouse hook gagal:", tostring(err))
 	end
 end
 
@@ -489,18 +466,17 @@ local renderConn = runService.RenderStepped:Connect(function()
 
 		if State.AimbotEnabled then
 			local target = pickClosestInFov(State.VisiblePlayers, State.AimbotFOV)
-			if target then
-				applyCameraAim(target)
-			end
+			if target then applyCameraAim(target) end
 		end
 
 		applyCharacterAim()
 	end)
 	if not ok then
-		warn("[PALL-UNIV] render:", tostring(err))
+		warn("[PALL] render:", tostring(err))
 	end
 end)
 
+-- Cleanup.
 local function bindPlayerCleanup(plr)
 	plr.CharacterRemoving:Connect(function() removePlayerDrawings(plr) end)
 end
@@ -521,80 +497,10 @@ _G.PallCombat = {
 	end,
 }
 
--- UI.
-local Window = WindUI:CreateWindow({
-	Title = "Pall x Universal Combat",
-	Folder = "palluniv",
-	Icon = "solar:target-bold",
-	NewElements = true,
-	HideSearchBar = false,
-	OpenButton = {
-		Title = "Open Pall Combat",
-		CornerRadius = UDim.new(1, 0),
-		StrokeThickness = 3,
-		Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
-		Color = ColorSequence.new(Color3.fromHex("#FF4F4F"), Color3.fromHex("#FF9F1C")),
-	},
-	Topbar = { Height = 44, ButtonsType = "Mac" },
+WindUI:Notify({
+	Title = "Hooks Ready",
+	Content = "Mouse: " .. tostring(hookStatus.mouse),
+	Icon = "solar:check-circle-bold",
+	Duration = 5,
 })
-Window:Tag({ Title = "v1.4.2 diag", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
-
-local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
-do
-	local s = tabESP:Section({ Title = "ESP Settings", Box = true, BoxBorder = true, Opened = true })
-	s:Toggle({ Title = "Aktifkan ESP", Value = false, Callback = function(v) State.ESPEnabled = v end })
-	s:Space()
-	s:Slider({ Title = "Jarak Maksimal ESP (m)", Step = 100, Value = { Min = 100, Max = 2000, Default = 1000 }, Callback = function(v) State.ESPMaxDistance = v end })
-	s:Space()
-	s:Toggle({ Title = "Box", Value = true, Callback = function(v) State.ESPBox = v end })
-	s:Space()
-	s:Toggle({ Title = "Name", Value = true, Callback = function(v) State.ESPName = v end })
-	s:Space()
-	s:Toggle({ Title = "Health", Value = true, Callback = function(v) State.ESPHealth = v end })
-	s:Space()
-	s:Toggle({ Title = "Distance", Value = true, Callback = function(v) State.ESPDistance = v end })
-	s:Space()
-	s:Toggle({ Title = "Tracer", Value = false, Callback = function(v) State.ESPTracer = v end })
-	s:Space()
-	s:Toggle({ Title = "Team Check (Aman)", Value = true, Callback = function(v) State.ESPTeamCheck = v end })
-end
-
-local tabAim = Window:Tab({ Title = "Aimbot", Desc = "Auto Target", Icon = "solar:crosshair-bold", IconColor = RED, IconShape = "Square", Border = true })
-do
-	local s1 = tabAim:Section({ Title = "Aimbot Settings", Box = true, BoxBorder = true, Opened = true })
-	s1:Toggle({ Title = "Aktifkan Aimbot", Value = false, Callback = function(v) State.AimbotEnabled = v end })
-	s1:Space()
-	s1:Slider({ Title = "FOV (Radius)", Step = 10, Value = { Min = 50, Max = 500, Default = 150 }, Callback = function(v) State.AimbotFOV = v end })
-	s1:Space()
-	s1:Toggle({ Title = "Tampilkan FOV Aimbot", Value = true, Callback = function(v) State.AimbotShowFOV = v end })
-	s1:Space()
-	s1:Slider({ Title = "Smoothness", Step = 0.05, Value = { Min = 0.05, Max = 1, Default = 0.15 }, Callback = function(v) State.AimbotSmooth = v end })
-	s1:Space()
-	s1:Slider({ Title = "Prediction (Lead Shot)", Step = 0.01, Value = { Min = 0, Max = 0.5, Default = 0 }, Callback = function(v) State.AimbotPrediction = v end })
-	s1:Space()
-	s1:Dropdown({ Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Torso" }, Value = "Head", Callback = function(v) State.AimbotTargetPart = v end })
-
-	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
-	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
-	s2:Space()
-	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 300 }, Callback = function(v) State.SilentAimFOV = v end })
-	s2:Space()
-	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
-
-	local s3 = tabAim:Section({ Title = "Silent Aim - Hook (Diagnostic)", Box = true, BoxBorder = true, Opened = true })
-	s3:Toggle({ Title = "Spoof mouse.Hit / Target (Safe)", Value = true, Callback = function(v) State.SpoofHit = v end })
-	s3:Space()
-	s3:Toggle({ Title = "Spoof mouse.X/Y/UnitRay/Origin (RISKY)", Value = false, Callback = function(v) State.SpoofRayProps = v end })
-	s3:Space()
-	s3:Toggle({ Title = "Rewrite FireServer Args", Value = true, Callback = function(v) State.RewriteArgs = v end })
-	s3:Space()
-	s3:Toggle({ Title = "Character Aim (rotate char)", Value = false, Callback = function(v) State.UseCharacterAim = v end })
-	s3:Space()
-	s3:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v)
-		State.SilentAimFilter = v
-		rebuildFilter()
-	end })
-end
-
-WindUI:Notify({ Title = "Pall Combat v1.4.2 diag", Content = "Silent aim default OFF. Enable one sub-hook at a time.", Icon = "solar:bell-bold", Duration = 8 })
-print("[PALL-UNIV] v1.4.2 diag loaded.")
+print("[PALL] v1.6.0 loaded. Mouse hook:", hookStatus.mouse)
