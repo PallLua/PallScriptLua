@@ -1,19 +1,17 @@
 --[[
 	PALL — UNIVERSAL COMBAT
-	Version : v1.4.1 (Long-Range Silent Aim from 1.4.0 base)
+	Version : v1.4.2 (Diagnostic - toggleable hooks)
 --]]
 
 if _G.PallCombat and _G.PallCombat.Cleanup then
 	pcall(_G.PallCombat.Cleanup)
 end
 
--- Services.
 local playersService = game:GetService("Players")
 local runService = game:GetService("RunService")
 local workspaceService = game:GetService("Workspace")
 local localPlayer = playersService.LocalPlayer
 
--- Load WindUI.
 local WindUI = _G.PallWindUI
 if not WindUI then
 	local ok, result = pcall(function()
@@ -25,13 +23,12 @@ if not WindUI then
 	WindUI = _G.PallWindUI or result
 end
 
--- Constants.
 local GREEN = Color3.fromHex("#10C550")
 local RED = Color3.fromHex("#EF4F1D")
 local WHITE = Color3.fromRGB(255, 255, 255)
 local YELLOW = Color3.fromRGB(255, 200, 60)
 
--- State.
+-- State with sub-toggles for silent aim.
 local State = {
 	ESPEnabled = false,
 	ESPBox = true,
@@ -52,8 +49,13 @@ local State = {
 	SilentAimEnabled = false,
 	SilentAimFOV = 300,
 	SilentAimShowFOV = true,
-	SilentAimMode = "Combined",
 	SilentAimFilter = "shoot,fire,attack,hit,damage,click,sword,slash,swing,throw,knife,gun,weapon,tool,tag,touch",
+
+	-- Sub-toggles (each hook can be enabled/disabled separately).
+	SpoofHit = true,        -- mouse.Hit / mouse.Target
+	SpoofRayProps = false,  -- mouse.X / Y / UnitRay / Origin (risky, off by default)
+	RewriteArgs = true,     -- namecall FireServer arg rewrite
+	UseCharacterAim = false,-- rotate character toward target (server-side raycast fallback)
 
 	VisiblePlayers = {},
 	CachedSilentTarget = nil,
@@ -61,15 +63,6 @@ local State = {
 	CachedSilentAimPos = nil,
 	FilterArray = {},
 }
-
-local SILENT_MODES = { "Combined", "Mouse Only", "Args Only", "Character Aim" }
-
-local function modeActive(...)
-	for _, m in ipairs({ ... }) do
-		if State.SilentAimMode == m then return true end
-	end
-	return false
-end
 
 local function rebuildFilter()
 	local out = {}
@@ -83,7 +76,6 @@ local function rebuildFilter()
 end
 rebuildFilter()
 
--- FOV circles.
 local fovCircle = Drawing.new("Circle")
 fovCircle.Thickness = 1
 fovCircle.Color = WHITE
@@ -98,7 +90,6 @@ silentFovCircle.Filled = false
 silentFovCircle.Transparency = 1
 silentFovCircle.Visible = false
 
--- Drawing buckets.
 local drawBuckets = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 
 local function removePlayerDrawings(plr)
@@ -312,7 +303,6 @@ local function renderESP()
 	end
 end
 
--- Camera aim.
 local function applyCameraAim(target)
 	local camera = workspaceService.CurrentCamera
 	if not camera then return end
@@ -327,12 +317,10 @@ local function applyCameraAim(target)
 	end)
 end
 
--- Character aim (fallback).
 local function applyCharacterAim()
-	if not (State.SilentAimEnabled and modeActive("Character Aim")) then return end
-	local target = State.CachedSilentTarget
+	if not (State.SilentAimEnabled and State.UseCharacterAim) then return end
 	local aimPos = State.CachedSilentAimPos
-	if not target or not aimPos then return end
+	if not aimPos then return end
 	local char = localPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
@@ -343,50 +331,57 @@ local function applyCharacterAim()
 	end)
 end
 
--- Mouse hijack (enhanced: Hit, Target, UnitRay, Origin, X, Y).
+-- Mouse hook (split into safe vs risky).
 do
-	local mouse = localPlayer:GetMouse()
-	if mouse then
-		local rawMeta = getrawmetatable(mouse)
-		local originalIndex = rawMeta and rawMeta.__index
-		if originalIndex then
-			pcall(function()
-				hookmetamethod(mouse, "__index", newcclosure(function(self, key)
-					if State.SilentAimEnabled and modeActive("Combined", "Mouse Only") then
-						local target = State.CachedSilentTarget
-						local aimPos = State.CachedSilentAimPos
-						local aimPart = State.CachedSilentAimPart
-						if target and aimPos and aimPart then
-							local camera = workspaceService.CurrentCamera
-							if key == "Hit" then
-								return CFrame.new(aimPos)
-							elseif key == "Target" then
-								return aimPart
-							elseif key == "UnitRay" and camera then
-								local origin = camera.CFrame.Position
-								local dir = aimPos - origin
+	local ok, err = pcall(function()
+		local mouse = localPlayer:GetMouse()
+		if not mouse then return end
+		local originalIndex = getrawmetatable(mouse).__index
+		if not originalIndex then return end
+
+		hookmetamethod(mouse, "__index", newcclosure(function(self, key)
+			if State.SilentAimEnabled then
+				local aimPos = State.CachedSilentAimPos
+				local aimPart = State.CachedSilentAimPart
+				if aimPos and aimPart then
+					-- SAFE spoofs.
+					if State.SpoofHit and (key == "Hit" or key == "Target") then
+						if key == "Hit" then
+							return CFrame.new(aimPos)
+						else
+							return aimPart
+						end
+					end
+					-- RISKY spoofs (toggled).
+					if State.SpoofRayProps then
+						local camera = workspaceService.CurrentCamera
+						if camera then
+							if key == "UnitRay" then
+								local dir = aimPos - camera.CFrame.Position
 								if dir.Magnitude > 0.001 then
-									return Ray.new(origin, dir.Unit)
+									return Ray.new(camera.CFrame.Position, dir.Unit)
 								end
-							elseif key == "Origin" and camera then
+							elseif key == "Origin" then
 								return camera.CFrame.Position
-							elseif (key == "X" or key == "Y") and camera then
-								local screen, onScreen = camera:WorldToViewportPoint(aimPos)
+							elseif key == "X" or key == "Y" then
+								local sp, onScreen = camera:WorldToViewportPoint(aimPos)
 								if onScreen then
-									if key == "X" then return screen.X end
-									if key == "Y" then return screen.Y end
+									return key == "X" and sp.X or sp.Y
 								end
 							end
 						end
 					end
-					return originalIndex(self, key)
-				end))
-			end)
-		end
+				end
+			end
+			return originalIndex(self, key)
+		end))
+	end)
+	if not ok then
+		warn("[PALL-UNIV] Mouse hook gagal:", tostring(err))
 	end
 end
 
--- Namecall arg rewrite (secondary layer).
+-- Namecall arg rewrite.
 do
 	local remoteMatchCache = setmetatable({}, { __mode = "k" })
 	local function remoteMatches(remote)
@@ -398,20 +393,19 @@ do
 			return false
 		end
 		local filters = State.FilterArray
-		local matched = false
 		for i = 1, #filters do
 			if name:find(filters[i], 1, true) then
-				matched = true
-				break
+				remoteMatchCache[remote] = true
+				return true
 			end
 		end
-		remoteMatchCache[remote] = matched
-		return matched
+		remoteMatchCache[remote] = false
+		return false
 	end
 
-	local ok = pcall(function()
+	local ok, err = pcall(function()
 		local oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-			if not State.SilentAimEnabled or not modeActive("Combined", "Args Only") then
+			if not (State.SilentAimEnabled and State.RewriteArgs) then
 				return oldNamecall(self, ...)
 			end
 			local method = getnamecallmethod()
@@ -435,10 +429,7 @@ do
 			for i = 1, #args do
 				local v = args[i]
 				local vType = typeof(v)
-				if vType == "CFrame" then
-					args[i] = CFrame.new(aimPos)
-					changed = true
-				elseif vType == "Vector3" then
+				if vType == "Vector3" then
 					args[i] = aimPos
 					changed = true
 				elseif vType == "Instance" then
@@ -464,7 +455,7 @@ do
 		end))
 	end)
 	if not ok then
-		warn("[PALL-UNIV] Namecall hook gagal.")
+		warn("[PALL-UNIV] Namecall hook gagal:", tostring(err))
 	end
 end
 
@@ -510,7 +501,6 @@ local renderConn = runService.RenderStepped:Connect(function()
 	end
 end)
 
--- Cleanup.
 local function bindPlayerCleanup(plr)
 	plr.CharacterRemoving:Connect(function() removePlayerDrawings(plr) end)
 end
@@ -547,7 +537,7 @@ local Window = WindUI:CreateWindow({
 	},
 	Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.4.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.4.2 diag", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
 do
@@ -587,17 +577,24 @@ do
 	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
 	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
 	s2:Space()
-	s2:Dropdown({ Title = "Mode", Values = SILENT_MODES, Value = "Combined", Callback = function(v) State.SilentAimMode = v end })
-	s2:Space()
 	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 300 }, Callback = function(v) State.SilentAimFOV = v end })
 	s2:Space()
 	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
-	s2:Space()
-	s2:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v)
+
+	local s3 = tabAim:Section({ Title = "Silent Aim - Hook (Diagnostic)", Box = true, BoxBorder = true, Opened = true })
+	s3:Toggle({ Title = "Spoof mouse.Hit / Target (Safe)", Value = true, Callback = function(v) State.SpoofHit = v end })
+	s3:Space()
+	s3:Toggle({ Title = "Spoof mouse.X/Y/UnitRay/Origin (RISKY)", Value = false, Callback = function(v) State.SpoofRayProps = v end })
+	s3:Space()
+	s3:Toggle({ Title = "Rewrite FireServer Args", Value = true, Callback = function(v) State.RewriteArgs = v end })
+	s3:Space()
+	s3:Toggle({ Title = "Character Aim (rotate char)", Value = false, Callback = function(v) State.UseCharacterAim = v end })
+	s3:Space()
+	s3:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v)
 		State.SilentAimFilter = v
 		rebuildFilter()
 	end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.4.1", Content = "Long-Range Silent Aim Ready", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.4.1 loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.4.2 diag", Content = "Silent aim default OFF. Enable one sub-hook at a time.", Icon = "solar:bell-bold", Duration = 8 })
+print("[PALL-UNIV] v1.4.2 diag loaded.")
