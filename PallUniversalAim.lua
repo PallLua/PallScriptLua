@@ -1,603 +1,404 @@
 --[[
-	PALL — UNIVERSAL COMBAT
-	Version : v1.4.1 (Long-Range Silent Aim from 1.4.0 base)
+    ═══════════════════════════════════════════════════════════
+    PALL — UNIVERSAL COMBAT (ESP + Aimbot + Silent Aim)
+    Author  : ENI (for Pall)
+    Version : v1.2.0 (Anti-Ghost ESP Fix)
+    ═══════════════════════════════════════════════════════════
 --]]
 
-if _G.PallCombat and _G.PallCombat.Cleanup then
-	pcall(_G.PallCombat.Cleanup)
+print("[PALL-UNIV] Memuat Universal Combat...")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local LP = Players.LocalPlayer
+local PG = LP:WaitForChild("PlayerGui")
+
+--============================================================
+-- LOAD WINDUI
+--============================================================
+local WindUI
+if _G.PallWindUI then
+    WindUI = _G.PallWindUI
+else
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+    end)
+    if not ok then error("[PALL-UNIV] Gagal load WindUI.") end
+    WindUI = _G.PallWindUI or result
 end
 
--- Services.
-local playersService = game:GetService("Players")
-local runService = game:GetService("RunService")
-local workspaceService = game:GetService("Workspace")
-local localPlayer = playersService.LocalPlayer
+local Green = Color3.fromHex("#10C550")
+local Red   = Color3.fromHex("#EF4F1D")
+local White = Color3.fromRGB(255, 255, 255)
 
--- Load WindUI.
-local WindUI = _G.PallWindUI
-if not WindUI then
-	local ok, result = pcall(function()
-		return loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
-	end)
-	if not ok then
-		return warn("[PALL-UNIV] Gagal load WindUI:", tostring(result))
-	end
-	WindUI = _G.PallWindUI or result
+--============================================================
+-- STATE
+--============================================================
+if _G.PALL_UNIV_RUNNING then
+    _G.PALL_UNIV_RUNNING = false
+    task.wait(0.5)
 end
+_G.PALL_UNIV_RUNNING = true
 
--- Constants.
-local GREEN = Color3.fromHex("#10C550")
-local RED = Color3.fromHex("#EF4F1D")
-local WHITE = Color3.fromRGB(255, 255, 255)
-local YELLOW = Color3.fromRGB(255, 200, 60)
-
--- State.
 local State = {
-	ESPEnabled = false,
-	ESPBox = true,
-	ESPName = true,
-	ESPHealth = true,
-	ESPDistance = true,
-	ESPTracer = false,
-	ESPTeamCheck = true,
-	ESPMaxDistance = 1000,
-
-	AimbotEnabled = false,
-	AimbotFOV = 150,
-	AimbotSmooth = 0.15,
-	AimbotTargetPart = "Head",
-	AimbotPrediction = 0,
-	AimbotShowFOV = true,
-
-	SilentAimEnabled = false,
-	SilentAimFOV = 300,
-	SilentAimShowFOV = true,
-	SilentAimMode = "Combined",
-	SilentAimFilter = "shoot,fire,attack,hit,damage,click,sword,slash,swing,throw,knife,gun,weapon,tool,tag,touch",
-
-	VisiblePlayers = {},
-	CachedSilentTarget = nil,
-	CachedSilentAimPart = nil,
-	CachedSilentAimPos = nil,
-	FilterArray = {},
+    ESPEnabled = false,
+    ESPBox = true,
+    ESPName = true,
+    ESPHealth = true,
+    ESPDistance = true,
+    ESPTracer = false,
+    ESPTeamCheck = true,
+    ESPMaxDistance = 1000,
+    
+    AimbotEnabled = false,
+    AimbotFOV = 150,
+    AimbotSmooth = 0.15,
+    AimbotTargetPart = "Head",
+    AimbotType = "Camera",
+    AimbotShowFOV = true,
+    
+    SilentAimEnabled = false,
+    SilentAimFOV = 200,
+    SilentAimFilter = "shoot,fire,attack,hit,damage,click",
+    
+    CurrentTarget = nil
 }
 
-local SILENT_MODES = { "Combined", "Mouse Only", "Args Only", "Character Aim" }
+--============================================================
+-- DRAWING SYSTEM (ANTI-GHOST)
+--============================================================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1
+FOVCircle.Color = White
+FOVCircle.Filled = false
+FOVCircle.Transparency = 1
 
-local function modeActive(...)
-	for _, m in ipairs({ ... }) do
-		if State.SilentAimMode == m then return true end
-	end
-	return false
-end
-
-local function rebuildFilter()
-	local out = {}
-	for kw in State.SilentAimFilter:gmatch("[^,]+") do
-		local trimmed = kw:match("^%s*(.-)%s*$")
-		if trimmed ~= "" then
-			table.insert(out, trimmed:lower())
-		end
-	end
-	State.FilterArray = out
-end
-rebuildFilter()
-
--- FOV circles.
-local fovCircle = Drawing.new("Circle")
-fovCircle.Thickness = 1
-fovCircle.Color = WHITE
-fovCircle.Filled = false
-fovCircle.Transparency = 1
-fovCircle.Visible = false
-
-local silentFovCircle = Drawing.new("Circle")
-silentFovCircle.Thickness = 1
-silentFovCircle.Color = YELLOW
-silentFovCircle.Filled = false
-silentFovCircle.Transparency = 1
-silentFovCircle.Visible = false
-
--- Drawing buckets.
-local drawBuckets = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
-
-local function removePlayerDrawings(plr)
-	for _, bucket in pairs(drawBuckets) do
-		local obj = bucket[plr]
-		if obj then
-			pcall(function() obj:Remove() end)
-			bucket[plr] = nil
-		end
-	end
-end
+local Drawings = {
+    Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {}
+}
 
 local function clearAllDrawings()
-	for _, bucket in pairs(drawBuckets) do
-		for key, obj in pairs(bucket) do
-			pcall(function() obj:Remove() end)
-			bucket[key] = nil
-		end
-	end
+    for _, category in pairs(Drawings) do
+        for _, obj in pairs(category) do
+            pcall(function() obj:Remove() end)
+        end
+    end
+    Drawings = { Boxes = {}, Names = {}, Healths = {}, Distances = {}, Tracers = {} }
 end
 
-local function ensureDrawing(bucket, plr, drawType, configure)
-	if bucket[plr] then return bucket[plr] end
-	local ok, obj = pcall(Drawing.new, drawType)
-	if not ok or not obj then return nil end
-	configure(obj)
-	bucket[plr] = obj
-	return obj
+local function removePlayerDrawings(plr)
+    for _, category in pairs(Drawings) do
+        if category[plr] then
+            pcall(function() category[plr]:Remove() end)
+            category[plr] = nil
+        end
+    end
 end
 
 local function isAlly(plr)
-	if not State.ESPTeamCheck then return false end
-	if plr.Team and localPlayer.Team and plr.Team == localPlayer.Team then return true end
-	return false
+    if not State.ESPTeamCheck then return false end
+    if plr.Team and LP.Team and plr.Team == LP.Team then return true end
+    return false
 end
 
-local function computeVisiblePlayers()
-	local result = {}
-	local camera = workspaceService.CurrentCamera
-	if not camera then return result end
-	local char = localPlayer.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return result end
+local function updateESP()
+    if not State.ESPEnabled then
+        clearAllDrawings()
+        return
+    end
 
-	local viewport = camera.ViewportSize
-	local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
-	local myPos = hrp.Position
-	local maxDist = State.ESPMaxDistance
+    local cam = Workspace.CurrentCamera
+    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not hrp or not cam then 
+        clearAllDrawings()
+        return 
+    end
 
-	for _, plr in ipairs(playersService:GetPlayers()) do
-		if plr ~= localPlayer and not isAlly(plr) then
-			local targetChar = plr.Character
-			if targetChar then
-				local root = targetChar:FindFirstChild("HumanoidRootPart")
-				local hum = targetChar:FindFirstChild("Humanoid")
-				if root and hum and hum.Health > 0 then
-					local distance = (myPos - root.Position).Magnitude
-					if distance <= maxDist then
-						local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
-						if onScreen and screenPos.Z > 0 then
-							local screenVec = Vector2.new(screenPos.X, screenPos.Y)
-							table.insert(result, {
-								player = plr,
-								character = targetChar,
-								root = root,
-								humanoid = hum,
-								distance = distance,
-								screenPos = screenPos,
-								screenVec = screenVec,
-								centerDist = (screenVec - center).Magnitude,
-							})
-						end
-					end
-				end
-			end
-		end
-	end
-	return result
+    -- 1. CLEANUP AGRESIF (Hapus player yang udah gak ada di game)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if not plr.Parent or not plr.Character then
+            removePlayerDrawings(plr)
+        end
+    end
+
+    -- 2. RENDER ESP
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character and not isAlly(plr) then
+            local char = plr.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            
+            if root and hum and hum.Health > 0 then
+                local distance = (hrp.Position - root.Position).Magnitude
+                
+                if distance <= State.ESPMaxDistance then
+                    local screenPos, onScreen = cam:WorldToViewportPoint(root.Position)
+                    
+                    -- Cek apakah bener-bener di depan kamera (Z > 0)
+                    if onScreen and screenPos.Z > 0 then
+                        local sizeY = math.clamp(1000 / screenPos.Z, 20, 100)
+                        local sizeX = sizeY / 2
+
+                        -- Box
+                        if State.ESPBox then
+                            if not Drawings.Boxes[plr] then
+                                Drawings.Boxes[plr] = Drawing.new("Square")
+                                Drawings.Boxes[plr].Thickness = 1
+                                Drawings.Boxes[plr].Color = Red
+                                Drawings.Boxes[plr].Filled = false
+                            end
+                            local box = Drawings.Boxes[plr]
+                            box.Size = Vector2.new(sizeX, sizeY)
+                            box.Position = Vector2.new(screenPos.X - sizeX/2, screenPos.Y - sizeY/2)
+                            box.Visible = true
+                        end
+
+                        -- Name
+                        if State.ESPName then
+                            if not Drawings.Names[plr] then
+                                Drawings.Names[plr] = Drawing.new("Text")
+                                Drawings.Names[plr].Size = 16
+                                Drawings.Names[plr].Center = true
+                                Drawings.Names[plr].Outline = true
+                                Drawings.Names[plr].Color = Color3.new(1,1,1)
+                            end
+                            local name = Drawings.Names[plr]
+                            name.Text = plr.Name
+                            name.Position = Vector2.new(screenPos.X, screenPos.Y - sizeY/2 - 15)
+                            name.Visible = true
+                        end
+
+                        -- Health
+                        if State.ESPHealth then
+                            if not Drawings.Healths[plr] then
+                                Drawings.Healths[plr] = Drawing.new("Text")
+                                Drawings.Healths[plr].Size = 14
+                                Drawings.Healths[plr].Center = true
+                                Drawings.Healths[plr].Outline = true
+                                Drawings.Healths[plr].Color = Green
+                            end
+                            local hp = Drawings.Healths[plr]
+                            hp.Text = math.floor(hum.Health) .. " HP"
+                            hp.Position = Vector2.new(screenPos.X, screenPos.Y + sizeY/2 + 5)
+                            hp.Visible = true
+                        end
+
+                        -- Distance
+                        if State.ESPDistance then
+                            if not Drawings.Distances[plr] then
+                                Drawings.Distances[plr] = Drawing.new("Text")
+                                Drawings.Distances[plr].Size = 12
+                                Drawings.Distances[plr].Center = true
+                                Drawings.Distances[plr].Outline = true
+                                Drawings.Distances[plr].Color = Color3.new(0.8,0.8,0.8)
+                            end
+                            local dist = Drawings.Distances[plr]
+                            dist.Text = "[" .. math.floor(distance) .. "m]"
+                            dist.Position = Vector2.new(screenPos.X, screenPos.Y + sizeY/2 + 20)
+                            dist.Visible = true
+                        end
+
+                        -- Tracer
+                        if State.ESPTracer then
+                            if not Drawings.Tracers[plr] then
+                                Drawings.Tracers[plr] = Drawing.new("Line")
+                                Drawings.Tracers[plr].Thickness = 1
+                                Drawings.Tracers[plr].Color = Red
+                            end
+                            local tracer = Drawings.Tracers[plr]
+                            tracer.From = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                            tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+                            tracer.Visible = true
+                        end
+                    else
+                        -- Kalau di belakang kamera, sembunyiin (jangan dihapus biar gampang di-render lagi nanti)
+                        for _, category in pairs(Drawings) do
+                            if category[plr] then category[plr].Visible = false end
+                        end
+                    end
+                else
+                    -- Kalau keluar jarak maksimal, sembunyiin
+                    for _, category in pairs(Drawings) do
+                        if category[plr] then category[plr].Visible = false end
+                    end
+                end
+            else
+                -- KALAU MATI: Langsung hancurkan gambarnya!
+                removePlayerDrawings(plr)
+            end
+        end
+    end
 end
 
-local function pickClosestInFov(list, fovRadius)
-	local closest, best = nil, fovRadius
-	for _, entry in ipairs(list) do
-		if entry.centerDist < best then
-			best = entry.centerDist
-			closest = entry
-		end
-	end
-	return closest
+--============================================================
+-- AIMBOT LOGIC
+--============================================================
+local function getClosestTarget(fovRadius)
+    local closest = nil
+    local shortestDist = fovRadius
+    local cam = Workspace.CurrentCamera
+    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character and not isAlly(plr) then
+            local char = plr.Character
+            local part = char:FindFirstChild(State.AimbotTargetPart) or char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            
+            if part and hum and hum.Health > 0 then
+                local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+                if onScreen and screenPos.Z > 0 then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                    if dist < shortestDist then
+                        shortestDist = dist
+                        closest = plr
+                    end
+                end
+            end
+        end
+    end
+    return closest
 end
 
-local function predictPosition(part, predictionTime)
-	if predictionTime <= 0 then return part.Position end
-	local ok, velocity = pcall(function() return part.AssemblyLinearVelocity end)
-	if not ok or not velocity then return part.Position end
-	return part.Position + velocity * predictionTime
-end
+RunService.RenderStepped:Connect(function()
+    local cam = Workspace.CurrentCamera
+    
+    -- FOV Circle
+    if State.AimbotShowFOV then
+        FOVCircle.Position = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+        FOVCircle.Radius = State.AimbotFOV
+        FOVCircle.Visible = true
+    else
+        FOVCircle.Visible = false
+    end
 
-local function refreshSilentTarget()
-	if not State.SilentAimEnabled then
-		State.CachedSilentTarget = nil
-		State.CachedSilentAimPart = nil
-		State.CachedSilentAimPos = nil
-		return
-	end
-	local target = pickClosestInFov(State.VisiblePlayers, State.SilentAimFOV)
-	State.CachedSilentTarget = target
-	if target then
-		local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-		State.CachedSilentAimPart = part
-		State.CachedSilentAimPos = part and predictPosition(part, State.AimbotPrediction) or nil
-	else
-		State.CachedSilentAimPart = nil
-		State.CachedSilentAimPos = nil
-	end
-end
+    -- ESP
+    updateESP()
 
-local function renderESP()
-	if not State.ESPEnabled then
-		clearAllDrawings()
-		return
-	end
-	local camera = workspaceService.CurrentCamera
-	if not camera then
-		clearAllDrawings()
-		return
-	end
-	local rendered = {}
-	for _, entry in ipairs(State.VisiblePlayers) do
-		rendered[entry.player] = true
-		local plr = entry.player
-		local screenPos = entry.screenPos
-		local distance = entry.distance
-		local hum = entry.humanoid
-		local sizeY = math.clamp(1000 / screenPos.Z, 20, 100)
-		local sizeX = sizeY / 2
+    -- Aimbot
+    if State.AimbotEnabled then
+        local target = getClosestTarget(State.AimbotFOV)
+        State.CurrentTarget = target
 
-		if State.ESPBox then
-			local box = ensureDrawing(drawBuckets.Boxes, plr, "Square", function(o)
-				o.Thickness = 1
-				o.Color = RED
-				o.Filled = false
-			end)
-			if box then
-				box.Size = Vector2.new(sizeX, sizeY)
-				box.Position = Vector2.new(screenPos.X - sizeX / 2, screenPos.Y - sizeY / 2)
-				box.Visible = true
-			end
-		end
-
-		if State.ESPName then
-			local name = ensureDrawing(drawBuckets.Names, plr, "Text", function(o)
-				o.Size = 16
-				o.Center = true
-				o.Outline = true
-				o.Color = WHITE
-			end)
-			if name then
-				name.Text = plr.Name
-				name.Position = Vector2.new(screenPos.X, screenPos.Y - sizeY / 2 - 15)
-				name.Visible = true
-			end
-		end
-
-		if State.ESPHealth then
-			local hp = ensureDrawing(drawBuckets.Healths, plr, "Text", function(o)
-				o.Size = 14
-				o.Center = true
-				o.Outline = true
-				o.Color = GREEN
-			end)
-			if hp then
-				hp.Text = math.floor(hum.Health) .. " HP"
-				hp.Position = Vector2.new(screenPos.X, screenPos.Y + sizeY / 2 + 5)
-				hp.Visible = true
-			end
-		end
-
-		if State.ESPDistance then
-			local dist = ensureDrawing(drawBuckets.Distances, plr, "Text", function(o)
-				o.Size = 12
-				o.Center = true
-				o.Outline = true
-				o.Color = Color3.new(0.8, 0.8, 0.8)
-			end)
-			if dist then
-				dist.Text = "[" .. math.floor(distance) .. "m]"
-				dist.Position = Vector2.new(screenPos.X, screenPos.Y + sizeY / 2 + 20)
-				dist.Visible = true
-			end
-		end
-
-		if State.ESPTracer then
-			local tracer = ensureDrawing(drawBuckets.Tracers, plr, "Line", function(o)
-				o.Thickness = 1
-				o.Color = RED
-			end)
-			if tracer then
-				tracer.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
-				tracer.To = Vector2.new(screenPos.X, screenPos.Y)
-				tracer.Visible = true
-			end
-		end
-	end
-	for _, bucket in pairs(drawBuckets) do
-		for plr, obj in pairs(bucket) do
-			if not rendered[plr] then
-				pcall(function() obj.Visible = false end)
-			end
-		end
-	end
-end
-
--- Camera aim.
-local function applyCameraAim(target)
-	local camera = workspaceService.CurrentCamera
-	if not camera then return end
-	local part = target.character:FindFirstChild(State.AimbotTargetPart) or target.root
-	if not part then return end
-	local aimPos = predictPosition(part, State.AimbotPrediction)
-	local delta = aimPos - camera.CFrame.Position
-	if delta.Magnitude < 0.05 then return end
-	pcall(function()
-		local goal = CFrame.lookAt(camera.CFrame.Position, aimPos)
-		camera.CFrame = camera.CFrame:Lerp(goal, math.clamp(State.AimbotSmooth, 0.01, 1))
-	end)
-end
-
--- Character aim (fallback).
-local function applyCharacterAim()
-	if not (State.SilentAimEnabled and modeActive("Character Aim")) then return end
-	local target = State.CachedSilentTarget
-	local aimPos = State.CachedSilentAimPos
-	if not target or not aimPos then return end
-	local char = localPlayer.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-	local flat = Vector3.new(aimPos.X, hrp.Position.Y, aimPos.Z)
-	if (flat - hrp.Position).Magnitude < 0.1 then return end
-	pcall(function()
-		hrp.CFrame = CFrame.lookAt(hrp.Position, flat)
-	end)
-end
-
--- Mouse hijack (enhanced: Hit, Target, UnitRay, Origin, X, Y).
-do
-	local mouse = localPlayer:GetMouse()
-	if mouse then
-		local rawMeta = getrawmetatable(mouse)
-		local originalIndex = rawMeta and rawMeta.__index
-		if originalIndex then
-			pcall(function()
-				hookmetamethod(mouse, "__index", newcclosure(function(self, key)
-					if State.SilentAimEnabled and modeActive("Combined", "Mouse Only") then
-						local target = State.CachedSilentTarget
-						local aimPos = State.CachedSilentAimPos
-						local aimPart = State.CachedSilentAimPart
-						if target and aimPos and aimPart then
-							local camera = workspaceService.CurrentCamera
-							if key == "Hit" then
-								return CFrame.new(aimPos)
-							elseif key == "Target" then
-								return aimPart
-							elseif key == "UnitRay" and camera then
-								local origin = camera.CFrame.Position
-								local dir = aimPos - origin
-								if dir.Magnitude > 0.001 then
-									return Ray.new(origin, dir.Unit)
-								end
-							elseif key == "Origin" and camera then
-								return camera.CFrame.Position
-							elseif (key == "X" or key == "Y") and camera then
-								local screen, onScreen = camera:WorldToViewportPoint(aimPos)
-								if onScreen then
-									if key == "X" then return screen.X end
-									if key == "Y" then return screen.Y end
-								end
-							end
-						end
-					end
-					return originalIndex(self, key)
-				end))
-			end)
-		end
-	end
-end
-
--- Namecall arg rewrite (secondary layer).
-do
-	local remoteMatchCache = setmetatable({}, { __mode = "k" })
-	local function remoteMatches(remote)
-		local cached = remoteMatchCache[remote]
-		if cached ~= nil then return cached end
-		local ok, name = pcall(function() return remote.Name:lower() end)
-		if not ok or not name then
-			remoteMatchCache[remote] = false
-			return false
-		end
-		local filters = State.FilterArray
-		local matched = false
-		for i = 1, #filters do
-			if name:find(filters[i], 1, true) then
-				matched = true
-				break
-			end
-		end
-		remoteMatchCache[remote] = matched
-		return matched
-	end
-
-	local ok = pcall(function()
-		local oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-			if not State.SilentAimEnabled or not modeActive("Combined", "Args Only") then
-				return oldNamecall(self, ...)
-			end
-			local method = getnamecallmethod()
-			if method ~= "FireServer" and method ~= "InvokeServer" then
-				return oldNamecall(self, ...)
-			end
-			if typeof(self) ~= "Instance" then
-				return oldNamecall(self, ...)
-			end
-			if not remoteMatches(self) then
-				return oldNamecall(self, ...)
-			end
-			local target = State.CachedSilentTarget
-			local aimPos = State.CachedSilentAimPos
-			if not target or not aimPos then
-				return oldNamecall(self, ...)
-			end
-
-			local args = { ... }
-			local changed = false
-			for i = 1, #args do
-				local v = args[i]
-				local vType = typeof(v)
-				if vType == "CFrame" then
-					args[i] = CFrame.new(aimPos)
-					changed = true
-				elseif vType == "Vector3" then
-					args[i] = aimPos
-					changed = true
-				elseif vType == "Instance" then
-					if v:IsA("Player") and v ~= localPlayer then
-						args[i] = target.player
-						changed = true
-					elseif v:IsA("Model") and v:FindFirstChild("Humanoid") then
-						args[i] = target.character
-						changed = true
-					elseif v:IsA("BasePart") then
-						local sameName = target.character:FindFirstChild(v.Name)
-						if sameName and sameName:IsA("BasePart") then
-							args[i] = sameName
-							changed = true
-						end
-					end
-				end
-			end
-			if not changed then
-				return oldNamecall(self, ...)
-			end
-			return oldNamecall(self, table.unpack(args))
-		end))
-	end)
-	if not ok then
-		warn("[PALL-UNIV] Namecall hook gagal.")
-	end
-end
-
--- Render loop.
-local renderConn = runService.RenderStepped:Connect(function()
-	local ok, err = pcall(function()
-		local camera = workspaceService.CurrentCamera
-		if not camera then return end
-
-		State.VisiblePlayers = computeVisiblePlayers()
-		refreshSilentTarget()
-		renderESP()
-
-		local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-
-		if State.AimbotShowFOV and State.AimbotEnabled then
-			fovCircle.Position = center
-			fovCircle.Radius = State.AimbotFOV
-			fovCircle.Visible = true
-		else
-			fovCircle.Visible = false
-		end
-
-		if State.SilentAimShowFOV and State.SilentAimEnabled then
-			silentFovCircle.Position = center
-			silentFovCircle.Radius = State.SilentAimFOV
-			silentFovCircle.Visible = true
-		else
-			silentFovCircle.Visible = false
-		end
-
-		if State.AimbotEnabled then
-			local target = pickClosestInFov(State.VisiblePlayers, State.AimbotFOV)
-			if target then
-				applyCameraAim(target)
-			end
-		end
-
-		applyCharacterAim()
-	end)
-	if not ok then
-		warn("[PALL-UNIV] render:", tostring(err))
-	end
+        if target and target.Character then
+            local part = target.Character:FindFirstChild(State.AimbotTargetPart) or target.Character:FindFirstChild("HumanoidRootPart")
+            if part then
+                if State.AimbotType == "Camera" then
+                    cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, part.Position), State.AimbotSmooth)
+                end
+            end
+        end
+    end
 end)
 
--- Cleanup.
-local function bindPlayerCleanup(plr)
-	plr.CharacterRemoving:Connect(function() removePlayerDrawings(plr) end)
-end
-for _, plr in ipairs(playersService:GetPlayers()) do
-	bindPlayerCleanup(plr)
-end
-local playerAddedConn = playersService.PlayerAdded:Connect(bindPlayerCleanup)
-local playerRemovingConn = playersService.PlayerRemoving:Connect(function(plr) removePlayerDrawings(plr) end)
+--============================================================
+-- SILENT AIM
+--============================================================
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
 
-_G.PallCombat = {
-	Cleanup = function()
-		pcall(function() renderConn:Disconnect() end)
-		pcall(function() playerAddedConn:Disconnect() end)
-		pcall(function() playerRemovingConn:Disconnect() end)
-		clearAllDrawings()
-		pcall(function() fovCircle:Remove() end)
-		pcall(function() silentFovCircle:Remove() end)
-	end,
-}
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
 
--- UI.
+    if State.SilentAimEnabled and (method == "FireServer" or method == "InvokeServer") then
+        local remoteName = self.Name:lower()
+        local isCombatRemote = false
+        
+        for kw in string.gmatch(State.SilentAimFilter, "[^,]+") do
+            if remoteName:find(kw:match("^%s*(.-)%s*$")) then
+                isCombatRemote = true
+                break
+            end
+        end
+
+        if isCombatRemote then
+            local target = State.CurrentTarget or getClosestTarget(State.SilentAimFOV)
+            if target and target.Character then
+                local targetPart = target.Character:FindFirstChild(State.AimbotTargetPart) or target.Character:FindFirstChild("HumanoidRootPart")
+                
+                for i, v in pairs(args) do
+                    if typeof(v) == "CFrame" and targetPart then
+                        args[i] = targetPart.CFrame
+                    elseif typeof(v) == "Instance" and v:IsA("Model") and v:FindFirstChild("Humanoid") then
+                        args[i] = target.Character
+                    elseif typeof(v) == "Vector3" and targetPart then
+                        args[i] = targetPart.Position
+                    end
+                end
+                return oldNamecall(self, table.unpack(args))
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+setreadonly(mt, true)
+
+--============================================================
+-- WINDOW UI
+--============================================================
 local Window = WindUI:CreateWindow({
-	Title = "Pall x Universal Combat",
-	Folder = "palluniv",
-	Icon = "solar:target-bold",
-	NewElements = true,
-	HideSearchBar = false,
-	OpenButton = {
-		Title = "Open Pall Combat",
-		CornerRadius = UDim.new(1, 0),
-		StrokeThickness = 3,
-		Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
-		Color = ColorSequence.new(Color3.fromHex("#FF4F4F"), Color3.fromHex("#FF9F1C")),
-	},
-	Topbar = { Height = 44, ButtonsType = "Mac" },
+    Title = "Pall x Universal Combat",
+    Folder = "palluniv",
+    Icon = "solar:target-bold",
+    NewElements = true,
+    HideSearchBar = false,
+    OpenButton = {
+        Title = "Open Pall Combat",
+        CornerRadius = UDim.new(1, 0),
+        StrokeThickness = 3,
+        Enabled = true, Draggable = true, OnlyMobile = false, Scale = 0.5,
+        Color = ColorSequence.new(Color3.fromHex("#FF4F4F"), Color3.fromHex("#FF9F1C")),
+    },
+    Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.4.1", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.2.0", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
-local tabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = GREEN, IconShape = "Square", Border = true })
+local TabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = Green, IconShape = "Square", Border = true })
 do
-	local s = tabESP:Section({ Title = "ESP Settings", Box = true, BoxBorder = true, Opened = true })
-	s:Toggle({ Title = "Aktifkan ESP", Value = false, Callback = function(v) State.ESPEnabled = v end })
-	s:Space()
-	s:Slider({ Title = "Jarak Maksimal ESP (m)", Step = 100, Value = { Min = 100, Max = 2000, Default = 1000 }, Callback = function(v) State.ESPMaxDistance = v end })
-	s:Space()
-	s:Toggle({ Title = "Box", Value = true, Callback = function(v) State.ESPBox = v end })
-	s:Space()
-	s:Toggle({ Title = "Name", Value = true, Callback = function(v) State.ESPName = v end })
-	s:Space()
-	s:Toggle({ Title = "Health", Value = true, Callback = function(v) State.ESPHealth = v end })
-	s:Space()
-	s:Toggle({ Title = "Distance", Value = true, Callback = function(v) State.ESPDistance = v end })
-	s:Space()
-	s:Toggle({ Title = "Tracer", Value = false, Callback = function(v) State.ESPTracer = v end })
-	s:Space()
-	s:Toggle({ Title = "Team Check (Aman)", Value = true, Callback = function(v) State.ESPTeamCheck = v end })
+    local s = TabESP:Section({ Title = "ESP Settings", Box = true, BoxBorder = true, Opened = true })
+    s:Toggle({ Title = "Aktifkan ESP", Value = false, Callback = function(v) State.ESPEnabled = v end })
+    s:Space()
+    s:Slider({ Title = "Jarak Maksimal ESP (m)", Step = 100, Value = { Min = 100, Max = 2000, Default = 1000 }, Callback = function(v) State.ESPMaxDistance = v end })
+    s:Space()
+    s:Toggle({ Title = "Box", Value = true, Callback = function(v) State.ESPBox = v end })
+    s:Space()
+    s:Toggle({ Title = "Name", Value = true, Callback = function(v) State.ESPName = v end })
+    s:Space()
+    s:Toggle({ Title = "Health", Value = true, Callback = function(v) State.ESPHealth = v end })
+    s:Space()
+    s:Toggle({ Title = "Distance", Value = true, Callback = function(v) State.ESPDistance = v end })
+    s:Space()
+    s:Toggle({ Title = "Tracer", Value = false, Callback = function(v) State.ESPTracer = v end })
+    s:Space()
+    s:Toggle({ Title = "Team Check (Aman)", Value = true, Callback = function(v) State.ESPTeamCheck = v end })
 end
 
-local tabAim = Window:Tab({ Title = "Aimbot", Desc = "Auto Target", Icon = "solar:crosshair-bold", IconColor = RED, IconShape = "Square", Border = true })
+local TabAim = Window:Tab({ Title = "Aimbot", Desc = "Auto Target", Icon = "solar:crosshair-bold", IconColor = Red, IconShape = "Square", Border = true })
 do
-	local s1 = tabAim:Section({ Title = "Aimbot Settings", Box = true, BoxBorder = true, Opened = true })
-	s1:Toggle({ Title = "Aktifkan Aimbot", Value = false, Callback = function(v) State.AimbotEnabled = v end })
-	s1:Space()
-	s1:Slider({ Title = "FOV (Radius)", Step = 10, Value = { Min = 50, Max = 500, Default = 150 }, Callback = function(v) State.AimbotFOV = v end })
-	s1:Space()
-	s1:Toggle({ Title = "Tampilkan FOV Aimbot", Value = true, Callback = function(v) State.AimbotShowFOV = v end })
-	s1:Space()
-	s1:Slider({ Title = "Smoothness", Step = 0.05, Value = { Min = 0.05, Max = 1, Default = 0.15 }, Callback = function(v) State.AimbotSmooth = v end })
-	s1:Space()
-	s1:Slider({ Title = "Prediction (Lead Shot)", Step = 0.01, Value = { Min = 0, Max = 0.5, Default = 0 }, Callback = function(v) State.AimbotPrediction = v end })
-	s1:Space()
-	s1:Dropdown({ Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Torso" }, Value = "Head", Callback = function(v) State.AimbotTargetPart = v end })
-
-	local s2 = tabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
-	s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
-	s2:Space()
-	s2:Dropdown({ Title = "Mode", Values = SILENT_MODES, Value = "Combined", Callback = function(v) State.SilentAimMode = v end })
-	s2:Space()
-	s2:Slider({ Title = "Silent FOV (Radius)", Step = 10, Value = { Min = 50, Max = 800, Default = 300 }, Callback = function(v) State.SilentAimFOV = v end })
-	s2:Space()
-	s2:Toggle({ Title = "Tampilkan FOV Silent Aim", Value = true, Callback = function(v) State.SilentAimShowFOV = v end })
-	s2:Space()
-	s2:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v)
-		State.SilentAimFilter = v
-		rebuildFilter()
-	end })
+    local s1 = TabAim:Section({ Title = "Aimbot Settings", Box = true, BoxBorder = true, Opened = true })
+    s1:Toggle({ Title = "Aktifkan Aimbot", Value = false, Callback = function(v) State.AimbotEnabled = v end })
+    s1:Space()
+    s1:Slider({ Title = "FOV (Radius)", Step = 10, Value = { Min = 50, Max = 500, Default = 150 }, Callback = function(v) State.AimbotFOV = v end })
+    s1:Space()
+    s1:Toggle({ Title = "Tampilkan Lingkaran FOV", Value = true, Callback = function(v) State.AimbotShowFOV = v end })
+    s1:Space()
+    s1:Slider({ Title = "Smoothness", Step = 0.05, Value = { Min = 0.05, Max = 1, Default = 0.15 }, Callback = function(v) State.AimbotSmooth = v end })
+    s1:Space()
+    s1:Dropdown({ Title = "Target Part", Values = { "Head", "HumanoidRootPart", "Torso" }, Value = "Head", Callback = function(v) State.AimbotTargetPart = v end })
+    
+    local s2 = TabAim:Section({ Title = "Silent Aim", Box = true, BoxBorder = true, Opened = true })
+    s2:Toggle({ Title = "Aktifkan Silent Aim", Value = false, Callback = function(v) State.SilentAimEnabled = v end })
+    s2:Space()
+    s2:Slider({ Title = "Silent FOV", Step = 10, Value = { Min = 50, Max = 800, Default = 200 }, Callback = function(v) State.SilentAimFOV = v end })
+    s2:Space()
+    s2:Input({ Title = "Remote Filter (koma)", Value = "shoot,fire,attack,hit,damage,click", Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.4.1", Content = "Long-Range Silent Aim Ready", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.4.1 loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.2.0", Content = "Anti-Ghost ESP Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-UNIV] v1.2.0 loaded.")
