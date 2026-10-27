@@ -1,15 +1,18 @@
 --[[
     PALL — UNIVERSAL COMBAT (ESP + Aimbot + Silent Aim)
-    Version : v1.2.2-Raycast (True Silent Aim)
+    Version : v1.2.3-CameraFix (True Silent Aim + Camera Fix)
 --]]
 
-print("[PALL-UNIV] Memuat Universal Combat v1.2.2-Raycast...")
+print("[PALL-UNIV] Memuat Universal Combat v1.2.3...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LP = Players.LocalPlayer
+
+-- Bersihkan render step lama jika script di-execute ulang
+pcall(function() RunService:UnbindFromRenderStep("PallRender") end)
 
 -- LOAD WINDUI
 local WindUI
@@ -267,9 +270,9 @@ local function refreshSilentTarget()
     end
 end
 
--- RENDER LOOP
-RunService.RenderStepped:Connect(function()
-    pcall(function()
+-- RENDER LOOP (BindToRenderStep: Agar tidak bentrok dengan Camera bawaan Roblox)
+RunService:BindToRenderStep("PallRender", Enum.RenderPriority.Camera.Value + 1, function()
+    local ok, err = pcall(function()
         local cam = Workspace.CurrentCamera
         if not cam then return end
         
@@ -302,12 +305,25 @@ RunService.RenderStepped:Connect(function()
                 local part = target.Character:FindFirstChild(State.AimbotTargetPart) or target.Character:FindFirstChild("HumanoidRootPart")
                 if part then
                     if State.AimbotType == "Camera" then
-                        cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, part.Position), State.AimbotSmooth)
+                        -- Gunakan CFrame.lookAt dan paksa CameraType Custom agar kamera tidak freeze
+                        cam.CameraType = Enum.CameraType.Custom
+                        local currentCFrame = cam.CFrame
+                        local targetPos = part.Position
+                        local newCFrame = CFrame.lookAt(currentCFrame.Position, targetPos)
+                        cam.CFrame = currentCFrame:Lerp(newCFrame, State.AimbotSmooth)
                     end
                 end
             end
+        else
+            -- Reset tipe kamera ke normal jika aimbot mati
+            if cam.CameraType ~= Enum.CameraType.Custom then
+                cam.CameraType = Enum.CameraType.Custom
+            end
         end
     end)
+    if not ok then
+        -- Abaikan error di background agar script tidak mati
+    end
 end)
 
 -- CLEANUP
@@ -338,11 +354,9 @@ mt.__namecall = newcclosure(function(self, ...)
             if method == "Raycast" or method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" then
                 local origin = args[1]
                 if typeof(origin) == "Vector3" then
-                    -- Ubah arah raycast tepat ke musuh
                     args[2] = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
                     return oldNamecall(self, table.unpack(args))
                 elseif typeof(origin) == "Ray" then
-                    -- Kalau game pakai Ray.new()
                     local dist = (targetPart.Position - origin.Origin).Magnitude
                     args[1] = Ray.new(origin.Origin, (targetPart.Position - origin.Origin).Unit * dist)
                     return oldNamecall(self, table.unpack(args))
@@ -416,7 +430,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.2.2-Raycast", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.2.3-CameraFix", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local TabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = Green, IconShape = "Square", Border = true })
 do
@@ -461,5 +475,4 @@ do
     s2:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.2.2-Raycast", Content = "True Silent Aim Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.2.2-Raycast loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.2.3-CameraFix", Content = "Camera bug fixed! Tap anywhere works.", Icon = "solar:bell-bold", Duration
