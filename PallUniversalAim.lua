@@ -1,9 +1,9 @@
 --[[
     PALL — UNIVERSAL COMBAT (ESP + Aimbot + Silent Aim)
-    Version : v1.2.1-Stable (Safe Args Rewrite + Anti-Stuck ESP)
+    Version : v1.2.2-Raycast (True Silent Aim)
 --]]
 
-print("[PALL-UNIV] Memuat Universal Combat v1.2.1-Stable...")
+print("[PALL-UNIV] Memuat Universal Combat v1.2.2-Raycast...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -319,70 +319,83 @@ for _, plr in ipairs(Players:GetPlayers()) do
     end
 end
 
--- SILENT AIM (ARGS REWRITE ONLY - NO MOUSE HOOK)
+-- SILENT AIM (RAYCAST + ARGS REWRITE)
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 setreadonly(mt, false)
 
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
-    local args = {...}
-
-    if State.SilentAimEnabled and (method == "FireServer" or method == "InvokeServer") then
-        local remoteName = typeof(self) == "Instance" and self.Name:lower() or ""
-        local isCombatRemote = false
+    
+    if State.SilentAimEnabled then
+        local target = State.CachedSilentTarget
+        local targetPart = State.CachedSilentAimPart
         
-        -- Cek apakah nama remote cocok dengan filter
-        for kw in string.gmatch(State.SilentAimFilter, "[^,]+") do
-            local trimmed = kw:match("^%s*(.-)%s*$")
-            if trimmed ~= "" and remoteName:find(trimmed, 1, true) then
-                isCombatRemote = true
-                break
-            end
-        end
-
-        if isCombatRemote then
-            local target = State.CachedSilentTarget or getClosestTarget(State.SilentAimFOV)
-            if target and target.Character then
-                local targetPart = target.Character:FindFirstChild(State.AimbotTargetPart) or target.Character:FindFirstChild("HumanoidRootPart")
+        if target and target.Character and targetPart then
+            local args = {...}
+            
+            -- 1. HOOK RAYCAST (Bikin client ngerasa tap-nya kena musuh)
+            if method == "Raycast" or method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "FindPartOnRayWithWhitelist" then
+                local origin = args[1]
+                if typeof(origin) == "Vector3" then
+                    -- Ubah arah raycast tepat ke musuh
+                    args[2] = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
+                    return oldNamecall(self, table.unpack(args))
+                elseif typeof(origin) == "Ray" then
+                    -- Kalau game pakai Ray.new()
+                    local dist = (targetPart.Position - origin.Origin).Magnitude
+                    args[1] = Ray.new(origin.Origin, (targetPart.Position - origin.Origin).Unit * dist)
+                    return oldNamecall(self, table.unpack(args))
+                end
                 
-                if targetPart then
-                    local changed = false
+            -- 2. HOOK SCREEN POINT TO RAY (Kalau game pakai camera ray)
+            elseif method == "ScreenPointToRay" or method == "ViewportPointToRay" then
+                local cam = Workspace.CurrentCamera
+                if cam then
+                    local sp, onScreen = cam:WorldToViewportPoint(targetPart.Position)
+                    if onScreen then
+                        args[1] = sp.X
+                        args[2] = sp.Y
+                        return oldNamecall(self, table.unpack(args))
+                    end
+                end
+                
+            -- 3. HOOK FIRESERVER (Bikin server nerima damage)
+            elseif method == "FireServer" or method == "InvokeServer" then
+                local remoteName = typeof(self) == "Instance" and self.Name:lower() or ""
+                local isCombatRemote = false
+                
+                for kw in string.gmatch(State.SilentAimFilter, "[^,]+") do
+                    local trimmed = kw:match("^%s*(.-)%s*$")
+                    if trimmed ~= "" and remoteName:find(trimmed, 1, true) then
+                        isCombatRemote = true
+                        break
+                    end
+                end
+
+                if isCombatRemote then
                     for i, v in pairs(args) do
                         if typeof(v) == "CFrame" then
-                            -- Paksa koordinat serangan ke posisi musuh
                             args[i] = targetPart.CFrame
-                            changed = true
                         elseif typeof(v) == "Vector3" then
-                            -- Paksa vector posisi ke musuh
                             args[i] = targetPart.Position
-                            changed = true
                         elseif typeof(v) == "Instance" then
-                            -- Kalau game kirim model/karakter sendiri, ganti ke musuh
                             if v:IsA("Model") and v:FindFirstChild("Humanoid") then
                                 args[i] = target.Character
-                                changed = true
                             elseif v:IsA("Player") and v ~= LP then
                                 args[i] = target
-                                changed = true
                             elseif v:IsA("BasePart") then
-                                -- Kalau kirim part (misal Hitbox), cari part yang sama di badan musuh
                                 local samePart = target.Character:FindFirstChild(v.Name)
-                                if samePart then
-                                    args[i] = samePart
-                                    changed = true
-                                end
+                                if samePart then args[i] = samePart end
                             end
                         end
                     end
-                    
-                    if changed then
-                        return oldNamecall(self, table.unpack(args))
-                    end
+                    return oldNamecall(self, table.unpack(args))
                 end
             end
         end
     end
+    
     return oldNamecall(self, ...)
 end)
 setreadonly(mt, true)
@@ -403,7 +416,7 @@ local Window = WindUI:CreateWindow({
     },
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
-Window:Tag({ Title = "v1.2.1-Stable", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
+Window:Tag({ Title = "v1.2.2-Raycast", Icon = "github", Color = Color3.fromHex("#1c1c1c"), Border = true })
 
 local TabESP = Window:Tab({ Title = "ESP", Desc = "Visual Player", Icon = "solar:eye-bold", IconColor = Green, IconShape = "Square", Border = true })
 do
@@ -448,5 +461,5 @@ do
     s2:Input({ Title = "Remote Filter (koma)", Value = State.SilentAimFilter, Callback = function(v) State.SilentAimFilter = v end })
 end
 
-WindUI:Notify({ Title = "Pall Combat v1.2.1-Stable", Content = "Safe Silent Aim Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-UNIV] v1.2.1-Stable loaded.")
+WindUI:Notify({ Title = "Pall Combat v1.2.2-Raycast", Content = "True Silent Aim Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-UNIV] v1.2.2-Raycast loaded.")
