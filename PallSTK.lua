@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE AUTO FARM
-    Version : v8.3.0 (Smart Auto Escape)
+    Version : v8.2.2 (Auto Lobby Kill-Switch)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v8.3...")
+print("[PALL-STK] Memuat STK Farm v8.2.2...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -40,12 +40,10 @@ local State = {
     PlayerESP = true,
     AutoCollect = false,
     AutoRevive = false,
-    AutoEscape = false,
     TeleportDelay = 0.15,
     IsCollecting = false,
     IsReviving = false,
     
-    EscapeKeyword = "exit,escape,door,keluar,vent,gate,heli,car",
     TicketKeyword = "direwick",
 }
 
@@ -53,7 +51,6 @@ local ItemCache = {}
 local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
-local CurrentEscapeTarget = nil
 
 -- CACHE ITEM (Candy & Ticket)
 local function addToCache(obj)
@@ -81,51 +78,6 @@ end
 
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
-
--- PENCARIAN PINTU KELUAR (SMART ESCAPE)
-task.spawn(function()
-    while task.wait(1.5) do
-        if State.AutoEscape then
-            CurrentEscapeTarget = nil
-            for _, obj in ipairs(Workspace:GetDescendants()) do
-                -- Abaikan Lobby!
-                if not obj:IsDescendantOf(Workspace:FindFirstChild("_Lobby") or game) then
-                    local isTarget = false
-                    local targetPart = nil
-                    local prompt = nil
-
-                    -- Cek ProximityPrompt (Biasanya pintu escape butuh tahan tombol E)
-                    if obj:IsA("ProximityPrompt") and obj.Enabled then
-                        isTarget = true
-                        targetPart = obj.Parent
-                        prompt = obj
-                    -- Cek nama objek
-                    elseif obj:IsA("BasePart") or obj:IsA("Model") then
-                        local nameLower = obj.Name:lower()
-                        for kw in string.gmatch(State.EscapeKeyword, "[^,]+") do
-                            local trimmed = kw:match("^%s*(.-)%s*$")
-                            if trimmed ~= "" and nameLower:find(trimmed, 1, true) then
-                                isTarget = true
-                                targetPart = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
-                                prompt = obj:FindFirstChildWhichIsA("ProximityPrompt")
-                                break
-                            end
-                        end
-                    end
-
-                    if isTarget and targetPart then
-                        -- Pastikan posisinya valid (bukan 0,0,0)
-                        local p = targetPart:IsA("BasePart") and targetPart.Position or targetPart:FindFirstChildWhichIsA("BasePart") and targetPart:FindFirstChildWhichIsA("BasePart").Position
-                        if p and p.Magnitude > 1 then
-                            CurrentEscapeTarget = { part = targetPart, prompt = prompt, pos = p }
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
 
 -- UPDATE ESP ITEM
 local function updateItemESP()
@@ -249,37 +201,6 @@ local function updatePlayerESP()
     end
 end
 
--- LOGIC AUTO ESCAPE (Terbaru)
-local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTarget then return false end
-    local char = LP.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-
-    -- Teleport ke pintu
-    pcall(function() 
-        hrp.CFrame = CFrame.new(CurrentEscapeTarget.pos + Vector3.new(0, 3, 0)) 
-    end)
-    task.wait(0.2)
-    
-    -- Tembak Touch
-    if CurrentEscapeTarget.part then
-        pcall(function()
-            firetouchinterest(hrp, CurrentEscapeTarget.part, 0)
-            task.wait(0.1)
-            firetouchinterest(hrp, CurrentEscapeTarget.part, 1)
-        end)
-    end
-    
-    -- Pencet Tombol (Kalau ada)
-    if CurrentEscapeTarget.prompt then 
-        pcall(function() fireproximityprompt(CurrentEscapeTarget.prompt) end) 
-    end
-    
-    task.wait(0.5)
-    return true
-end
-
 -- LOGIC AUTO REVIVE
 local function doAutoRevive()
     if not State.AutoRevive or State.IsReviving then return false end
@@ -364,6 +285,45 @@ local function doAutoCollect()
     State.IsCollecting = false
 end
 
+-- FITUR: AUTO KE LOBBY (Kill Switch)
+local function goToLobby()
+    -- 1. Matikan semua fitur otomatis
+    State.AutoCollect = false
+    State.AutoRevive = false
+    State.IsCollecting = false
+    State.IsReviving = false
+    
+    -- 2. Bersihkan Cache dan Hapus ESP Map sebelumnya
+    ItemCache = {}
+    for obj, _ in pairs(ItemDrawings.Boxes) do
+        pcall(function() ItemDrawings.Boxes[obj]:Remove() end)
+        ItemDrawings.Boxes[obj] = nil
+    end
+    for obj, _ in pairs(ItemDrawings.Texts) do
+        pcall(function() ItemDrawings.Texts[obj]:Remove() end)
+        ItemDrawings.Texts[obj] = nil
+    end
+
+    -- 3. Teleport ke Lobby
+    local char = LP.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local lobby = Workspace:FindFirstChild("_Lobby")
+        if lobby then
+            local spawn = lobby:FindFirstChild("SpawnLocation", true)
+            if spawn then
+                pcall(function() hrp.CFrame = spawn.CFrame + Vector3.new(0, 3, 0) end)
+            else
+                pcall(function() hrp.CFrame = CFrame.new(26, 263, -12) end)
+            end
+        else
+            pcall(function() hrp.CFrame = CFrame.new(26, 263, -12) end)
+        end
+    end
+    
+    WindUI:Notify({ Title = "Kembali ke Lobby", Content = "Auto Farm & Revive dimatikan otomatis.", Duration = 4 })
+end
+
 -- LOOP UTAMA
 RunService.RenderStepped:Connect(function()
     updateItemESP()
@@ -371,20 +331,18 @@ RunService.RenderStepped:Connect(function()
 end)
 
 RunService.Heartbeat:Connect(function()
-    if State.AutoEscape and CurrentEscapeTarget then
-        pcall(doAutoEscape)
-    elseif State.AutoRevive then
+    if State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    if not State.IsReviving and not CurrentEscapeTarget then
+    if not State.IsReviving then
         pcall(doAutoCollect)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v8.3",
+    Title = "STK Farm v8.2.2",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -421,11 +379,11 @@ SecPlayer:Toggle({ Title = "Wallhack (Teman Biru, Musuh Merah)", Value = true, C
 local SecRevive = TabPlayer:Section({ Title = "Auto Revive", Box = true, BoxBorder = true, Opened = true })
 SecRevive:Toggle({ Title = "Auto Revive Teman", Value = false, Callback = function(v) State.AutoRevive = v end })
 
-local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
-local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Auto Escape (Pintu Keluar)", Value = false, Callback = function(v) State.AutoEscape = v end })
-SecEscape:Space()
-SecEscape:Input({ Title = "Kata Kunci Pintu (koma)", Value = State.EscapeKeyword, Callback = function(v) State.EscapeKeyword = v end })
+local TabUtility = Window:Tab({ Title = "Utility", Icon = "solar:settings-bold", IconColor = Green, IconShape = "Square", Border = true })
+local SecUtil = TabUtility:Section({ Title = "Lobby Settings", Box = true, BoxBorder = true, Opened = true })
+SecUtil:Button({ Title = "Teleport Ke Lobby (Anti Mati)", Callback = function() goToLobby() end })
+SecUtil:Space()
+SecUtil:Note({ Title = "Info", Desc = "Tombol ini akan mematikan Auto Collect & Revive, lalu memindahkan karakter ke Lobby." })
 
-WindUI:Notify({ Title = "STK Farm v8.3", Content = "Smart Auto Escape Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v8.3.0 loaded.")
+WindUI:Notify({ Title = "STK Farm v8.2.2", Content = "Auto Collect & Ticket Works!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v8.2.2 loaded.")
