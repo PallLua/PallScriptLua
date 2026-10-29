@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE AUTO FARM
-    Version : v8.2.2 (Auto Lobby Kill-Switch)
+    Version : v9.0.0 (Respawn Collect + Suicide)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v8.2.2...")
+print("[PALL-STK] Memuat STK Farm v9.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -45,6 +45,7 @@ local State = {
     IsReviving = false,
     
     TicketKeyword = "direwick",
+    AutoCollectOnRespawn = false, -- Fitur Baru
 }
 
 local ItemCache = {}
@@ -52,7 +53,7 @@ local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
 
--- CACHE ITEM (Candy & Ticket)
+-- CACHE ITEM
 local function addToCache(obj)
     if not obj then return end
     local function isInsideLootSpawns(part)
@@ -285,44 +286,29 @@ local function doAutoCollect()
     State.IsCollecting = false
 end
 
--- FITUR: AUTO KE LOBBY (Kill Switch)
-local function goToLobby()
-    -- 1. Matikan semua fitur otomatis
-    State.AutoCollect = false
-    State.AutoRevive = false
-    State.IsCollecting = false
-    State.IsReviving = false
-    
-    -- 2. Bersihkan Cache dan Hapus ESP Map sebelumnya
-    ItemCache = {}
-    for obj, _ in pairs(ItemDrawings.Boxes) do
-        pcall(function() ItemDrawings.Boxes[obj]:Remove() end)
-        ItemDrawings.Boxes[obj] = nil
-    end
-    for obj, _ in pairs(ItemDrawings.Texts) do
-        pcall(function() ItemDrawings.Texts[obj]:Remove() end)
-        ItemDrawings.Texts[obj] = nil
-    end
-
-    -- 3. Teleport ke Lobby
+-- FITUR: AUTO RESPAWN & SUICIDE
+local function suicideCharacter()
     local char = LP.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        local lobby = Workspace:FindFirstChild("_Lobby")
-        if lobby then
-            local spawn = lobby:FindFirstChild("SpawnLocation", true)
-            if spawn then
-                pcall(function() hrp.CFrame = spawn.CFrame + Vector3.new(0, 3, 0) end)
-            else
-                pcall(function() hrp.CFrame = CFrame.new(26, 263, -12) end)
-            end
-        else
-            pcall(function() hrp.CFrame = CFrame.new(26, 263, -12) end)
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum and hum.Health > 0 then
+            hum.Health = 0
+            WindUI:Notify({ Title = "Mati", Content = "Karakter di-reset. Menunggu respawn...", Duration = 3 })
         end
     end
-    
-    WindUI:Notify({ Title = "Kembali ke Lobby", Content = "Auto Farm & Revive dimatikan otomatis.", Duration = 4 })
 end
+
+LP.CharacterAdded:Connect(function(char)
+    if State.AutoCollectOnRespawn then
+        WindUI:Notify({ Title = "Respawn Terdeteksi", Content = "Menunggu map load (3 detik)...", Duration = 3 })
+        task.wait(3) -- Tunggu map selesai loading
+        ItemCache = {} -- Bersihkan cache lama
+        for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
+        
+        State.AutoCollect = true
+        WindUI:Notify({ Title = "Auto Collect Aktif", Content = "Memulai farming otomatis!", Duration = 4 })
+    end
+end)
 
 -- LOOP UTAMA
 RunService.RenderStepped:Connect(function()
@@ -342,7 +328,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v8.2.2",
+    Title = "STK Farm v9.0",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -380,10 +366,15 @@ local SecRevive = TabPlayer:Section({ Title = "Auto Revive", Box = true, BoxBord
 SecRevive:Toggle({ Title = "Auto Revive Teman", Value = false, Callback = function(v) State.AutoRevive = v end })
 
 local TabUtility = Window:Tab({ Title = "Utility", Icon = "solar:settings-bold", IconColor = Green, IconShape = "Square", Border = true })
-local SecUtil = TabUtility:Section({ Title = "Lobby Settings", Box = true, BoxBorder = true, Opened = true })
-SecUtil:Button({ Title = "Teleport Ke Lobby (Anti Mati)", Callback = function() goToLobby() end })
+local SecUtil = TabUtility:Section({ Title = "Respawn Settings", Box = true, BoxBorder = true, Opened = true })
+SecUtil:Toggle({ Title = "Auto Collect Setelah Respawn", Value = false, Callback = function(v) State.AutoCollectOnRespawn = v end })
 SecUtil:Space()
-SecUtil:Note({ Title = "Info", Desc = "Tombol ini akan mematikan Auto Collect & Revive, lalu memindahkan karakter ke Lobby." })
+SecUtil:Button({ Title = "Mati & Auto Collect (Suicide)", Callback = function() 
+    State.AutoCollect = true
+    suicideCharacter() 
+end })
+SecUtil:Space()
+SecUtil:Note({ Title = "Info", Desc = "Tombol di atas akan membunuh karaktermu, lalu otomatis menyalakan Auto Collect 3 detik setelah kamu respawn di dalam match." })
 
-WindUI:Notify({ Title = "STK Farm v8.2.2", Content = "Auto Collect & Ticket Works!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v8.2.2 loaded.")
+WindUI:Notify({ Title = "STK Farm v9.0", Content = "Respawn Automation Ready!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v9.0.0 loaded.")
