@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.3.1 (Fully Auto Timer & Escape)
+    Version : v10.3.2 (Syntax Fix & Game-Bug Bypass)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.3.1...")
+print("[PALL-STK] Memuat STK Farm v10.3.2...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -88,27 +88,27 @@ end
 -- THREAD TIMER (Cek tiap 1 detik)
 task.spawn(function()
     while task.wait(1) do
-        if State.SmartTimer then
-            if not TimerLabel or not TimerLabel.Parent then
+        if State.SmartTimer == true then
+            if TimerLabel == nil or TimerLabel.Parent == nil then
                 TimerLabel = findTimerLabel()
             end
             
-            if TimerLabel then
+            if TimerLabel ~= nil then
                 local m, s = TimerLabel.Text:match("^(%d+):(%d%d)$")
-                if m and s then
+                if m ~= nil and s ~= nil then
                     local timeLeft = (tonumber(m) * 60) + tonumber(s)
                     State.CurrentMatchTime = timeLeft
                     
                     -- OTOMATIS BERALIH JIKA SISA WAKTU <= 10 DETIK
                     if timeLeft <= 10 then
-                        if State.AutoCollect then
+                        if State.AutoCollect == true then
                             State.AutoCollect = false
                             State.AutoEscape = true
                             WindUI:Notify({ Title = "Waktu Hampir Habis!", Content = "Auto Collect OFF. Beralih ke Auto Escape.", Duration = 5 })
                         end
                     else
                         -- Jika match baru (waktu reset), nyalakan lagi auto collect
-                        if State.WantAutoCollect and not State.AutoCollect then
+                        if State.WantAutoCollect == true and State.AutoCollect == false then
                             State.AutoCollect = true
                             State.AutoEscape = State.WantAutoEscape
                         end
@@ -148,7 +148,7 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR
+-- PENCARIAN PINTU KELUAR (DENGAN PENGAMAN ERROR GAME)
 task.spawn(function()
     while task.wait(1) do
         if State.AutoEscape then
@@ -158,8 +158,9 @@ task.spawn(function()
                     local exits = map:FindFirstChild("Exits")
                     if exits then
                         for _, gateway in ipairs(exits:GetChildren()) do
-                            local trigger = gateway:FindFirstChild("Trigger")
-                            if trigger and trigger:IsA("BasePart") then
+                            -- Gunakan pcall untuk menghindari bug bawaan game (Trigger is not valid member)
+                            local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
+                            if success and trigger and trigger:IsA("BasePart") then
                                 foundTrigger = trigger
                                 break
                             end
@@ -170,7 +171,6 @@ task.spawn(function()
             end
             if foundTrigger then
                 CurrentEscapeTrigger = foundTrigger
-                -- Pintu kebuka (Killer mati / waktu habis) = Matikan Auto Collect
                 State.AutoCollect = false
             elseif not State.IsEscaping then
                 CurrentEscapeTrigger = nil
@@ -180,7 +180,6 @@ task.spawn(function()
         end
     end
 end)
-
 -- UPDATE ESP ITEM
 local function updateItemESP()
     if not State.ESPEnabled then
@@ -320,7 +319,10 @@ local function doAutoRevive()
                 local pRoot = plr.Character:FindFirstChild("HumanoidRootPart")
                 if pHum and pRoot and pHum.Health > 0 then
                     local isKnocked = pHum.PlatformStand or (pRoot:FindFirstChild("PromptAttachment") ~= nil)
-                    if isKnocked then targetToRevive = plr break end
+                    if isKnocked then
+                        targetToRevive = plr
+                        break
+                    end
                 end
             end
         end
@@ -352,7 +354,6 @@ local function doAutoRevive()
     end
     return false
 end
-
 -- LOGIC AUTO COLLECT
 local function doAutoCollect()
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
@@ -493,7 +494,9 @@ end
 
 -- LOGIC AUTO ESCAPE
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping true
+    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping then return false end
+    
+    State.IsEscaping = true
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then 
@@ -541,7 +544,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.3.1",
+    Title = "STK Farm v10.3.2",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -601,5 +604,5 @@ SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = false, Call
 SecEscape:Space()
 SecEscape:Note({ Title = "Info", Desc = "Nyalakan Smart Timer. Karakter akan farming sampai waktu tersisa 10 detik ATAU pintu kebuka lebih awal, lalu otomatis kabur." })
 
-WindUI:Notify({ Title = "STK v10.3.1", Content = "Fully Auto Timer Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.3.1 loaded.")
+WindUI:Notify({ Title = "STK v10.3.2", Content = "Syntax Fixed! Silakan coba lagi.", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.3.2 loaded.")
