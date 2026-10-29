@@ -1,14 +1,15 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.2.3 (Anti-Flicker & Escape Lock Fix)
+    Version : v10.3.1 (Fully Auto Timer & Escape)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.2.3...")
+print("[PALL-STK] Memuat STK Farm v10.3.1...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
 local LP = Players.LocalPlayer
 
@@ -48,10 +49,16 @@ local State = {
     TweenSpeed = 0.3,
     
     AutoEscape = false,
+    SmartTimer = false,
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
-    IsEscaping = false, -- Kunci khusus biar ga tabrakan
+    IsEscaping = false,
+    
+    -- State Otomatis
+    WantAutoCollect = false,
+    WantAutoEscape = false,
+    CurrentMatchTime = 9999,
 }
 
 local ItemCache = {}
@@ -59,8 +66,60 @@ local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
 local CurrentEscapeTrigger = nil
+local TimerLabel = nil
 
--- CACHE ITEM (DENGAN FILTER LOBBY)
+-- FUNGSI BACA TIMER UI STK
+local function findTimerLabel()
+    local containers = {CoreGui, LP:FindFirstChild("PlayerGui")}
+    for _, c in ipairs(containers) do
+        if c then
+            for _, v in ipairs(c:GetDescendants()) do
+                if v:IsA("TextLabel") and v.Text:match("^(%d+):(%d%d)$") then
+                    if v.AbsolutePosition.Y < 150 then
+                        return v
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- THREAD TIMER (Cek tiap 1 detik)
+task.spawn(function()
+    while task.wait(1) do
+        if State.SmartTimer then
+            if not TimerLabel or not TimerLabel.Parent then
+                TimerLabel = findTimerLabel()
+            end
+            
+            if TimerLabel then
+                local m, s = TimerLabel.Text:match("^(%d+):(%d%d)$")
+                if m and s then
+                    local timeLeft = (tonumber(m) * 60) + tonumber(s)
+                    State.CurrentMatchTime = timeLeft
+                    
+                    -- OTOMATIS BERALIH JIKA SISA WAKTU <= 10 DETIK
+                    if timeLeft <= 10 then
+                        if State.AutoCollect then
+                            State.AutoCollect = false
+                            State.AutoEscape = true
+                            WindUI:Notify({ Title = "Waktu Hampir Habis!", Content = "Auto Collect OFF. Beralih ke Auto Escape.", Duration = 5 })
+                        end
+                    else
+                        -- Jika match baru (waktu reset), nyalakan lagi auto collect
+                        if State.WantAutoCollect and not State.AutoCollect then
+                            State.AutoCollect = true
+                            State.AutoEscape = State.WantAutoEscape
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- CACHE ITEM
 local function addToCache(obj)
     if not obj then return end
     local lobby = Workspace:FindFirstChild("_Lobby")
@@ -89,7 +148,7 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (ANTI-FLICKER)
+-- PENCARIAN PINTU KELUAR
 task.spawn(function()
     while task.wait(1) do
         if State.AutoEscape then
@@ -109,9 +168,10 @@ task.spawn(function()
                 end
                 if foundTrigger then break end
             end
-            -- Hanya update kalau ketemu (biar ga berkedip nil)
             if foundTrigger then
                 CurrentEscapeTrigger = foundTrigger
+                -- Pintu kebuka (Killer mati / waktu habis) = Matikan Auto Collect
+                State.AutoCollect = false
             elseif not State.IsEscaping then
                 CurrentEscapeTrigger = nil
             end
@@ -293,12 +353,9 @@ local function doAutoRevive()
     return false
 end
 
--- LOGIC AUTO COLLECT (DENGAN FILTER Y & ESCAPE LOCK)
+-- LOGIC AUTO COLLECT
 local function doAutoCollect()
-    -- JIKA LAGI ESCAPE, JANGAN COLLECT!
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
-    
-    -- Cek jarak trigger untuk berhenti farming kalau pintu udah deket
     if State.AutoEscape and CurrentEscapeTrigger then return end 
 
     local char = LP.Character
@@ -313,7 +370,6 @@ local function doAutoCollect()
     for _, data in ipairs(ItemCache) do
         local isCooldown = Cooldowns[data.instance] and (now - Cooldowns[data.instance] <= 2)
         if not isCooldown then
-            -- Filter anti terbang (jarak vertikal > 60 diabaikan)
             local yDifference = math.abs(hrp.Position.Y - data.part.Position.Y)
             if yDifference <= 60 then
                 table.insert(availableItems, data)
@@ -435,11 +491,9 @@ local function killAllEnemies()
     end)
 end
 
--- LOGIC AUTO ESCAPE (LOCKED)
+-- LOGIC AUTO ESCAPE
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping then return false end
-    
-    State.IsEscaping = true
+    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping true
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then 
@@ -463,27 +517,23 @@ local function doAutoEscape()
     return true
 end
 
--- LOOP UTAMA (PRIORITAS MUTLAK)
+-- LOOP UTAMA
 RunService.RenderStepped:Connect(function()
     updateItemESP()
     updatePlayerESP()
 end)
 
 RunService.Heartbeat:Connect(function()
-    -- 1. Prioritas Utama: Escape
     if State.AutoEscape and CurrentEscapeTrigger then
         pcall(doAutoEscape)
-    -- 2. Prioritas Kedua: Revive
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    -- 3. Auto Collect HANYA jalan kalau TIDAK SEDANG ESCAPE & TIDAK SEDANG REVIVE
     if not State.IsReviving and not State.IsEscaping and not CurrentEscapeTrigger then
         pcall(doAutoCollect)
     end
     
-    -- 4. Killer Mode
     if not State.IsReviving and not State.IsCollecting and not State.IsEscaping and not CurrentEscapeTrigger then
         pcall(doEvilMode)
     end
@@ -491,7 +541,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.2.3",
+    Title = "STK Farm v10.3.1",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -509,7 +559,10 @@ local TabGood = Window:Tab({ Title = "Mode Baik", Icon = "solar:shield-check-bol
 local SecFarm = TabGood:Section({ Title = "Collect Settings", Box = true, BoxBorder = true, Opened = true })
 SecFarm:Toggle({ Title = "ESP Candy & Ticket", Value = true, Callback = function(v) State.ESPEnabled = v end })
 SecFarm:Space()
-SecFarm:Toggle({ Title = "Auto Collect (Random)", Value = false, Callback = function(v) State.AutoCollect = v end })
+SecFarm:Toggle({ Title = "Auto Collect (Random)", Value = false, Callback = function(v) 
+    State.AutoCollect = v 
+    State.WantAutoCollect = v 
+end })
 SecFarm:Space()
 SecFarm:Slider({ Title = "Teleport Delay (detik)", Step = 0.05, Value = { Min = 0.05, Max = 0.5, Default = 0.15 }, Callback = function(v) State.TeleportDelay = v end })
 SecFarm:Space()
@@ -539,9 +592,14 @@ end })
 
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback = function(v) State.AutoEscape = v end })
+SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback = function(v) 
+    State.AutoEscape = v 
+    State.WantAutoEscape = v
+end })
 SecEscape:Space()
-SecEscape:Note({ Title = "Info", Desc = "Bebas tabrakan. Kalau pintu keluar terbuka, Auto Collect akan mati total dan karakter fokus kabur." })
+SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = false, Callback = function(v) State.SmartTimer = v end })
+SecEscape:Space()
+SecEscape:Note({ Title = "Info", Desc = "Nyalakan Smart Timer. Karakter akan farming sampai waktu tersisa 10 detik ATAU pintu kebuka lebih awal, lalu otomatis kabur." })
 
-WindUI:Notify({ Title = "STK v10.2.3", Content = "Bebas Terbang Naik Turun!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.2.3 loaded.")
+WindUI:Notify({ Title = "STK v10.3.1", Content = "Fully Auto Timer Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.3.1 loaded.")
