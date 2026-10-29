@@ -2,7 +2,7 @@
     ═══════════════════════════════════════════════════════════
     PALL MULTI-HUB — Router
     Author  : ENI (for Pall)
-    Version : v1.3.0 — Support DQR Multi-Place (Lobby + Dungeon)
+    Version : v1.4.0 — Support DQR, Dice Poly, & STK
     ═══════════════════════════════════════════════════════════
 --]]
 
@@ -29,6 +29,13 @@ local GAMES = {
         Name = "Dice Poly",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallDicePoly.lua",
         Folder = "palldice",
+    },
+
+    -- Survive The Killer (STK)
+    [5038381085] = {
+        Name = "Survive The Killer",
+        URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallSTK.lua",
+        Folder = "pallstk",
     },
 }
 
