@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.2.1 (Anti-Tabrakan System)
+    Version : v10.2.3 (Anti-Flicker & Escape Lock Fix)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.2.1...")
+print("[PALL-STK] Memuat STK Farm v10.2.3...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -51,6 +51,7 @@ local State = {
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
+    IsEscaping = false, -- Kunci khusus biar ga tabrakan
 }
 
 local ItemCache = {}
@@ -59,9 +60,12 @@ local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
 local CurrentEscapeTrigger = nil
 
--- CACHE ITEM
+-- CACHE ITEM (DENGAN FILTER LOBBY)
 local function addToCache(obj)
     if not obj then return end
+    local lobby = Workspace:FindFirstChild("_Lobby")
+    if lobby and obj:IsDescendantOf(lobby) then return end
+
     local function isInsideLootSpawns(part)
         local model = part.Parent
         local idPart = model and model.Parent
@@ -85,24 +89,34 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (PRESISI EXITS FOLDER)
+-- PENCARIAN PINTU KELUAR (ANTI-FLICKER)
 task.spawn(function()
     while task.wait(1) do
         if State.AutoEscape then
-            CurrentEscapeTrigger = nil
+            local foundTrigger = nil
             for _, map in ipairs(Workspace:GetChildren()) do
-                local exits = map:FindFirstChild("Exits")
-                if exits then
-                    for _, gateway in ipairs(exits:GetChildren()) do
-                        local trigger = gateway:FindFirstChild("Trigger")
-                        if trigger and trigger:IsA("BasePart") then
-                            CurrentEscapeTrigger = trigger
-                            break
+                if map.Name ~= "_Lobby" then
+                    local exits = map:FindFirstChild("Exits")
+                    if exits then
+                        for _, gateway in ipairs(exits:GetChildren()) do
+                            local trigger = gateway:FindFirstChild("Trigger")
+                            if trigger and trigger:IsA("BasePart") then
+                                foundTrigger = trigger
+                                break
+                            end
                         end
                     end
                 end
-                if CurrentEscapeTrigger then break end
+                if foundTrigger then break end
             end
+            -- Hanya update kalau ketemu (biar ga berkedip nil)
+            if foundTrigger then
+                CurrentEscapeTrigger = foundTrigger
+            elseif not State.IsEscaping then
+                CurrentEscapeTrigger = nil
+            end
+        else
+            CurrentEscapeTrigger = nil
         end
     end
 end)
@@ -279,9 +293,14 @@ local function doAutoRevive()
     return false
 end
 
--- LOGIC AUTO COLLECT
+-- LOGIC AUTO COLLECT (DENGAN FILTER Y & ESCAPE LOCK)
 local function doAutoCollect()
-    if not State.AutoCollect or State.IsCollecting or State.IsReviving or #ItemCache == 0 then return end
+    -- JIKA LAGI ESCAPE, JANGAN COLLECT!
+    if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
+    
+    -- Cek jarak trigger untuk berhenti farming kalau pintu udah deket
+    if State.AutoEscape and CurrentEscapeTrigger then return end 
+
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
@@ -290,17 +309,25 @@ local function doAutoCollect()
     State.IsCollecting = true
     local availableItems = {}
     local now = tick()
+    
     for _, data in ipairs(ItemCache) do
-        if not Cooldowns[data.instance] or (now - Cooldowns[data.instance] > 2) then
-            table.insert(availableItems, data)
+        local isCooldown = Cooldowns[data.instance] and (now - Cooldowns[data.instance] <= 2)
+        if not isCooldown then
+            -- Filter anti terbang (jarak vertikal > 60 diabaikan)
+            local yDifference = math.abs(hrp.Position.Y - data.part.Position.Y)
+            if yDifference <= 60 then
+                table.insert(availableItems, data)
+            end
         end
     end
 
     if #availableItems > 0 then
         local target = availableItems[math.random(1, #availableItems)]
         Cooldowns[target.instance] = tick()
+        
         pcall(function() hrp.CFrame = CFrame.new(target.part.Position + Vector3.new(0, 3, 0)) end)
         task.wait(State.TeleportDelay)
+        
         pcall(function()
             firetouchinterest(hrp, target.part, 0)
             if target.instance.Name == "Candy" and target.instance.Parent and target.instance.Parent.Parent then
@@ -318,7 +345,7 @@ end
 
 -- LOGIC EVIL MODE
 local function doEvilMode()
-    if not State.EvilAutoKill or State.IsKilling or State.IsReviving or State.IsCollecting then return end
+    if not State.EvilAutoKill or State.IsKilling or State.IsReviving or State.IsCollecting or State.IsEscaping then return end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
@@ -408,12 +435,17 @@ local function killAllEnemies()
     end)
 end
 
--- LOGIC AUTO ESCAPE
+-- LOGIC AUTO ESCAPE (LOCKED)
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTrigger then return false end
+    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping then return false end
+    
+    State.IsEscaping = true
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
+    if not hrp then 
+        State.IsEscaping = false
+        return false 
+    end
 
     pcall(function() 
         hrp.CFrame = CFrame.new(CurrentEscapeTrigger.Position + Vector3.new(0, 3, 0)) 
@@ -427,38 +459,39 @@ local function doAutoEscape()
     end)
     
     task.wait(0.5)
+    State.IsEscaping = false
     return true
 end
 
--- LOOP UTAMA (Prioritas Anti-Tabrakan)
+-- LOOP UTAMA (PRIORITAS MUTLAK)
 RunService.RenderStepped:Connect(function()
     updateItemESP()
     updatePlayerESP()
 end)
 
 RunService.Heartbeat:Connect(function()
-    -- Prioritas 1: Escape
+    -- 1. Prioritas Utama: Escape
     if State.AutoEscape and CurrentEscapeTrigger then
         pcall(doAutoEscape)
-    -- Prioritas 2: Revive
+    -- 2. Prioritas Kedua: Revive
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    -- Prioritas 3: Collect (Hanya jalan kalau gak lagi escape/revive)
-    if not State.IsReviving and not CurrentEscapeTrigger then
+    -- 3. Auto Collect HANYA jalan kalau TIDAK SEDANG ESCAPE & TIDAK SEDANG REVIVE
+    if not State.IsReviving and not State.IsEscaping and not CurrentEscapeTrigger then
         pcall(doAutoCollect)
     end
     
-    -- Prioritas 4: Killer (Hanya jalan kalau gak lagi sibuk)
-    if not State.IsReviving and not State.IsCollecting and not CurrentEscapeTrigger then
+    -- 4. Killer Mode
+    if not State.IsReviving and not State.IsCollecting and not State.IsEscaping and not CurrentEscapeTrigger then
         pcall(doEvilMode)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.2.1",
+    Title = "STK Farm v10.2.3",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -508,7 +541,7 @@ local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", 
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
 SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback = function(v) State.AutoEscape = v end })
 SecEscape:Space()
-SecEscape:Note({ Title = "Info", Desc = "Kalau pintu kebuka, Auto Collect akan pause dan karakter langsung masuk ke zona kabur." })
+SecEscape:Note({ Title = "Info", Desc = "Bebas tabrakan. Kalau pintu keluar terbuka, Auto Collect akan mati total dan karakter fokus kabur." })
 
-WindUI:Notify({ Title = "STK v10.2.1", Content = "Anti-Tabrakan System Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.2.1 loaded.")
+WindUI:Notify({ Title = "STK v10.2.3", Content = "Bebas Terbang Naik Turun!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.2.3 loaded.")
