@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE AUTO FARM
-    Version : v8.1.0 (Specific Ticket Keyword + Escape)
+    Version : v8.2.0 (Fixed Direwick Ticket Detection)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v8.1...")
+print("[PALL-STK] Memuat STK Farm v8.2...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -46,7 +46,7 @@ local State = {
     IsReviving = false,
     
     EscapeKeyword = "exit,escape,door,keluar",
-    TicketKeyword = "Direwick Ticket", -- Default diperbarui
+    TicketKeyword = "direwick", -- Default berdasarkan scan
 }
 
 local ItemCache = {}
@@ -59,23 +59,27 @@ local CurrentEscapeDoor = nil
 local function addToCache(obj)
     if not obj then return end
     
-    -- Cek Candy (Struktur: LootSpawns -> [ID] -> Model -> Candy)
-    if obj.Name == "Candy" and obj:IsA("MeshPart") then
-        local model = obj.Parent
+    -- Fungsi bantuan untuk cek apakah item ada di dalam LootSpawns
+    local function isInsideLootSpawns(part)
+        local model = part.Parent
         local idPart = model and model.Parent
-        if model and model.Name == "Model" and idPart and idPart.Parent and idPart.Parent.Name == "LootSpawns" then
+        return (model and model.Name == "Model" and idPart and idPart.Parent and idPart.Parent.Name == "LootSpawns")
+    end
+
+    -- 1. Cek Candy
+    if obj.Name == "Candy" and obj:IsA("BasePart") then
+        if isInsideLootSpawns(obj) then
             table.insert(ItemCache, { instance = obj, part = obj, isTicket = false })
         end
         
-    -- Cek Ticket (Berdasarkan input kata kunci di UI)
-    elseif (obj:IsA("MeshPart") or obj:IsA("Model") or obj:IsA("Part")) and State.TicketKeyword ~= "" then
+    -- 2. Cek Ticket (Menggunakan kata kunci & validasi LootSpawns)
+    elseif State.TicketKeyword ~= "" and obj:IsA("BasePart") then
         local nameLower = obj.Name:lower()
         local keywordLower = State.TicketKeyword:lower()
         
         if nameLower:find(keywordLower, 1, true) then
-            local basePart = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
-            if basePart then
-                table.insert(ItemCache, { instance = obj, part = basePart, isTicket = true })
+            if isInsideLootSpawns(obj) then
+                table.insert(ItemCache, { instance = obj, part = obj, isTicket = true })
             end
         end
     end
@@ -357,7 +361,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v8.1",
+    Title = "STK Farm v8.2",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -401,5 +405,5 @@ SecEscape:Toggle({ Title = "Auto Escape (Pintu Keluar)", Value = false, Callback
 SecEscape:Space()
 SecEscape:Input({ Title = "Kata Kunci Pintu (koma)", Value = State.EscapeKeyword, Callback = function(v) State.EscapeKeyword = v end })
 
-WindUI:Notify({ Title = "STK Farm v8.1", Content = "Direwick Ticket Ready!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v8.1.0 loaded.")
+WindUI:Notify({ Title = "STK Farm v8.2", Content = "Ticket 100% Detected!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v8.2.0 loaded.")
