@@ -32,7 +32,7 @@ local GAMES = {
     },
 
     -- Survive The Killer (STK)
-    [5038381085] = {
+    [4580204640] = {
         Name = "Survive The Killer",
         URL  = "https://raw.githubusercontent.com/PallLua/PallScriptLua/refs/heads/main/PallSTK.lua",
         Folder = "pallstk",
