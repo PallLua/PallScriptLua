@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE AUTO FARM
-    Version : v8.2.0 (Fixed Direwick Ticket Detection)
+    Version : v8.3.0 (Smart Auto Escape)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v8.2...")
+print("[PALL-STK] Memuat STK Farm v8.3...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -45,38 +45,32 @@ local State = {
     IsCollecting = false,
     IsReviving = false,
     
-    EscapeKeyword = "exit,escape,door,keluar",
-    TicketKeyword = "direwick", -- Default berdasarkan scan
+    EscapeKeyword = "exit,escape,door,keluar,vent,gate,heli,car",
+    TicketKeyword = "direwick",
 }
 
 local ItemCache = {}
 local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
-local CurrentEscapeDoor = nil
+local CurrentEscapeTarget = nil
 
 -- CACHE ITEM (Candy & Ticket)
 local function addToCache(obj)
     if not obj then return end
-    
-    -- Fungsi bantuan untuk cek apakah item ada di dalam LootSpawns
     local function isInsideLootSpawns(part)
         local model = part.Parent
         local idPart = model and model.Parent
         return (model and model.Name == "Model" and idPart and idPart.Parent and idPart.Parent.Name == "LootSpawns")
     end
 
-    -- 1. Cek Candy
     if obj.Name == "Candy" and obj:IsA("BasePart") then
         if isInsideLootSpawns(obj) then
             table.insert(ItemCache, { instance = obj, part = obj, isTicket = false })
         end
-        
-    -- 2. Cek Ticket (Menggunakan kata kunci & validasi LootSpawns)
     elseif State.TicketKeyword ~= "" and obj:IsA("BasePart") then
         local nameLower = obj.Name:lower()
         local keywordLower = State.TicketKeyword:lower()
-        
         if nameLower:find(keywordLower, 1, true) then
             if isInsideLootSpawns(obj) then
                 table.insert(ItemCache, { instance = obj, part = obj, isTicket = true })
@@ -85,30 +79,49 @@ local function addToCache(obj)
     end
 end
 
--- Scan awal
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (AUTO ESCAPE)
+-- PENCARIAN PINTU KELUAR (SMART ESCAPE)
 task.spawn(function()
-    while task.wait(2) do
+    while task.wait(1.5) do
         if State.AutoEscape then
-            CurrentEscapeDoor = nil
+            CurrentEscapeTarget = nil
             for _, obj in ipairs(Workspace:GetDescendants()) do
-                if obj:IsA("BasePart") or obj:IsA("Model") then
-                    local nameLower = obj.Name:lower()
-                    for kw in string.gmatch(State.EscapeKeyword, "[^,]+") do
-                        local trimmed = kw:match("^%s*(.-)%s*$")
-                        if trimmed ~= "" and nameLower:find(trimmed, 1, true) then
-                            local targetPart = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
-                            if targetPart then
-                                CurrentEscapeDoor = targetPart
+                -- Abaikan Lobby!
+                if not obj:IsDescendantOf(Workspace:FindFirstChild("_Lobby") or game) then
+                    local isTarget = false
+                    local targetPart = nil
+                    local prompt = nil
+
+                    -- Cek ProximityPrompt (Biasanya pintu escape butuh tahan tombol E)
+                    if obj:IsA("ProximityPrompt") and obj.Enabled then
+                        isTarget = true
+                        targetPart = obj.Parent
+                        prompt = obj
+                    -- Cek nama objek
+                    elseif obj:IsA("BasePart") or obj:IsA("Model") then
+                        local nameLower = obj.Name:lower()
+                        for kw in string.gmatch(State.EscapeKeyword, "[^,]+") do
+                            local trimmed = kw:match("^%s*(.-)%s*$")
+                            if trimmed ~= "" and nameLower:find(trimmed, 1, true) then
+                                isTarget = true
+                                targetPart = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
+                                prompt = obj:FindFirstChildWhichIsA("ProximityPrompt")
                                 break
                             end
                         end
                     end
+
+                    if isTarget and targetPart then
+                        -- Pastikan posisinya valid (bukan 0,0,0)
+                        local p = targetPart:IsA("BasePart") and targetPart.Position or targetPart:FindFirstChildWhichIsA("BasePart") and targetPart:FindFirstChildWhichIsA("BasePart").Position
+                        if p and p.Magnitude > 1 then
+                            CurrentEscapeTarget = { part = targetPart, prompt = prompt, pos = p }
+                            break
+                        end
+                    end
                 end
-                if CurrentEscapeDoor then break end
             end
         end
     end
@@ -236,23 +249,33 @@ local function updatePlayerESP()
     end
 end
 
--- LOGIC AUTO ESCAPE
+-- LOGIC AUTO ESCAPE (Terbaru)
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeDoor then return false end
+    if not State.AutoEscape or not CurrentEscapeTarget then return false end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
-    pcall(function() hrp.CFrame = CFrame.new(CurrentEscapeDoor.Position + Vector3.new(0, 3, 0)) end)
-    task.wait(0.2)
-    pcall(function()
-        firetouchinterest(hrp, CurrentEscapeDoor, 0)
-        task.wait(0.1)
-        firetouchinterest(hrp, CurrentEscapeDoor, 1)
+    -- Teleport ke pintu
+    pcall(function() 
+        hrp.CFrame = CFrame.new(CurrentEscapeTarget.pos + Vector3.new(0, 3, 0)) 
     end)
+    task.wait(0.2)
     
-    local prompt = CurrentEscapeDoor:FindFirstChildWhichIsA("ProximityPrompt") or (CurrentEscapeDoor.Parent and CurrentEscapeDoor.Parent:FindFirstChildWhichIsA("ProximityPrompt"))
-    if prompt then pcall(function() fireproximityprompt(prompt) end) end
+    -- Tembak Touch
+    if CurrentEscapeTarget.part then
+        pcall(function()
+            firetouchinterest(hrp, CurrentEscapeTarget.part, 0)
+            task.wait(0.1)
+            firetouchinterest(hrp, CurrentEscapeTarget.part, 1)
+        end)
+    end
+    
+    -- Pencet Tombol (Kalau ada)
+    if CurrentEscapeTarget.prompt then 
+        pcall(function() fireproximityprompt(CurrentEscapeTarget.prompt) end) 
+    end
+    
     task.wait(0.5)
     return true
 end
@@ -348,20 +371,20 @@ RunService.RenderStepped:Connect(function()
 end)
 
 RunService.Heartbeat:Connect(function()
-    if State.AutoEscape and CurrentEscapeDoor then
+    if State.AutoEscape and CurrentEscapeTarget then
         pcall(doAutoEscape)
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    if not State.IsReviving then
+    if not State.IsReviving and not CurrentEscapeTarget then
         pcall(doAutoCollect)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v8.2",
+    Title = "STK Farm v8.3",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -385,7 +408,6 @@ SecFarm:Slider({ Title = "Teleport Delay (detik)", Step = 0.05, Value = { Min = 
 SecFarm:Space()
 SecFarm:Input({ Title = "Kata Kunci Tiket", Value = State.TicketKeyword, Callback = function(v) 
     State.TicketKeyword = v 
-    -- Bersihkan cache tiket lama agar tidak dobel
     for i = #ItemCache, 1, -1 do
         if ItemCache[i].isTicket then table.remove(ItemCache, i) end
     end
@@ -405,5 +427,5 @@ SecEscape:Toggle({ Title = "Auto Escape (Pintu Keluar)", Value = false, Callback
 SecEscape:Space()
 SecEscape:Input({ Title = "Kata Kunci Pintu (koma)", Value = State.EscapeKeyword, Callback = function(v) State.EscapeKeyword = v end })
 
-WindUI:Notify({ Title = "STK Farm v8.2", Content = "Ticket 100% Detected!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v8.2.0 loaded.")
+WindUI:Notify({ Title = "STK Farm v8.3", Content = "Smart Auto Escape Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v8.3.0 loaded.")
