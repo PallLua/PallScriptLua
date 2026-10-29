@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.0.0 (Tween Killer + Clean UI)
+    Version : v10.2.1 (Anti-Tabrakan System)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.0...")
+print("[PALL-STK] Memuat STK Farm v10.2.1...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -37,7 +37,6 @@ end
 _G.PALL_STK_FARM = true
 
 local State = {
-    -- Mode Baik
     ESPEnabled = true,
     PlayerESP = true,
     AutoCollect = false,
@@ -45,15 +44,10 @@ local State = {
     TeleportDelay = 0.15,
     TicketKeyword = "direwick",
     
-    -- Mode Jahat
     EvilAutoKill = false,
     TweenSpeed = 0.3,
     
-    -- Auto Escape
     AutoEscape = false,
-    EscapeKeyword = "exit,escape,door,keluar,vent,gate",
-    
-    -- Status
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
@@ -63,7 +57,7 @@ local ItemCache = {}
 local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
-local CurrentEscapeTarget = nil
+local CurrentEscapeTrigger = nil
 
 -- CACHE ITEM
 local function addToCache(obj)
@@ -91,42 +85,23 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (SMART ESCAPE)
+-- PENCARIAN PINTU KELUAR (PRESISI EXITS FOLDER)
 task.spawn(function()
-    while task.wait(1.5) do
+    while task.wait(1) do
         if State.AutoEscape then
-            CurrentEscapeTarget = nil
-            for _, obj in ipairs(Workspace:GetDescendants()) do
-                if not obj:IsDescendantOf(Workspace:FindFirstChild("_Lobby") or game) then
-                    local isTarget = false
-                    local targetPart = nil
-                    local prompt = nil
-
-                    if obj:IsA("ProximityPrompt") and obj.Enabled then
-                        isTarget = true
-                        targetPart = obj.Parent
-                        prompt = obj
-                    elseif obj:IsA("BasePart") or obj:IsA("Model") then
-                        local nameLower = obj.Name:lower()
-                        for kw in string.gmatch(State.EscapeKeyword, "[^,]+") do
-                            local trimmed = kw:match("^%s*(.-)%s*$")
-                            if trimmed ~= "" and nameLower:find(trimmed, 1, true) then
-                                isTarget = true
-                                targetPart = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj
-                                prompt = obj:FindFirstChildWhichIsA("ProximityPrompt")
-                                break
-                            end
-                        end
-                    end
-
-                    if isTarget and targetPart then
-                        local p = targetPart:IsA("BasePart") and targetPart.Position or targetPart:FindFirstChildWhichIsA("BasePart") and targetPart:FindFirstChildWhichIsA("BasePart").Position
-                        if p and p.Magnitude > 1 then
-                            CurrentEscapeTarget = { part = targetPart, prompt = prompt, pos = p }
+            CurrentEscapeTrigger = nil
+            for _, map in ipairs(Workspace:GetChildren()) do
+                local exits = map:FindFirstChild("Exits")
+                if exits then
+                    for _, gateway in ipairs(exits:GetChildren()) do
+                        local trigger = gateway:FindFirstChild("Trigger")
+                        if trigger and trigger:IsA("BasePart") then
+                            CurrentEscapeTrigger = trigger
                             break
                         end
                     end
                 end
+                if CurrentEscapeTrigger then break end
             end
         end
     end
@@ -270,7 +245,7 @@ local function doAutoRevive()
                 local pHum = plr.Character:FindFirstChild("Humanoid")
                 local pRoot = plr.Character:FindFirstChild("HumanoidRootPart")
                 if pHum and pRoot and pHum.Health > 0 then
-                    local isKnocked = pHum.PlatformStand or plr.Character:FindFirstChildWhichIsA("ProximityPrompt")
+                    local isKnocked = pHum.PlatformStand or (pRoot:FindFirstChild("PromptAttachment") ~= nil)
                     if isKnocked then targetToRevive = plr break end
                 end
             end
@@ -283,7 +258,10 @@ local function doAutoRevive()
         if targetRoot then
             pcall(function() hrp.CFrame = targetRoot.CFrame end)
             task.wait(0.2)
-            local prompt = targetToRevive.Character:FindFirstChildWhichIsA("ProximityPrompt")
+            
+            local promptAttachment = targetRoot:FindFirstChild("PromptAttachment")
+            local prompt = promptAttachment and promptAttachment:FindFirstChildWhichIsA("ProximityPrompt")
+            
             if prompt then
                 pcall(function() fireproximityprompt(prompt) end)
             else
@@ -338,9 +316,9 @@ local function doAutoCollect()
     State.IsCollecting = false
 end
 
--- LOGIC EVIL MODE (TWEEN TO ENEMY & KILL)
+-- LOGIC EVIL MODE
 local function doEvilMode()
-    if not State.EvilAutoKill or State.IsKilling or State.IsReviving then return end
+    if not State.EvilAutoKill or State.IsKilling or State.IsReviving or State.IsCollecting then return end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
@@ -370,14 +348,12 @@ local function doEvilMode()
         State.IsKilling = true
         local eRoot = closestEnemy.Character:FindFirstChild("HumanoidRootPart")
         if eRoot then
-            -- TWEEN ke musuh (meluncur)
             local goal = { CFrame = CFrame.new(eRoot.Position + Vector3.new(0, 2, 0)) }
             local tweenInfo = TweenInfo.new(State.TweenSpeed, Enum.EasingStyle.Linear)
             local tween = TweenService:Create(hrp, tweenInfo, goal)
             tween:Play()
             tween.Completed:Wait()
             
-            -- Serang (Spam Touch & Alat)
             for i = 1, 5 do
                 pcall(function()
                     firetouchinterest(hrp, eRoot, 0)
@@ -394,7 +370,7 @@ local function doEvilMode()
     end
 end
 
--- TOMBOL "1X TAP MATI SEMUA"
+-- 1X TAP MATI SEMUA
 local function killAllEnemies()
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -410,13 +386,11 @@ local function killAllEnemies()
                 if pHum and pRoot and pHum.Health > 0 then
                     local isAlly = (plr.Team and LP.Team and plr.Team == LP.Team) or (plr.TeamColor and LP.TeamColor and plr.TeamColor == LP.TeamColor)
                     if not isAlly then
-                        -- Tween
                         local goal = { CFrame = CFrame.new(pRoot.Position + Vector3.new(0, 2, 0)) }
                         local tween = TweenService:Create(hrp, TweenInfo.new(0.3, Enum.EasingStyle.Linear), goal)
                         tween:Play()
                         tween.Completed:Wait()
                         
-                        -- Attack
                         for i=1, 5 do
                             pcall(function()
                                 firetouchinterest(hrp, pRoot, 0)
@@ -436,55 +410,55 @@ end
 
 -- LOGIC AUTO ESCAPE
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTarget then return false end
+    if not State.AutoEscape or not CurrentEscapeTrigger then return false end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
-    pcall(function() hrp.CFrame = CFrame.new(CurrentEscapeTarget.pos + Vector3.new(0, 3, 0)) end)
+    pcall(function() 
+        hrp.CFrame = CFrame.new(CurrentEscapeTrigger.Position + Vector3.new(0, 3, 0)) 
+    end)
     task.wait(0.2)
     
-    if CurrentEscapeTarget.part then
-        pcall(function()
-            firetouchinterest(hrp, CurrentEscapeTarget.part, 0)
-            task.wait(0.1)
-            firetouchinterest(hrp, CurrentEscapeTarget.part, 1)
-        end)
-    end
-    
-    if CurrentEscapeTarget.prompt then 
-        pcall(function() fireproximityprompt(CurrentEscapeTarget.prompt) end) 
-    end
+    pcall(function()
+        firetouchinterest(hrp, CurrentEscapeTrigger, 0)
+        task.wait(0.1)
+        firetouchinterest(hrp, CurrentEscapeTrigger, 1)
+    end)
     
     task.wait(0.5)
     return true
 end
 
--- LOOP UTAMA
+-- LOOP UTAMA (Prioritas Anti-Tabrakan)
 RunService.RenderStepped:Connect(function()
     updateItemESP()
     updatePlayerESP()
 end)
 
 RunService.Heartbeat:Connect(function()
-    if State.AutoEscape and CurrentEscapeTarget then
+    -- Prioritas 1: Escape
+    if State.AutoEscape and CurrentEscapeTrigger then
         pcall(doAutoEscape)
+    -- Prioritas 2: Revive
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    if not State.IsReviving and not CurrentEscapeTarget then
+    -- Prioritas 3: Collect (Hanya jalan kalau gak lagi escape/revive)
+    if not State.IsReviving and not CurrentEscapeTrigger then
         pcall(doAutoCollect)
     end
     
-    if not State.IsReviving and not State.IsCollecting then
+    -- Prioritas 4: Killer (Hanya jalan kalau gak lagi sibuk)
+    if not State.IsReviving and not State.IsCollecting and not CurrentEscapeTrigger then
         pcall(doEvilMode)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10 (Good & Evil)",
+    Title = "STK Farm v10.2.1",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -498,7 +472,6 @@ local Window = WindUI:CreateWindow({
     Topbar = { Height = 44, ButtonsType = "Mac" },
 })
 
--- TAB MODE BAIK
 local TabGood = Window:Tab({ Title = "Mode Baik", Icon = "solar:shield-check-bold", IconColor = Blue, IconShape = "Square", Border = true })
 local SecFarm = TabGood:Section({ Title = "Collect Settings", Box = true, BoxBorder = true, Opened = true })
 SecFarm:Toggle({ Title = "ESP Candy & Ticket", Value = true, Callback = function(v) State.ESPEnabled = v end })
@@ -520,7 +493,6 @@ SecGoodPlayer:Toggle({ Title = "Wallhack (Teman Biru, Musuh Merah)", Value = tru
 SecGoodPlayer:Space()
 SecGoodPlayer:Toggle({ Title = "Auto Revive Teman", Value = false, Callback = function(v) State.AutoRevive = v end })
 
--- TAB MODE JAHAT
 local TabEvil = Window:Tab({ Title = "Mode Jahat", Icon = "solar:skull-bold", IconColor = Red, IconShape = "Square", Border = true })
 local SecEvil = TabEvil:Section({ Title = "Killer Mode (Tween)", Box = true, BoxBorder = true, Opened = true })
 SecEvil:Toggle({ Title = "Auto Kill Musuh Terdekat", Value = false, Callback = function(v) State.EvilAutoKill = v end })
@@ -528,20 +500,15 @@ SecEvil:Space()
 SecEvil:Slider({ Title = "Tween Speed (detik)", Step = 0.05, Value = { Min = 0.1, Max = 1.0, Default = 0.3 }, Callback = function(v) State.TweenSpeed = v end })
 SecEvil:Space()
 SecEvil:Button({ Title = "1x Tap Mati Semua", Callback = function() 
-    State.EvilAutoKill = false -- Matikan auto kill sementara biar ga tabrakan
+    State.EvilAutoKill = false 
     killAllEnemies() 
 end })
-SecEvil:Space()
-SecEvil:Note({ Title = "Info", Desc = "Karakter akan meluncur (tween) ke arah musuh dan menyerang. 1x Tap akan memburu semua musuh satu per satu." })
 
--- TAB AUTO ESCAPE
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Auto Escape (Pintu Keluar)", Value = false, Callback = function(v) State.AutoEscape = v end })
+SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback = function(v) State.AutoEscape = v end })
 SecEscape:Space()
-SecEscape:Input({ Title = "Kata Kunci Pintu (koma)", Value = State.EscapeKeyword, Callback = function(v) State.EscapeKeyword = v end })
-SecEscape:Space()
-SecEscape:Note({ Title = "Info", Desc = "Jika pintu tidak terdeteksi, coba scan nama pintunya lalu masukkan kata kuncinya di atas." })
+SecEscape:Note({ Title = "Info", Desc = "Kalau pintu kebuka, Auto Collect akan pause dan karakter langsung masuk ke zona kabur." })
 
-WindUI:Notify({ Title = "STK v10.0", Content = "Good & Evil Mode Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.0.0 loaded.")
+WindUI:Notify({ Title = "STK v10.2.1", Content = "Anti-Tabrakan System Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.2.1 loaded.")
