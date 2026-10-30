@@ -1,9 +1,9 @@
 --[[
-    PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.8.0 (Anti-Desync + Anti-AFK)
+    PALL — STK ULTIMATE (PASTEBIN LOGIC TEST)
+    Version : v10.9.0 (Escape Logic from Pastebin)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.8.0...")
+print("[PALL-STK] Memuat STK Farm v10.9.0 (Pastebin Logic Test)...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -42,7 +42,7 @@ local State = {
     PlayerESP = true,
     AutoCollect = false,
     AutoRevive = false,
-    AntiAFK = true, -- State Anti AFK
+    AntiAFK = true,
     TeleportDelay = 0.15,
     TicketKeyword = "direwick",
     
@@ -57,10 +57,10 @@ local State = {
     IsKilling = false,
     IsEscaping = false,
     
-    -- Internal Timer
+    -- Timer
     InMatch = false,
     MatchStartTime = 0,
-    MatchDuration = 300, -- Default 5 Menit
+    MatchDuration = 300,
     TimeLeft = 300,
 }
 
@@ -87,26 +87,49 @@ local ItemCache = {}
 local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
-local CurrentEscapeTrigger = nil
 
--- ANTI AFK SYSTEM
-local antiAfkConnection = nil
-local function toggleAntiAFK()
+-- ANTI AFK
+local antiAfkConn = nil
+local function updateAntiAFK()
     if State.AntiAFK then
-        if not antiAfkConnection then
-            antiAfkConnection = LP.Idled:Connect(function()
+        if not antiAfkConn then
+            antiAfkConn = LP.Idled:Connect(function()
                 VirtualUser:CaptureController()
                 VirtualUser:ClickButton2(Vector2.new())
             end)
         end
     else
-        if antiAfkConnection then
-            antiAfkConnection:Disconnect()
-            antiAfkConnection = nil
+        if antiAfkConn then
+            antiAfkConn:Disconnect()
+            antiAfkConn = nil
         end
     end
 end
-toggleAntiAFK() -- Panggil pertama kali saat script jalan
+updateAntiAFK()
+
+-- FUNGSI CARI PINTU (100% LOGIKA PASTEBIN)
+local function findTrigger()
+    local backupExits = {}
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local nameLower = obj.Name:lower()
+            if nameLower:find("exit") or nameLower:find("gate") or nameLower:find("escape") or nameLower:find("exitdoor") then
+                -- Abaikan objek di Lobby
+                local lobby = Workspace:FindFirstChild("_Lobby")
+                if not (lobby and obj:IsDescendantOf(lobby)) then
+                    table.insert(backupExits, obj)
+                end
+            end
+        end
+    end
+    
+    if #backupExits > 0 then
+        local target = backupExits[math.random(1, #backupExits)]
+        return target:IsA("Model") and (target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")) or target
+    end
+    
+    return nil
+end
 
 -- CACHE ITEM
 local function addToCache(obj)
@@ -137,10 +160,9 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- THREAD PRIORITAS & TIMER VISUAL
+-- THREAD TIMER & LOGIKA SWITCH
 task.spawn(function()
     while task.wait(1) do
-        -- 1. Deteksi Map Aktif
         local currentMap = nil
         for _, map in ipairs(Workspace:GetChildren()) do
             if map.Name ~= "_Lobby" and (map:FindFirstChild("LootSpawns") or map:FindFirstChild("Exits")) then
@@ -149,27 +171,6 @@ task.spawn(function()
             end
         end
 
-        -- 2. Cek Pintu Keluar (Apakah sudah terbuka?)
-        local foundTrigger = nil
-        local isDoorOpen = false
-        if currentMap then
-            local exits = currentMap:FindFirstChild("Exits")
-            if exits then
-                for _, gateway in ipairs(exits:GetChildren()) do
-                    local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
-                    if success and trigger and trigger:IsA("BasePart") then
-                        foundTrigger = trigger
-                        if trigger.CanTouch == true or trigger.Transparency < 1 then
-                            isDoorOpen = true
-                        end
-                        break
-                    end
-                end
-            end
-        end
-        CurrentEscapeTrigger = foundTrigger
-
-        -- 3. Hitung & Tampilkan Timer Internal
         if currentMap then
             if not State.InMatch then
                 State.InMatch = true
@@ -180,7 +181,6 @@ task.spawn(function()
             local elapsed = tick() - State.MatchStartTime
             State.TimeLeft = math.max(0, State.MatchDuration - elapsed)
             
-            -- Update Teks Visual
             local mins = math.floor(State.TimeLeft / 60)
             local secs = math.floor(State.TimeLeft % 60)
             timerText.Text = string.format("%02d:%02d", mins, secs)
@@ -198,8 +198,7 @@ task.spawn(function()
             timerText.Visible = false
         end
 
-        -- 4. LOGIKA SWITCH
-        if (State.TimeLeft <= 60) or (isDoorOpen == true) then
+        if State.TimeLeft <= 60 then
             if State.AutoCollect then
                 State.AutoCollect = false
                 WindUI:Notify({ Title = "Waktunya Kabur!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 4 })
@@ -488,7 +487,7 @@ local function doEvilMode()
     end
 end
 
--- 1X TAP MATI SEMUA
+- 1X TAP MATI SEMUA
 local function killAllEnemies()
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -526,9 +525,13 @@ local function killAllEnemies()
     end)
 end
 
--- LOGIC AUTO ESCAPE
+-- LOGIC AUTO ESCAPE (100% PASTEBIN)
 local function doAutoEscape()
-    if not State.AutoEscape or not CurrentEscapeTrigger or State.IsEscaping then return false end
+    if not State.AutoEscape or State.IsEscaping then return false end
+    
+    -- Langsung pakai fungsi Pastebin
+    local trigger = findTrigger()
+    if not trigger then return false end
     
     State.IsEscaping = true
     local char = LP.Character
@@ -539,14 +542,14 @@ local function doAutoEscape()
     end
 
     pcall(function() 
-        hrp.CFrame = CFrame.new(CurrentEscapeTrigger.Position + Vector3.new(0, 3, 0)) 
+        hrp.CFrame = CFrame.new(trigger.Position + Vector3.new(0, 3, 0)) 
     end)
     task.wait(0.2)
     
     pcall(function()
-        firetouchinterest(hrp, CurrentEscapeTrigger, 0)
+        firetouchinterest(hrp, trigger, 0)
         task.wait(0.1)
-        firetouchinterest(hrp, CurrentEscapeTrigger, 1)
+        firetouchinterest(hrp, trigger, 1)
     end)
     
     task.wait(0.5)
@@ -554,14 +557,14 @@ local function doAutoEscape()
     return true
 end
 
--- LOOP UTAMA (PRIORITAS MUTLAK)
+-- LOOP UTAMA
 RunService.RenderStepped:Connect(function()
     updateItemESP()
     updatePlayerESP()
 end)
 
 RunService.Heartbeat:Connect(function()
-    if State.AutoEscape and CurrentEscapeTrigger then
+    if State.AutoEscape then
         pcall(doAutoEscape)
     elseif State.AutoRevive then
         pcall(doAutoRevive)
@@ -578,7 +581,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.8.0",
+    Title = "STK Farm v10.9.0",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -603,7 +606,7 @@ end })
 SecFarm:Space()
 SecFarm:Toggle({ Title = "Anti AFK (Cegah Kick)", Value = true, Callback = function(v) 
     State.AntiAFK = v 
-    toggleAntiAFK()
+    updateAntiAFK()
 end })
 SecFarm:Space()
 SecFarm:Slider({ Title = "Teleport Delay (detik)", Step = 0.05, Value = { Min = 0.05, Max = 0.5, Default = 0.15 }, Callback = function(v) State.TeleportDelay = v end })
@@ -639,21 +642,19 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback 
     State.WantAutoEscape = v
 end })
 SecEscape:Space()
-SecEscape:Slider({ Title = "Match Duration (detik)", Step = 30, Value = { Min = 120, Max = 360, Default = 300 }, Callback = function(v) 
-    State.MatchDuration = v 
+SecEscape:Button({ Title = "SYNC TIMER (Pas Game 04:00)", Callback = function()
+    State.MatchStartTime = tick() - 60
+    State.TimeLeft = 240
+    WindUI:Notify({ Title = "Timer Synced", Content = "Timer internal disetel ke 04:00", Duration = 4 })
 end })
 SecEscape:Space()
-SecEscape:Button({ Title = "FORCE ESCAPE NOW", Callback = function()
-    if CurrentEscapeTrigger then
-        State.AutoCollect = false
-        State.WantAutoCollect = false
-        State.AutoEscape = true
-        State.IsEscaping = false
-        WindUI:Notify({ Title = "Force Escape", Content = "Memaksa karakter kabur sekarang!", Duration = 4 })
-    else
-        WindUI:Notify({ Title = "Gagal", Content = "Pintu keluar belum terdeteksi.", Duration = 4 })
-    end
+SecEscape:Button({ Title = "FORCE ESCAPE NOW (Pastebin)", Callback = function()
+    State.AutoCollect = false
+    State.WantAutoCollect = false
+    State.AutoEscape = true
+    State.IsEscaping = false
+    WindUI:Notify({ Title = "Force Escape", Content = "Mencari pintu (Logika Pastebin)...", Duration = 4 })
 end })
 
-WindUI:Notify({ Title = "STK v10.8.0", Content = "Anti-AFK Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.8.0 loaded.")
+WindUI:Notify({ Title = "STK v10.9.0", Content = "Pastebin Escape Logic Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.9.0 loaded.")
