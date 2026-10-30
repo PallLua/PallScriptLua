@@ -1,14 +1,15 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.6.2 (Fixed Priority Logic)
+    Version : v10.8.0 (Anti-Desync + Anti-AFK)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.6.2...")
+print("[PALL-STK] Memuat STK Farm v10.8.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local LP = Players.LocalPlayer
 
@@ -41,6 +42,7 @@ local State = {
     PlayerESP = true,
     AutoCollect = false,
     AutoRevive = false,
+    AntiAFK = true, -- State Anti AFK
     TeleportDelay = 0.15,
     TicketKeyword = "direwick",
     
@@ -58,7 +60,7 @@ local State = {
     -- Internal Timer
     InMatch = false,
     MatchStartTime = 0,
-    MatchDuration = 300, -- 5 Menit
+    MatchDuration = 300, -- Default 5 Menit
     TimeLeft = 300,
 }
 
@@ -86,6 +88,25 @@ local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
 local CurrentEscapeTrigger = nil
+
+-- ANTI AFK SYSTEM
+local antiAfkConnection = nil
+local function toggleAntiAFK()
+    if State.AntiAFK then
+        if not antiAfkConnection then
+            antiAfkConnection = LP.Idled:Connect(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    else
+        if antiAfkConnection then
+            antiAfkConnection:Disconnect()
+            antiAfkConnection = nil
+        end
+    end
+end
+toggleAntiAFK() -- Panggil pertama kali saat script jalan
 
 -- CACHE ITEM
 local function addToCache(obj)
@@ -138,8 +159,7 @@ task.spawn(function()
                     local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
                     if success and trigger and trigger:IsA("BasePart") then
                         foundTrigger = trigger
-                        -- Cek apakah pintunya terbuka (transparan atau bisa disentuh)
-                        if trigger.Transparency < 1 then
+                        if trigger.CanTouch == true or trigger.Transparency < 1 then
                             isDoorOpen = true
                         end
                         break
@@ -178,8 +198,7 @@ task.spawn(function()
             timerText.Visible = false
         end
 
-        -- 4. LOGIKA SWITCH (KUNCI UTAMA)
-        -- Jika waktu <= 1 menit ATAU Pintu benar-benar terbuka
+        -- 4. LOGIKA SWITCH
         if (State.TimeLeft <= 60) or (isDoorOpen == true) then
             if State.AutoCollect then
                 State.AutoCollect = false
@@ -187,7 +206,6 @@ task.spawn(function()
             end
             State.AutoEscape = true
         else
-            -- Jika waktu masih lama dan pintu belum buka
             if State.WantAutoCollect then
                 State.AutoCollect = true
                 State.AutoEscape = false
@@ -374,9 +392,6 @@ end
 -- LOGIC AUTO COLLECT
 local function doAutoCollect()
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
-    
-    -- HAPUS PENGECEKAN CurrentEscapeTrigger DI SINI
-    -- Agar Auto Collect bisa jalan meskipun Trigger sudah ada di map
 
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -546,21 +561,16 @@ RunService.RenderStepped:Connect(function()
 end)
 
 RunService.Heartbeat:Connect(function()
-    -- 1. Prioritas Utama: Escape
     if State.AutoEscape and CurrentEscapeTrigger then
         pcall(doAutoEscape)
-    -- 2. Prioritas Kedua: Revive
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    -- 3. Auto Collect HANYA jalan kalau TIDAK SEDANG ESCAPE & TIDAK SEDANG REVIVE
-    -- DAN HANYA JALAN KALAU State.AutoCollect Bernilai True
     if not State.IsReviving and not State.IsEscaping then
         pcall(doAutoCollect)
     end
     
-    -- 4. Killer Mode
     if not State.IsReviving and not State.IsCollecting and not State.IsEscaping then
         pcall(doEvilMode)
     end
@@ -568,7 +578,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.6.2",
+    Title = "STK Farm v10.8.0",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -589,6 +599,11 @@ SecFarm:Space()
 SecFarm:Toggle({ Title = "Auto Collect (Random)", Value = false, Callback = function(v) 
     State.AutoCollect = v 
     State.WantAutoCollect = v 
+end })
+SecFarm:Space()
+SecFarm:Toggle({ Title = "Anti AFK (Cegah Kick)", Value = true, Callback = function(v) 
+    State.AntiAFK = v 
+    toggleAntiAFK()
 end })
 SecFarm:Space()
 SecFarm:Slider({ Title = "Teleport Delay (detik)", Step = 0.05, Value = { Min = 0.05, Max = 0.5, Default = 0.15 }, Callback = function(v) State.TeleportDelay = v end })
@@ -623,6 +638,22 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback 
     State.AutoEscape = v 
     State.WantAutoEscape = v
 end })
+SecEscape:Space()
+SecEscape:Slider({ Title = "Match Duration (detik)", Step = 30, Value = { Min = 120, Max = 360, Default = 300 }, Callback = function(v) 
+    State.MatchDuration = v 
+end })
+SecEscape:Space()
+SecEscape:Button({ Title = "FORCE ESCAPE NOW", Callback = function()
+    if CurrentEscapeTrigger then
+        State.AutoCollect = false
+        State.WantAutoCollect = false
+        State.AutoEscape = true
+        State.IsEscaping = false
+        WindUI:Notify({ Title = "Force Escape", Content = "Memaksa karakter kabur sekarang!", Duration = 4 })
+    else
+        WindUI:Notify({ Title = "Gagal", Content = "Pintu keluar belum terdeteksi.", Duration = 4 })
+    end
+end })
 
-WindUI:Notify({ Title = "STK v10.6.2", Content = "Fixed Auto Collect Priority!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.6.2 loaded.")
+WindUI:Notify({ Title = "STK v10.8.0", Content = "Anti-AFK Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.8.0 loaded.")
