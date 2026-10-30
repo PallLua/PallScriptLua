@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.6.0 (Smart Priority Switch)
+    Version : v10.6.1 (Visual Internal Timer)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.6.0...")
+print("[PALL-STK] Memuat STK Farm v10.6.1...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -62,6 +62,25 @@ local State = {
     TimeLeft = 300,
 }
 
+-- VISUAL TIMER (Drawing API)
+local timerGui = Instance.new("ScreenGui")
+timerGui.Name = "PallInternalTimer"
+timerGui.ResetOnSpawn = false
+timerGui.Parent = LP:WaitForChild("PlayerGui")
+
+local timerText = Instance.new("TextLabel")
+timerText.Size = UDim2.new(0, 150, 0, 40)
+timerText.Position = UDim2.new(0.5, -75, 0, 50)
+timerText.BackgroundColor3 = Color3.fromHex("#1c1c1c")
+timerText.BackgroundTransparency = 0.3
+timerText.TextColor3 = Color3.fromHex("#00FF00")
+timerText.Font = Enum.Font.Code
+timerText.TextSize = 24
+timerText.Text = "05:00"
+timerText.Visible = false
+timerText.Parent = timerGui
+local timerStroke = Instance.new("UIStroke") timerStroke.Color = Color3.fromHex("#00FF00") timerStroke.Parent = timerText
+
 local ItemCache = {}
 local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
@@ -97,7 +116,7 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- THREAD PRIORITAS (TIMER & PINTU)
+-- THREAD PRIORITAS & TIMER VISUAL
 task.spawn(function()
     while task.wait(1) do
         -- 1. Deteksi Map Aktif
@@ -125,22 +144,36 @@ task.spawn(function()
         end
         CurrentEscapeTrigger = foundTrigger
 
-        -- 3. Hitung Timer Internal
+        -- 3. Hitung & Tampilkan Timer Internal
         if currentMap then
             if not State.InMatch then
                 State.InMatch = true
                 State.MatchStartTime = tick()
                 State.TimeLeft = State.MatchDuration
+                timerText.Visible = true
             end
             local elapsed = tick() - State.MatchStartTime
             State.TimeLeft = math.max(0, State.MatchDuration - elapsed)
+            
+            -- Update Teks Visual
+            local mins = math.floor(State.TimeLeft / 60)
+            local secs = math.floor(State.TimeLeft % 60)
+            timerText.Text = string.format("%02d:%02d", mins, secs)
+            
+            if State.TimeLeft <= 60 then
+                timerText.TextColor3 = Color3.fromHex("#FF3232")
+                timerStroke.Color = Color3.fromHex("#FF3232")
+            else
+                timerText.TextColor3 = Color3.fromHex("#00FF00")
+                timerStroke.Color = Color3.fromHex("#00FF00")
+            end
         else
             State.InMatch = false
             State.TimeLeft = State.MatchDuration
+            timerText.Visible = false
         end
 
         -- 4. LOGIKA SWITCH (KUNCI UTAMA)
-        -- Jika waktu <= 1 menit ATAU pintu keluar terbuka
         if (State.TimeLeft <= 60) or (CurrentEscapeTrigger ~= nil) then
             if State.AutoCollect then
                 State.AutoCollect = false
@@ -148,7 +181,6 @@ task.spawn(function()
             end
             State.AutoEscape = true
         else
-            -- Jika waktu masih lama dan pintu belum buka
             if State.WantAutoCollect then
                 State.AutoCollect = true
                 State.AutoEscape = false
@@ -523,7 +555,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.6",
+    Title = "STK Farm v10.6.1",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -579,5 +611,5 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback 
     State.WantAutoEscape = v
 end })
 
-WindUI:Notify({ Title = "STK v10.6.0", Content = "Smart Priority Switch Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.6.0 loaded.")
+WindUI:Notify({ Title = "STK v10.6.1", Content = "Visual Timer Active! Cek atas layar.", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.6.1 loaded.")
