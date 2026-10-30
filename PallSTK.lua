@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.4.0 (Default Smart Timer & 01:00 Switch)
+    Version : v10.4.1 (Strict Alternating Timer)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.4.0...")
+print("[PALL-STK] Memuat STK Farm v10.4.1...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -48,9 +48,8 @@ local State = {
     EvilAutoKill = false,
     TweenSpeed = 0.3,
     
-    -- Default ON
-    AutoEscape = true,
-    SmartTimer = true,
+    AutoEscape = false, -- Default OFF, akan dinyalakan timer
+    SmartTimer = true,  -- Default ON
     WantAutoEscape = true,
     
     IsCollecting = false,
@@ -87,7 +86,7 @@ local function findTimerLabel()
     return nil
 end
 
--- THREAD TIMER (Cek tiap 1 detik)
+-- THREAD TIMER (PENENTU UTAMA AUTO COLLECT / ESCAPE)
 task.spawn(function()
     while task.wait(1) do
         if State.SmartTimer == true then
@@ -101,18 +100,19 @@ task.spawn(function()
                     local timeLeft = (tonumber(m) * 60) + tonumber(s)
                     State.CurrentMatchTime = timeLeft
                     
-                    -- OTOMATIS BERALIH JIKA SISA WAKTU <= 60 DETIK (01:00)
                     if timeLeft <= 60 then
-                        if State.AutoCollect == true then
-                            State.AutoCollect = false
+                        -- WAKTUNYA ESCAPE (<= 01:00)
+                        if State.AutoEscape == false then
                             State.AutoEscape = true
+                            State.AutoCollect = false
                             WindUI:Notify({ Title = "Sisa 01:00!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 5 })
                         end
                     else
-                        -- Jika match baru (waktu reset), nyalakan lagi auto collect
-                        if State.WantAutoCollect == true and State.AutoCollect == false then
+                        -- WAKTUNYA COLLECT (> 01:00)
+                        if State.AutoCollect == false and State.WantAutoCollect == true then
                             State.AutoCollect = true
-                            State.AutoEscape = State.WantAutoEscape
+                            State.AutoEscape = false
+                            WindUI:Notify({ Title = "Match Berjalan", Content = "Auto Collect ON. Fokus Farming.", Duration = 5 })
                         end
                     end
                 end
@@ -150,7 +150,7 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR
+-- PENCARIAN PINTU KELUAR (Hanya jalan kalau AutoEscape ON)
 task.spawn(function()
     while task.wait(1) do
         if State.AutoEscape then
@@ -172,8 +172,6 @@ task.spawn(function()
             end
             if foundTrigger then
                 CurrentEscapeTrigger = foundTrigger
-                -- Pintu kebuka = Auto Collect langsung mati
-                State.AutoCollect = false
             elseif not State.IsEscaping then
                 CurrentEscapeTrigger = nil
             end
@@ -548,7 +546,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.4",
+    Title = "STK Farm v10.4.1",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -599,14 +597,9 @@ end })
 
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
--- Default Value = true
-SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback = function(v) 
-    State.AutoEscape = v 
-    State.WantAutoEscape = v
-end })
+SecEscape:Toggle({ Title = "Smart Timer (Auto Switch)", Value = true, Callback = function(v) State.SmartTimer = v end })
 SecEscape:Space()
--- Default Value = true
-SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = true, Callback = function(v) State.SmartTimer = v end })
+SecEscape:Toggle({ Title = "Auto Kabur Manual", Value = false, Callback = function(v) State.AutoEscape = v end })
 
-WindUI:Notify({ Title = "STK v10.4.0", Content = "Timer & Escape Default ON.", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.4.0 loaded.")
+WindUI:Notify({ Title = "STK v10.4.1", Content = "Strict Alternating Timer Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.4.1 loaded.")
