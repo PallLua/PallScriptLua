@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.5.0 (Internal Match Timer - Anti Gagal)
+    Version : v10.6.0 (Smart Priority Switch)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.5.0...")
+print("[PALL-STK] Memuat STK Farm v10.6.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -47,16 +47,15 @@ local State = {
     EvilAutoKill = false,
     TweenSpeed = 0.3,
     
-    -- State Timer & Escape
     AutoEscape = false,
-    WantAutoEscape = true, -- Mengingat pilihan user
-    WantAutoCollect = false, -- Mengingat pilihan user
+    WantAutoEscape = true,
+    WantAutoCollect = false,
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
     IsEscaping = false,
     
-    -- Internal Timer State
+    -- Internal Timer
     InMatch = false,
     MatchStartTime = 0,
     MatchDuration = 300, -- 5 Menit
@@ -98,73 +97,61 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- THREAD INTERNAL TIMER & PINTU KELUAR
+-- THREAD PRIORITAS (TIMER & PINTU)
 task.spawn(function()
     while task.wait(1) do
-        local inLobby = Workspace:FindFirstChild("_Lobby") ~= nil
-        
-        if not inLobby then
-            -- MASUK MATCH BARU
+        -- 1. Deteksi Map Aktif
+        local currentMap = nil
+        for _, map in ipairs(Workspace:GetChildren()) do
+            if map.Name ~= "_Lobby" and (map:FindFirstChild("LootSpawns") or map:FindFirstChild("Exits")) then
+                currentMap = map
+                break
+            end
+        end
+
+        -- 2. Cek Pintu Keluar
+        local foundTrigger = nil
+        if currentMap then
+            local exits = currentMap:FindFirstChild("Exits")
+            if exits then
+                for _, gateway in ipairs(exits:GetChildren()) do
+                    local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
+                    if success and trigger and trigger:IsA("BasePart") then
+                        foundTrigger = trigger
+                        break
+                    end
+                end
+            end
+        end
+        CurrentEscapeTrigger = foundTrigger
+
+        -- 3. Hitung Timer Internal
+        if currentMap then
             if not State.InMatch then
                 State.InMatch = true
                 State.MatchStartTime = tick()
                 State.TimeLeft = State.MatchDuration
-                WindUI:Notify({ Title = "Match Dimulai", Content = "Internal Timer 5 Menit Aktif.", Duration = 4 })
             end
-            
-            -- HITUNG MUNDUR
             local elapsed = tick() - State.MatchStartTime
             State.TimeLeft = math.max(0, State.MatchDuration - elapsed)
-            
-            -- LOGIKA PERGANTIAN (SWITCH)
-            if State.TimeLeft <= 60 then
-                if State.AutoCollect == true then
-                    State.AutoCollect = false
-                    State.AutoEscape = true
-                    WindUI:Notify({ Title = "Sisa 01:00!", Content = "Beralih ke Auto Escape.", Duration = 4 })
-                end
-            else
-                if State.AutoCollect == false and State.WantAutoCollect == true and CurrentEscapeTrigger == nil then
-                    State.AutoCollect = true
-                    State.AutoEscape = false
-                end
-            end
-            
-            -- PENCARIAN PINTU KELUAR (Hanya jika AutoEscape nyala)
-            if State.AutoEscape then
-                local foundTrigger = nil
-                for _, map in ipairs(Workspace:GetChildren()) do
-                    if map.Name ~= "_Lobby" then
-                        local exits = map:FindFirstChild("Exits")
-                        if exits then
-                            for _, gateway in ipairs(exits:GetChildren()) do
-                                local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
-                                if success and trigger and trigger:IsA("BasePart") then
-                                    foundTrigger = trigger
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    if foundTrigger then break end
-                end
-                if foundTrigger then
-                    CurrentEscapeTrigger = foundTrigger
-                elseif not State.IsEscaping then
-                    CurrentEscapeTrigger = nil
-                end
-            else
-                CurrentEscapeTrigger = nil
-            end
-            
         else
-            -- DI DALAM LOBBY
-            if State.InMatch then
-                State.InMatch = false
-                State.TimeLeft = State.MatchDuration
+            State.InMatch = false
+            State.TimeLeft = State.MatchDuration
+        end
+
+        -- 4. LOGIKA SWITCH (KUNCI UTAMA)
+        -- Jika waktu <= 1 menit ATAU pintu keluar terbuka
+        if (State.TimeLeft <= 60) or (CurrentEscapeTrigger ~= nil) then
+            if State.AutoCollect then
                 State.AutoCollect = false
+                WindUI:Notify({ Title = "Waktunya Kabur!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 4 })
+            end
+            State.AutoEscape = true
+        else
+            -- Jika waktu masih lama dan pintu belum buka
+            if State.WantAutoCollect then
+                State.AutoCollect = true
                 State.AutoEscape = false
-                CurrentEscapeTrigger = nil
             end
         end
     end
@@ -348,7 +335,7 @@ end
 -- LOGIC AUTO COLLECT
 local function doAutoCollect()
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
-    if State.AutoEscape and CurrentEscapeTrigger then return end 
+    if CurrentEscapeTrigger ~= nil then return end 
 
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -394,6 +381,7 @@ end
 -- LOGIC EVIL MODE
 local function doEvilMode()
     if not State.EvilAutoKill or State.IsKilling or State.IsReviving or State.IsCollecting or State.IsEscaping then return end
+    if CurrentEscapeTrigger ~= nil then return end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
@@ -524,18 +512,18 @@ RunService.Heartbeat:Connect(function()
         pcall(doAutoRevive)
     end
     
-    if not State.IsReviving and not State.IsEscaping and not CurrentEscapeTrigger then
+    if not State.IsReviving and not State.IsEscaping and CurrentEscapeTrigger == nil then
         pcall(doAutoCollect)
     end
     
-    if not State.IsReviving and not State.IsCollecting and not State.IsEscaping and not CurrentEscapeTrigger then
+    if not State.IsReviving and not State.IsCollecting and not State.IsEscaping and CurrentEscapeTrigger == nil then
         pcall(doEvilMode)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.5.0",
+    Title = "STK Farm v10.6",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -591,5 +579,5 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback 
     State.WantAutoEscape = v
 end })
 
-WindUI:Notify({ Title = "STK v10.5.0", Content = "Internal Timer 5 Menit Aktif!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.5.0 loaded.")
+WindUI:Notify({ Title = "STK v10.6.0", Content = "Smart Priority Switch Active!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.6.0 loaded.")
