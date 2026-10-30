@@ -1,15 +1,14 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.4.1 (Strict Alternating Timer)
+    Version : v10.5.0 (Internal Match Timer - Anti Gagal)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.4.1...")
+print("[PALL-STK] Memuat STK Farm v10.5.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
 
 local LP = Players.LocalPlayer
 
@@ -48,18 +47,20 @@ local State = {
     EvilAutoKill = false,
     TweenSpeed = 0.3,
     
-    AutoEscape = false, -- Default OFF, akan dinyalakan timer
-    SmartTimer = true,  -- Default ON
-    WantAutoEscape = true,
-    
+    -- State Timer & Escape
+    AutoEscape = false,
+    WantAutoEscape = true, -- Mengingat pilihan user
+    WantAutoCollect = false, -- Mengingat pilihan user
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
     IsEscaping = false,
     
-    -- State Otomatis
-    WantAutoCollect = false,
-    CurrentMatchTime = 9999,
+    -- Internal Timer State
+    InMatch = false,
+    MatchStartTime = 0,
+    MatchDuration = 300, -- 5 Menit
+    TimeLeft = 300,
 }
 
 local ItemCache = {}
@@ -67,59 +68,6 @@ local ItemDrawings = { Boxes = {}, Texts = {} }
 local PlayerDrawings = { Boxes = {}, Names = {} }
 local Cooldowns = {}
 local CurrentEscapeTrigger = nil
-local TimerLabel = nil
-
--- FUNGSI BACA TIMER UI STK
-local function findTimerLabel()
-    local containers = {CoreGui, LP:FindFirstChild("PlayerGui")}
-    for _, c in ipairs(containers) do
-        if c then
-            for _, v in ipairs(c:GetDescendants()) do
-                if v:IsA("TextLabel") and v.Text:match("^(%d+):(%d%d)$") then
-                    if v.AbsolutePosition.Y < 150 then
-                        return v
-                    end
-                end
-            end
-        end
-    end
-    return nil
-end
-
--- THREAD TIMER (PENENTU UTAMA AUTO COLLECT / ESCAPE)
-task.spawn(function()
-    while task.wait(1) do
-        if State.SmartTimer == true then
-            if TimerLabel == nil or TimerLabel.Parent == nil then
-                TimerLabel = findTimerLabel()
-            end
-            
-            if TimerLabel ~= nil then
-                local m, s = TimerLabel.Text:match("^(%d+):(%d%d)$")
-                if m ~= nil and s ~= nil then
-                    local timeLeft = (tonumber(m) * 60) + tonumber(s)
-                    State.CurrentMatchTime = timeLeft
-                    
-                    if timeLeft <= 60 then
-                        -- WAKTUNYA ESCAPE (<= 01:00)
-                        if State.AutoEscape == false then
-                            State.AutoEscape = true
-                            State.AutoCollect = false
-                            WindUI:Notify({ Title = "Sisa 01:00!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 5 })
-                        end
-                    else
-                        -- WAKTUNYA COLLECT (> 01:00)
-                        if State.AutoCollect == false and State.WantAutoCollect == true then
-                            State.AutoCollect = true
-                            State.AutoEscape = false
-                            WindUI:Notify({ Title = "Match Berjalan", Content = "Auto Collect ON. Fokus Farming.", Duration = 5 })
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
 
 -- CACHE ITEM
 local function addToCache(obj)
@@ -150,33 +98,74 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (Hanya jalan kalau AutoEscape ON)
+-- THREAD INTERNAL TIMER & PINTU KELUAR
 task.spawn(function()
     while task.wait(1) do
-        if State.AutoEscape then
-            local foundTrigger = nil
-            for _, map in ipairs(Workspace:GetChildren()) do
-                if map.Name ~= "_Lobby" then
-                    local exits = map:FindFirstChild("Exits")
-                    if exits then
-                        for _, gateway in ipairs(exits:GetChildren()) do
-                            local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
-                            if success and trigger and trigger:IsA("BasePart") then
-                                foundTrigger = trigger
-                                break
+        local inLobby = Workspace:FindFirstChild("_Lobby") ~= nil
+        
+        if not inLobby then
+            -- MASUK MATCH BARU
+            if not State.InMatch then
+                State.InMatch = true
+                State.MatchStartTime = tick()
+                State.TimeLeft = State.MatchDuration
+                WindUI:Notify({ Title = "Match Dimulai", Content = "Internal Timer 5 Menit Aktif.", Duration = 4 })
+            end
+            
+            -- HITUNG MUNDUR
+            local elapsed = tick() - State.MatchStartTime
+            State.TimeLeft = math.max(0, State.MatchDuration - elapsed)
+            
+            -- LOGIKA PERGANTIAN (SWITCH)
+            if State.TimeLeft <= 60 then
+                if State.AutoCollect == true then
+                    State.AutoCollect = false
+                    State.AutoEscape = true
+                    WindUI:Notify({ Title = "Sisa 01:00!", Content = "Beralih ke Auto Escape.", Duration = 4 })
+                end
+            else
+                if State.AutoCollect == false and State.WantAutoCollect == true and CurrentEscapeTrigger == nil then
+                    State.AutoCollect = true
+                    State.AutoEscape = false
+                end
+            end
+            
+            -- PENCARIAN PINTU KELUAR (Hanya jika AutoEscape nyala)
+            if State.AutoEscape then
+                local foundTrigger = nil
+                for _, map in ipairs(Workspace:GetChildren()) do
+                    if map.Name ~= "_Lobby" then
+                        local exits = map:FindFirstChild("Exits")
+                        if exits then
+                            for _, gateway in ipairs(exits:GetChildren()) do
+                                local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
+                                if success and trigger and trigger:IsA("BasePart") then
+                                    foundTrigger = trigger
+                                    break
+                                end
                             end
                         end
                     end
+                    if foundTrigger then break end
                 end
-                if foundTrigger then break end
-            end
-            if foundTrigger then
-                CurrentEscapeTrigger = foundTrigger
-            elseif not State.IsEscaping then
+                if foundTrigger then
+                    CurrentEscapeTrigger = foundTrigger
+                elseif not State.IsEscaping then
+                    CurrentEscapeTrigger = nil
+                end
+            else
                 CurrentEscapeTrigger = nil
             end
+            
         else
-            CurrentEscapeTrigger = nil
+            -- DI DALAM LOBBY
+            if State.InMatch then
+                State.InMatch = false
+                State.TimeLeft = State.MatchDuration
+                State.AutoCollect = false
+                State.AutoEscape = false
+                CurrentEscapeTrigger = nil
+            end
         end
     end
 end)
@@ -546,7 +535,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.4.1",
+    Title = "STK Farm v10.5.0",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -597,9 +586,10 @@ end })
 
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Smart Timer (Auto Switch)", Value = true, Callback = function(v) State.SmartTimer = v end })
-SecEscape:Space()
-SecEscape:Toggle({ Title = "Auto Kabur Manual", Value = false, Callback = function(v) State.AutoEscape = v end })
+SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback = function(v) 
+    State.AutoEscape = v 
+    State.WantAutoEscape = v
+end })
 
-WindUI:Notify({ Title = "STK v10.4.1", Content = "Strict Alternating Timer Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.4.1 loaded.")
+WindUI:Notify({ Title = "STK v10.5.0", Content = "Internal Timer 5 Menit Aktif!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.5.0 loaded.")
