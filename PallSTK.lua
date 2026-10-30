@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.3.2 (Syntax Fix & Game-Bug Bypass)
+    Version : v10.3.3 (Note Bug Fix)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.3.2...")
+print("[PALL-STK] Memuat STK Farm v10.3.3...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -180,6 +180,7 @@ task.spawn(function()
         end
     end
 end)
+
 -- UPDATE ESP ITEM
 local function updateItemESP()
     if not State.ESPEnabled then
@@ -354,6 +355,7 @@ local function doAutoRevive()
     end
     return false
 end
+
 -- LOGIC AUTO COLLECT
 local function doAutoCollect()
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
@@ -544,7 +546,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.3.2",
+    Title = "STK Farm v10.3.3",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -601,8 +603,6 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback
 end })
 SecEscape:Space()
 SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = false, Callback = function(v) State.SmartTimer = v end })
-SecEscape:Space()
-SecEscape:Note({ Title = "Info", Desc = "Nyalakan Smart Timer. Karakter akan farming sampai waktu tersisa 10 detik ATAU pintu kebuka lebih awal, lalu otomatis kabur." })
 
-WindUI:Notify({ Title = "STK v10.3.2", Content = "Syntax Fixed! Silakan coba lagi.", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.3.2 loaded.")
+WindUI:Notify({ Title = "STK v10.3.3", Content = "Note Error Fixed! UI Ready.", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.3.3 loaded.")
