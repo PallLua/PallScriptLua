@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.6.1 (Visual Internal Timer)
+    Version : v10.6.2 (Fixed Priority Logic)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.6.1...")
+print("[PALL-STK] Memuat STK Farm v10.6.2...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -62,7 +62,7 @@ local State = {
     TimeLeft = 300,
 }
 
--- VISUAL TIMER (Drawing API)
+-- VISUAL TIMER
 local timerGui = Instance.new("ScreenGui")
 timerGui.Name = "PallInternalTimer"
 timerGui.ResetOnSpawn = false
@@ -128,8 +128,9 @@ task.spawn(function()
             end
         end
 
-        -- 2. Cek Pintu Keluar
+        -- 2. Cek Pintu Keluar (Apakah sudah terbuka?)
         local foundTrigger = nil
+        local isDoorOpen = false
         if currentMap then
             local exits = currentMap:FindFirstChild("Exits")
             if exits then
@@ -137,6 +138,10 @@ task.spawn(function()
                     local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
                     if success and trigger and trigger:IsA("BasePart") then
                         foundTrigger = trigger
+                        -- Cek apakah pintunya terbuka (transparan atau bisa disentuh)
+                        if trigger.Transparency < 1 then
+                            isDoorOpen = true
+                        end
                         break
                     end
                 end
@@ -174,13 +179,15 @@ task.spawn(function()
         end
 
         -- 4. LOGIKA SWITCH (KUNCI UTAMA)
-        if (State.TimeLeft <= 60) or (CurrentEscapeTrigger ~= nil) then
+        -- Jika waktu <= 1 menit ATAU Pintu benar-benar terbuka
+        if (State.TimeLeft <= 60) or (isDoorOpen == true) then
             if State.AutoCollect then
                 State.AutoCollect = false
                 WindUI:Notify({ Title = "Waktunya Kabur!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 4 })
             end
             State.AutoEscape = true
         else
+            -- Jika waktu masih lama dan pintu belum buka
             if State.WantAutoCollect then
                 State.AutoCollect = true
                 State.AutoEscape = false
@@ -367,7 +374,9 @@ end
 -- LOGIC AUTO COLLECT
 local function doAutoCollect()
     if not State.AutoCollect or State.IsCollecting or State.IsReviving or State.IsEscaping or #ItemCache == 0 then return end
-    if CurrentEscapeTrigger ~= nil then return end 
+    
+    -- HAPUS PENGECEKAN CurrentEscapeTrigger DI SINI
+    -- Agar Auto Collect bisa jalan meskipun Trigger sudah ada di map
 
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -413,7 +422,6 @@ end
 -- LOGIC EVIL MODE
 local function doEvilMode()
     if not State.EvilAutoKill or State.IsKilling or State.IsReviving or State.IsCollecting or State.IsEscaping then return end
-    if CurrentEscapeTrigger ~= nil then return end
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
@@ -531,31 +539,36 @@ local function doAutoEscape()
     return true
 end
 
--- LOOP UTAMA
+-- LOOP UTAMA (PRIORITAS MUTLAK)
 RunService.RenderStepped:Connect(function()
     updateItemESP()
     updatePlayerESP()
 end)
 
 RunService.Heartbeat:Connect(function()
+    -- 1. Prioritas Utama: Escape
     if State.AutoEscape and CurrentEscapeTrigger then
         pcall(doAutoEscape)
+    -- 2. Prioritas Kedua: Revive
     elseif State.AutoRevive then
         pcall(doAutoRevive)
     end
     
-    if not State.IsReviving and not State.IsEscaping and CurrentEscapeTrigger == nil then
+    -- 3. Auto Collect HANYA jalan kalau TIDAK SEDANG ESCAPE & TIDAK SEDANG REVIVE
+    -- DAN HANYA JALAN KALAU State.AutoCollect Bernilai True
+    if not State.IsReviving and not State.IsEscaping then
         pcall(doAutoCollect)
     end
     
-    if not State.IsReviving and not State.IsCollecting and not State.IsEscaping and CurrentEscapeTrigger == nil then
+    -- 4. Killer Mode
+    if not State.IsReviving and not State.IsCollecting and not State.IsEscaping then
         pcall(doEvilMode)
     end
 end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.6.1",
+    Title = "STK Farm v10.6.2",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -611,5 +624,5 @@ SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback 
     State.WantAutoEscape = v
 end })
 
-WindUI:Notify({ Title = "STK v10.6.1", Content = "Visual Timer Active! Cek atas layar.", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.6.1 loaded.")
+WindUI:Notify({ Title = "STK v10.6.2", Content = "Fixed Auto Collect Priority!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.6.2 loaded.")
