@@ -1,9 +1,9 @@
 --[[
     PALL — STK ULTIMATE (GOOD & EVIL MODE)
-    Version : v10.3.3 (Note Bug Fix)
+    Version : v10.4.0 (Default Smart Timer & 01:00 Switch)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.3.3...")
+print("[PALL-STK] Memuat STK Farm v10.4.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -48,8 +48,11 @@ local State = {
     EvilAutoKill = false,
     TweenSpeed = 0.3,
     
-    AutoEscape = false,
-    SmartTimer = false,
+    -- Default ON
+    AutoEscape = true,
+    SmartTimer = true,
+    WantAutoEscape = true,
+    
     IsCollecting = false,
     IsReviving = false,
     IsKilling = false,
@@ -57,7 +60,6 @@ local State = {
     
     -- State Otomatis
     WantAutoCollect = false,
-    WantAutoEscape = false,
     CurrentMatchTime = 9999,
 }
 
@@ -99,12 +101,12 @@ task.spawn(function()
                     local timeLeft = (tonumber(m) * 60) + tonumber(s)
                     State.CurrentMatchTime = timeLeft
                     
-                    -- OTOMATIS BERALIH JIKA SISA WAKTU <= 10 DETIK
-                    if timeLeft <= 10 then
+                    -- OTOMATIS BERALIH JIKA SISA WAKTU <= 60 DETIK (01:00)
+                    if timeLeft <= 60 then
                         if State.AutoCollect == true then
                             State.AutoCollect = false
                             State.AutoEscape = true
-                            WindUI:Notify({ Title = "Waktu Hampir Habis!", Content = "Auto Collect OFF. Beralih ke Auto Escape.", Duration = 5 })
+                            WindUI:Notify({ Title = "Sisa 01:00!", Content = "Auto Collect OFF. Fokus Auto Escape.", Duration = 5 })
                         end
                     else
                         -- Jika match baru (waktu reset), nyalakan lagi auto collect
@@ -148,7 +150,7 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- PENCARIAN PINTU KELUAR (DENGAN PENGAMAN ERROR GAME)
+-- PENCARIAN PINTU KELUAR
 task.spawn(function()
     while task.wait(1) do
         if State.AutoEscape then
@@ -158,7 +160,6 @@ task.spawn(function()
                     local exits = map:FindFirstChild("Exits")
                     if exits then
                         for _, gateway in ipairs(exits:GetChildren()) do
-                            -- Gunakan pcall untuk menghindari bug bawaan game (Trigger is not valid member)
                             local success, trigger = pcall(function() return gateway:FindFirstChild("Trigger") end)
                             if success and trigger and trigger:IsA("BasePart") then
                                 foundTrigger = trigger
@@ -171,6 +172,7 @@ task.spawn(function()
             end
             if foundTrigger then
                 CurrentEscapeTrigger = foundTrigger
+                -- Pintu kebuka = Auto Collect langsung mati
                 State.AutoCollect = false
             elseif not State.IsEscaping then
                 CurrentEscapeTrigger = nil
@@ -546,7 +548,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.3.3",
+    Title = "STK Farm v10.4",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -597,12 +599,14 @@ end })
 
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = false, Callback = function(v) 
+-- Default Value = true
+SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback = function(v) 
     State.AutoEscape = v 
     State.WantAutoEscape = v
 end })
 SecEscape:Space()
-SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = false, Callback = function(v) State.SmartTimer = v end })
+-- Default Value = true
+SecEscape:Toggle({ Title = "Smart Timer (Deteksi Otomatis)", Value = true, Callback = function(v) State.SmartTimer = v end })
 
-WindUI:Notify({ Title = "STK v10.3.3", Content = "Note Error Fixed! UI Ready.", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.3.3 loaded.")
+WindUI:Notify({ Title = "STK v10.4.0", Content = "Timer & Escape Default ON.", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v10.4.0 loaded.")
