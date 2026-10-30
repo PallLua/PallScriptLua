@@ -1,9 +1,9 @@
 --[[
-    PALL — STK ULTIMATE (PASTEBIN LOGIC TEST)
-    Version : v10.9.0 (Escape Logic from Pastebin)
+    PALL — STK ULTIMATE (FULLY AUTOMATIC)
+    Version : v11.1.0 (Auto Text-Detect + Relentless Escape)
 --]]
 
-print("[PALL-STK] Memuat STK Farm v10.9.0 (Pastebin Logic Test)...")
+print("[PALL-STK] Memuat STK Farm v11.1.0...")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -107,14 +107,28 @@ local function updateAntiAFK()
 end
 updateAntiAFK()
 
--- FUNGSI CARI PINTU (100% LOGIKA PASTEBIN)
+-- FUNGSI CARI PINTU
 local function findTrigger()
+    for _, map in ipairs(Workspace:GetChildren()) do
+        if map.Name ~= "_Lobby" then
+            local exits = map:FindFirstChild("Exits")
+            if exits then
+                for _, gateway in ipairs(exits:GetChildren()) do
+                    local trigger = gateway:FindFirstChild("Trigger")
+                    if trigger and trigger:IsA("BasePart") then
+                        return trigger
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Cadangan (Pastebin logic)
     local backupExits = {}
     for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("BasePart") or obj:IsA("Model") then
+        if obj:IsA("BasePart") then
             local nameLower = obj.Name:lower()
-            if nameLower:find("exit") or nameLower:find("gate") or nameLower:find("escape") or nameLower:find("exitdoor") then
-                -- Abaikan objek di Lobby
+            if nameLower:find("exit") or nameLower:find("gate") or nameLower:find("escape") then
                 local lobby = Workspace:FindFirstChild("_Lobby")
                 if not (lobby and obj:IsDescendantOf(lobby)) then
                     table.insert(backupExits, obj)
@@ -122,10 +136,8 @@ local function findTrigger()
             end
         end
     end
-    
     if #backupExits > 0 then
-        local target = backupExits[math.random(1, #backupExits)]
-        return target:IsA("Model") and (target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")) or target
+        return backupExits[math.random(1, #backupExits)]
     end
     
     return nil
@@ -160,14 +172,26 @@ end
 for _, obj in ipairs(Workspace:GetDescendants()) do addToCache(obj) end
 Workspace.DescendantAdded:Connect(addToCache)
 
--- THREAD TIMER & LOGIKA SWITCH
+-- THREAD TIMER, AUTO-DETECT TEKS, & LOGIKA SWITCH
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(0.5) do
         local currentMap = nil
         for _, map in ipairs(Workspace:GetChildren()) do
             if map.Name ~= "_Lobby" and (map:FindFirstChild("LootSpawns") or map:FindFirstChild("Exits")) then
                 currentMap = map
                 break
+            end
+        end
+
+        -- Deteksi Teks "Pintu keluar akan terbuka" di layar
+        local isWarningTextFound = false
+        for _, v in ipairs(LP.PlayerGui:GetDescendants()) do
+            if v:IsA("TextLabel") and v.Visible and v.Text ~= "" then
+                local txt = v.Text:lower()
+                if txt:find("pintu keluar") or txt:find("exit") then
+                    isWarningTextFound = true
+                    break
+                end
             end
         end
 
@@ -184,6 +208,11 @@ task.spawn(function()
             local mins = math.floor(State.TimeLeft / 60)
             local secs = math.floor(State.TimeLeft % 60)
             timerText.Text = string.format("%02d:%02d", mins, secs)
+            
+            -- Kalau teks peringatan muncul, paksa timer jadi 0 (biar langsung kabur)
+            if isWarningTextFound and State.TimeLeft > 60 then
+                State.TimeLeft = 10 -- Set sisa waktu jadi 10 detik
+            end
             
             if State.TimeLeft <= 60 then
                 timerText.TextColor3 = Color3.fromHex("#FF3232")
@@ -487,7 +516,7 @@ local function doEvilMode()
     end
 end
 
-- 1X TAP MATI SEMUA
+-- 1X TAP MATI SEMUA
 local function killAllEnemies()
     local char = LP.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -525,11 +554,10 @@ local function killAllEnemies()
     end)
 end
 
--- LOGIC AUTO ESCAPE (100% PASTEBIN)
+-- LOGIC AUTO ESCAPE (100% AUTO, NEMPEL TERUS)
 local function doAutoEscape()
     if not State.AutoEscape or State.IsEscaping then return false end
     
-    -- Langsung pakai fungsi Pastebin
     local trigger = findTrigger()
     if not trigger then return false end
     
@@ -541,18 +569,21 @@ local function doAutoEscape()
         return false 
     end
 
-    pcall(function() 
-        hrp.CFrame = CFrame.new(trigger.Position + Vector3.new(0, 3, 0)) 
-    end)
-    task.wait(0.2)
+    -- Teleport dan paksa nempel
+    pcall(function() hrp.CFrame = CFrame.new(trigger.Position + Vector3.new(0, 3, 0)) end)
+    task.wait(0.1)
     
-    pcall(function()
-        firetouchinterest(hrp, trigger, 0)
-        task.wait(0.1)
-        firetouchinterest(hrp, trigger, 1)
-    end)
+    -- Spam touch selama 2 detik biar dijamin masuk
+    local endTime = tick() + 2
+    while tick() < endTime do
+        pcall(function()
+            firetouchinterest(hrp, trigger, 0)
+            task.wait(0.05)
+            firetouchinterest(hrp, trigger, 1)
+        end)
+        task.wait(0.05)
+    end
     
-    task.wait(0.5)
     State.IsEscaping = false
     return true
 end
@@ -581,7 +612,7 @@ end)
 
 -- UI
 local Window = WindUI:CreateWindow({
-    Title = "STK Farm v10.9.0",
+    Title = "STK Farm v11.1.0",
     Folder = "pallstk",
     Icon = "solar:candy-bold",
     NewElements = true,
@@ -637,24 +668,12 @@ end })
 
 local TabEscape = Window:Tab({ Title = "Auto Escape", Icon = "solar:exit-bold", IconColor = Green, IconShape = "Square", Border = true })
 local SecEscape = TabEscape:Section({ Title = "Escape Settings", Box = true, BoxBorder = true, Opened = true })
-SecEscape:Toggle({ Title = "Auto Kabur (Ke Pintu Exit)", Value = true, Callback = function(v) 
+SecEscape:Toggle({ Title = "Auto Kabur (Beneran Auto)", Value = true, Callback = function(v) 
     State.AutoEscape = v 
     State.WantAutoEscape = v
 end })
 SecEscape:Space()
-SecEscape:Button({ Title = "SYNC TIMER (Pas Game 04:00)", Callback = function()
-    State.MatchStartTime = tick() - 60
-    State.TimeLeft = 240
-    WindUI:Notify({ Title = "Timer Synced", Content = "Timer internal disetel ke 04:00", Duration = 4 })
-end })
-SecEscape:Space()
-SecEscape:Button({ Title = "FORCE ESCAPE NOW (Pastebin)", Callback = function()
-    State.AutoCollect = false
-    State.WantAutoCollect = false
-    State.AutoEscape = true
-    State.IsEscaping = false
-    WindUI:Notify({ Title = "Force Escape", Content = "Mencari pintu (Logika Pastebin)...", Duration = 4 })
-end })
+SecEscape:Note({ Title = "Info", Desc = "Sistem akan otomatis kabur jika timer sisa 1 menit ATAU teks 'Pintu keluar akan terbuka' muncul di layar. Karakter akan nempel di pintu sampai berhasil kabur." })
 
-WindUI:Notify({ Title = "STK v10.9.0", Content = "Pastebin Escape Logic Active!", Icon = "solar:bell-bold", Duration = 6 })
-print("[PALL-STK] v10.9.0 loaded.")
+WindUI:Notify({ Title = "STK v11.1.0", Content = "Full Auto Escape Ready!", Icon = "solar:bell-bold", Duration = 6 })
+print("[PALL-STK] v11.1.0 loaded.")
